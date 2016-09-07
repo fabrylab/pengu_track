@@ -105,6 +105,7 @@ class Kalman(object):
             pout.append(p)
         return np.array(xout), np.array(pout), np.array(pred_out)
 
+
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import clickpoints
@@ -115,71 +116,67 @@ if __name__ == '__main__':
     for t in tracks:
         points.append(t.points_corrected)
 
-# #region easy
-#
-#     measurements = np.array([range(100), range(100)]).T
-#     X = np.array([0., 0., 0., 0.])  # initial state (location and velocity)
-#     P = np.diag([1000, 1000, 1000, 1000])  # initial uncertainty
-#     U = np.zeros([100, 4])  # external motion
-#
-#     A = np.array([[1., 1., 0., 0.],
-#                   [0, 1., 0, 0.],
-#                   [0., 0., 1., 1.],
-#                   [0, 0., 0, 1.]])  # next state function
-#     B = np.zeros_like(A)  # next state function for control parameter
-#     R = np.diag([0.5, 0.5, 0.5, 0.5])  # Prediction uncertainty
-#     C = np.array([[1., 0., 0., 0.],
-#                   [0., 0., 1., 0.]])  # measurement function
-#     Q = np.array([0.5, 0.5])  # Measurement uncertainty
-#     I = np.diag([1., 1., 1., 1.])  # identity matrix
-#
-#     kal = Kalman(A, B, C, R, Q, X, U)
-#
-#     X, P = kal.fit(P, U, measurements)
-#
-#     Pred = X.T[::2].T
-#
-#     plt.scatter(Pred.T[0], Pred.T[1])
-#     plt.plot(measurements.T[0], measurements.T[1], 'rx')
-#     pred2 = kal.predict(X[-1],P[-1],U[-1])[0][::2]
-#     plt.plot(pred2[0], pred2[1], 'gx')
-#     plt.show()
-#
-# #endregion
-
     measurements = points[-5][:-5]
     X = np.array([measurements[0][0], 0., measurements[0][1], 0.])  # initial state (location and velocity)
-    ucty = (np.max(measurements.flatten())-np.min(measurements.flatten()))/np.sqrt(measurements.shape[0])
+    ucty = (np.max(measurements.flatten()) - np.min(measurements.flatten())) / np.sqrt(measurements.shape[0])
     P = np.diag([ucty, ucty, ucty, ucty])  # initial uncertainty
     U = np.zeros([measurements.shape[0], 4])  # external motion
 
     A = np.array([[1., 1., 0., 0.],
-                  [0., .9, 0., 0.],
+                  [0., 1., 0., 0.],
                   [0., 0., 1., 1.],
-                  [0., 0., 0., .9]])  # next state function
+                  [0., 0., 0., 1.]])  # next state function
 
     B = np.zeros_like(A)  # next state function for control parameter
-    R = np.diag([20, 100, 20, 100])  # Prediction uncertainty
     C = np.array([[1., 0., 0., 0.],
-                  [0., 0., 1., 0.]])  # measurement function
-    Q = np.diag([10, 10])  # Measurement uncertainty
-    I = np.diag([1., 1., 1., 1.])  # identity matrix
+                [0., 0., 1., 0.]])  # measurement function
+
+
+    xy_uncty = [20]
+    vxvy_uncty = [100]
+    meas_uncty = [10]
+
+    xy_uncty = 10.**np.arange(1,10,1)
+    vxvy_uncty = 10.**np.arange(-5,5,1)
+    meas_uncty = [30]#10.**np.arange(-3,3,1)
+    err1=[]
+    for xy in xy_uncty:
+        err2=[]
+        for vxvy in vxvy_uncty:
+            err3=[]
+            for meas in meas_uncty:
+                R = np.diag([xy, vxvy, xy, vxvy])  # Prediction uncertainty
+                Q = np.diag([meas, meas])  # Measurement uncertainty
+
+                kal = Kalman(A, B, C, R, Q, X, U)
+
+                X_Post, P_Post, Pred = kal.fit(P, U, measurements)
+
+                err3.append(np.sqrt(np.mean((Pred.T[::2].T-measurements)**2)))
+            err2.append(err3)
+        err1.append(err2)
+    err1=np.array(err1)
+    I=np.argmin(np.array(err1).flatten())
+    I=np.unravel_index(I, err1.shape)
+    print I
+    print xy_uncty[I[0]],vxvy_uncty[I[1]],meas_uncty[I[2]]
+
+
+    xy_uncty = xy_uncty[I[0]]
+    vxvy_uncty = vxvy_uncty[I[1]]
+    meas_uncty = meas_uncty[I[2]]
+
+    R = np.diag([xy_uncty, vxvy_uncty, xy_uncty, vxvy_uncty])  # Prediction uncertainty
+    Q = np.diag([meas_uncty, meas_uncty])  # Measurement uncertainty
 
     kal = Kalman(A, B, C, R, Q, X, U)
 
-    X, P, Pred = kal.fit(P, U, measurements)
+    X_Post, P_Post, Pred = kal.fit(P, U, measurements)
 
-    Bel = X.T[::2].T
+    Bel = X_Post.T[::2].T
     Pred = Pred.T[::2].T
 
     plt.plot(Pred.T[0], Pred.T[1], '-ro')
     plt.plot(measurements.T[0], measurements.T[1], '-bx')
-
-    pred2 = [X[-1]]
-    for i in range(10):
-        pred2.append(kal.predict(pred2[-1], P[-1], U[-1])[0])
-    pred2 = np.array(pred2).T[::2]
-    plt.plot(pred2[0], pred2[1], 'gx')
-
     plt.axis('equal')
     plt.show()
