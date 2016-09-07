@@ -56,7 +56,7 @@ class Filter(object):
         return predictions, data
 
 class Kalman(object):
-    def __init__(self, a, b, c, r, q, x_0, u_0):
+    def __init__(self, a, b, c, r, q, x_0, p_0):
         super(Kalman).__init__(object)
         self.A = np.array(a)
         self.B = np.array(b)
@@ -64,46 +64,53 @@ class Kalman(object):
         self.R = np.array(r)
         self.Q = np.array(q)
         self.x_0 = np.array(x_0)
-        self.u_0 = np.array(u_0)
+        self.p_0 = np.array(x_0)
+        self.x = [self.x_0]
+        self.p = [self.p_0]
 
-    def predict(self, x, p, u):
+    def predict(self, u):
         '''Prediction part of the Kalman Filtering process for one step'''
-        x_ = np.dot(self.A, x) + np.dot(self.B, u)
-        p_ = np.dot(np.dot(self.A, p), self.A.transpose()) + self.R
+        x_ = np.dot(self.A, self.x[-1]) + np.dot(self.B, u)
+        p_ = np.dot(np.dot(self.A, self.p[-1]), self.A.transpose()) + self.R
+        self.x.append(x_)
+        self.p.append(p_)
         return x_, p_
 
-    def update(self, x, p, z):
+    def update(self, z):
         '''Updating part of the Kalman Filtering process for one step'''
-        y = z - np.dot(self.C, x)
-        s = np.dot(np.dot(self.C, p), self.C.transpose()) - self.Q
-        k = np.dot(np.dot(p, self.C.transpose()), np.linalg.inv(s))
-        x_ = x + np.dot(k, y)
-        p_ = p - np.dot(np.dot(k, self.C), p)
+        y = z - np.dot(self.C, self.x[-1])
+        s = np.dot(np.dot(self.C, self.p[-1]), self.C.transpose()) - self.Q
+        k = np.dot(np.dot(self.p[-1], self.C.transpose()), np.linalg.inv(s))
+        x_ = self.x[-1] + np.dot(k, y)
+        p_ = self.p[-1] - np.dot(np.dot(k, self.C), self.p[-1])
+        self.x[-1] = x_
+        self.p[-1] = p_
         return x_, p_
 
-    def filter(self, x, p, u, z):
+    def filter(self, u, z):
         '''Actual Kalman filtering process for one single step'''
-        x, p = self.predict(x, p, u)
-        x, p = self.update(x, p, z)
+        self.predict(u)
+        x, p = self.update(z)
         return x, p
 
-    def fit(self, p, u, z):
+    def fit(self, u, z):
         '''Function to auto-evaluate all measurements z with controll-vectors u and starting probability p.
         It returns the believed values x, the corresponding probabilities p and the predictions x_tilde'''
         xout = []
         pout = []
         pred_out = []
+        pred_out_err = []
         u = np.array(u)
         z = np.array(z)
-        x = self.x_0
         assert u.shape[0] == z.shape[0]
         for i in range(z.shape[0]):
-            x, p = self.predict(x, p, u[i])
+            x, p = self.predict(u[i])
             pred_out.append(x)
-            x, p = self.update(x, p, z[i])
+            pred_out_err.append(p)
+            x, p = self.update(z[i])
             xout.append(x)
             pout.append(p)
-        return np.array(xout), np.array(pout), np.array(pred_out)
+        return np.array(xout), np.array(pout), np.array(pred_out), np.array(pred_out_err)
 
 
 if __name__ == '__main__':
@@ -123,9 +130,9 @@ if __name__ == '__main__':
     U = np.zeros([measurements.shape[0], 4])  # external motion
 
     A = np.array([[1., 1., 0., 0.],
-                  [0., 1., 0., 0.],
+                  [0., .9, 0., 0.],
                   [0., 0., 1., 1.],
-                  [0., 0., 0., 1.]])  # next state function
+                  [0., 0., 0., .9]])  # next state function
 
     B = np.zeros_like(A)  # next state function for control parameter
     C = np.array([[1., 0., 0., 0.],
@@ -136,9 +143,9 @@ if __name__ == '__main__':
     vxvy_uncty = [100]
     meas_uncty = [10]
 
-    xy_uncty = 10.**np.arange(1,10,1)
-    vxvy_uncty = 10.**np.arange(-5,5,1)
-    meas_uncty = [30]#10.**np.arange(-3,3,1)
+    xy_uncty = 10.**np.arange(-5, 5, 1)
+    vxvy_uncty = 10.**np.arange(-5, 5, 1)
+    meas_uncty = [15.]#10.**np.arange(-3,3,1)
     err1=[]
     for xy in xy_uncty:
         err2=[]
@@ -148,9 +155,9 @@ if __name__ == '__main__':
                 R = np.diag([xy, vxvy, xy, vxvy])  # Prediction uncertainty
                 Q = np.diag([meas, meas])  # Measurement uncertainty
 
-                kal = Kalman(A, B, C, R, Q, X, U)
+                kal = Kalman(A, B, C, R, Q, X, P)
 
-                X_Post, P_Post, Pred = kal.fit(P, U, measurements)
+                X_Post, P_Post, Pred, Pred_err = kal.fit(U, measurements)
 
                 err3.append(np.sqrt(np.mean((Pred.T[::2].T-measurements)**2)))
             err2.append(err3)
@@ -171,12 +178,14 @@ if __name__ == '__main__':
 
     kal = Kalman(A, B, C, R, Q, X, U)
 
-    X_Post, P_Post, Pred = kal.fit(P, U, measurements)
+    X_Post, P_Post, Pred, Pred_err = kal.fit(U, measurements)
 
     Bel = X_Post.T[::2].T
+    Pred_err= np.array([Pred_err.T[0,0],Pred_err.T[2,2]]).T
     Pred = Pred.T[::2].T
+    print Pred_err
 
-    plt.plot(Pred.T[0], Pred.T[1], '-ro')
+    plt.errorbar(Pred.T[0], Pred.T[1], xerr=Pred_err.T[0], yerr=Pred_err.T[1])
     plt.plot(measurements.T[0], measurements.T[1], '-bx')
     plt.axis('equal')
     plt.show()
