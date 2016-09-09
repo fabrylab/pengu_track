@@ -57,6 +57,7 @@ class Filter(object):
         data = self.update(predictions)
         return predictions, data
 
+
 class Kalman(object):
     def __init__(self, a, b, c, q, r, x_0, p_0):
         '''
@@ -128,16 +129,16 @@ class Kalman(object):
     def k_opt(self, z):
         k_hat = self.k_hat(z)
         mh_hat = self.mh_hat(z)
-        R = self.r_hat(z)
-        delta_M1_hat = self.p[-1]-self.p[-2]
+        r = self.r_hat(z)
+        delta_m1_hat = self.p[-1]-self.p[-2]
 
-        i=0
+        i = 0
         while True:
             ikh = np.identity(self.C.shape[1])-np.dot(k_hat, self.C)
             k1k0 = k_hat - self.k()
-            delta_M1_hat = np.dot(np.dot(np.dot(np.dot(self.A,
+            delta_m1_hat = np.dot(np.dot(np.dot(np.dot(self.A,
                                                        ikh),
-                                                delta_M1_hat),
+                                                delta_m1_hat),
                                          ikh.T),
                                   self.A.T) - np.dot(np.dot(np.dot(np.dot(self.A,
                                                                           k1k0),
@@ -145,29 +146,31 @@ class Kalman(object):
                                                             k1k0.T),
                                                      self.A.T)
 
-            m2ht_hat = mh_hat + np.dot(delta_M1_hat, self.C.T)
-            k2_hat = np.dot(m2ht_hat, np.linalg.inv(np.dot(self.C, m2ht_hat) + R))
+            m2ht_hat = mh_hat + np.dot(delta_m1_hat, self.C.T)
+            k2_hat = np.dot(m2ht_hat, np.linalg.inv(np.dot(self.C, m2ht_hat) + r))
             i += 1
             if i > 1000:
                 break
             if np.linalg.norm(k2_hat) > np.linalg.norm(k2_hat-k_hat) or\
-                            np.linalg.norm(self.p[-2]) > np.linalg.norm(delta_M1_hat):
+               np.linalg.norm(self.p[-2]) > np.linalg.norm(delta_m1_hat):
                 break
-
+        print(i)
         return k2_hat
 
     def v(self, i, z_i):
         return z_i-np.dot(np.dot(self.C, self.A), self.x[i-1])
 
     def c_hat(self, k, z):
-        c = 0
-        for i in range(len(z)):
-            c += np.tensordot(self.v(i, z[i]), self.v(i-k, z[i-k]).transpose(), axes=0)
+        c = np.sum(np.array([
+                            np.tensordot(self.v(i, z[i]), self.v(i - k, z[i - k]).transpose(), axes=0)
+                            for i in range(len(z))
+                            ]), axis=0)
         return np.array(c/len(z))
 
-    def pseudo_inverse(self, M):
-        M = np.dot(np.linalg.inv(np.dot(M.transpose(), M)), M.transpose())
-        return M
+    @staticmethod
+    def pseudo_inverse(m):
+        m = np.dot(np.linalg.inv(np.dot(m.transpose(), m)), m.transpose())
+        return m
 
     def A_tilde(self, n):
         a = np.identity(self.A.shape[0])
@@ -192,8 +195,13 @@ class Kalman(object):
 
     def r_hat(self, z):
         try:
-            r = self.c_hat(0, z) - np.dot(self.C, self.mh_hat(z))
-        except(np.linalg.LinAlgError):
+
+            cc = self.c_tilde(z)
+            a_cross = self.pseudo_inverse(self.A_tilde(len(z)))
+            mh_hat = np.dot(self.k(), self.c_hat(0, z)) + np.dot(a_cross, cc)
+
+            r = self.c_hat(0, z) - np.dot(self.C, mh_hat)
+        except np.linalg.LinAlgError:
             r = self.R
             print("The starting conditions of the uncertainty matrices are to bad. (Inversion Error)")
         return r
@@ -209,11 +217,17 @@ class Kalman(object):
         z = np.array(z)
         assert u.shape[0] == z.shape[0]
         for i in range(z.shape[0]):
+            print(self.R)
             if opt == 'Mehra':
                 self.R = self.r_hat(z[:i+1])
+            if np.any(self.R != self.R):
+                break
             x, p = self.predict(u[i])
             pred_out.append(x)
-            x, p = self.update(z[i])
+            if i>5:
+                x, p = self.update(z[i], opt='')
+            else:
+                x, p = self.update(z[i], opt=opt)
             pred_out_err.append(p)
             xout.append(x)
             pout.append(p)
@@ -230,10 +244,8 @@ if __name__ == '__main__':
     for t in tracks:
         points.append(t.points_corrected)
 
-    measurements = points[-3][:-5]
+    measurements = points[-5][:-5]
     X = np.array([measurements[0][0], 0., measurements[0][1], 0.])  # initial state (location and velocity)
-    ucty = (np.max(measurements.flatten()) - np.min(measurements.flatten())) / np.sqrt(measurements.shape[0])*1e3
-    P = np.diag([ucty, ucty, ucty, ucty])  # initial uncertainty
     U = np.zeros([measurements.shape[0], 4])  # external motion
 
     A = np.array([[1., 1., 0., 0.],
@@ -243,47 +255,12 @@ if __name__ == '__main__':
 
     B = np.zeros_like(A)  # next state function for control parameter
     C = np.array([[1., 0., 0., 0.],
-                 [0., 0., 1., 0.]])  # measurement function
+                  [0., 0., 1., 0.]])  # measurement function
 
-    xy_uncty = [ucty]
-    vxvy_uncty = [ucty]
-    meas_uncty = [10]
-
-    #xy_uncty = 10.**np.arange(0.9, 1.3, 0.02)
-    #vxvy_uncty = 10.**np.arange(2.7, 3.1, 0.2)
-    #meas_uncty = [15.]#10.**np.arange(-3,3,1)
-    err1 = []
-    for xy in xy_uncty:
-        err2 = []
-        for vxvy in vxvy_uncty:
-            err3 = []
-            for meas in meas_uncty:
-                Q = np.diag([xy, vxvy, xy, vxvy])  # Prediction uncertainty
-
-                R = np.diag([meas, meas])  # Measurement uncertainty
-
-                kal = Kalman(A, B, C, Q, R, X, P)
-
-                X_Post, P_Post, Pred, Pred_err = kal.fit(U, measurements)
-
-                err3.append(np.sqrt(np.mean((Pred.T[::2].T-measurements)**2)))
-                #err3.append(np.mean(np.linalg.det(Pred_err)))
-                #err3.append(np.mean(np.linalg.det(Pred_err))/np.sqrt(np.mean((Pred.T[::2].T-measurements)**2)))
-            err2.append(err3)
-        err1.append(err2)
-    err1 = np.array(err1)
-    I = np.argmin(np.array(err1).flatten())
-    I = np.unravel_index(I, err1.shape)
-    print(I)
-    print(xy_uncty[I[0]],vxvy_uncty[I[1]],meas_uncty[I[2]])
-
-
-    xy_uncty = xy_uncty[I[0]]
-    vxvy_uncty = vxvy_uncty[I[1]]
-    meas_uncty = meas_uncty[I[2]]
-
+    ucty = 5e5#(np.max(measurements.flatten()) - np.min(measurements.flatten())) / np.sqrt(measurements.shape[0])*3e3
+    xy_uncty = ucty; vxvy_uncty = ucty; meas_uncty = 10
+    P = np.diag([ucty, ucty, ucty, ucty])  # initial uncertainty
     Q = np.diag([xy_uncty, vxvy_uncty, xy_uncty, vxvy_uncty])  # Prediction uncertainty
-
     R = np.diag([meas_uncty, meas_uncty])  # Measurement uncertainty
 
     kal = Kalman(A, B, C, Q, R, X, P)
@@ -299,7 +276,4 @@ if __name__ == '__main__':
     plt.plot(measurements.T[0], measurements.T[1], '-bx')
     plt.axis('equal')
     plt.show()
-
-    R = kal.r_hat(measurements[:2])
-    print(R)
 
