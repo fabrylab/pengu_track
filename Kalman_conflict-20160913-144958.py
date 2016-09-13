@@ -271,7 +271,7 @@ class Kalman(object):
         :param x_0: Array-like n dimensional vector. Start value of the state vector.
         :param p_0: Array-like nxn dimensional matrix. Start value of the believed uncertainty.
         '''
-        super(Kalman, self).__init__()
+        super(Kalman).__init__(object)
         self.A = np.array(a)
         self.B = np.array(b)
         self.C = np.array(c)
@@ -282,8 +282,8 @@ class Kalman(object):
         self.R_0 = np.array(r)
         self.x_0 = np.array(x_0)
         self.p_0 = np.array(p_0)
-        self.x = np.array([self.x_0])
-        self.p = np.array([self.p_0])
+        self.x = [self.x_0]
+        self.p = [self.p_0]
 
         self.K = self.k()
 
@@ -291,9 +291,8 @@ class Kalman(object):
         '''Prediction part of the Kalman Filtering process for one step'''
         x_ = np.dot(self.A, self.x[-1]) + np.dot(self.B, u)
         p_ = np.dot(np.dot(self.A, self.p[-1]), self.A.transpose()) + np.dot(np.dot(self.G, self.Q), self.G.T)
-
-        self.x = np.vstack((self.x, [x_]))
-        self.p = np.vstack((self.p, [p_]))
+        self.x.append(x_)
+        self.p.append(p_)
         return x_, p_
 
     def update(self, z):
@@ -330,9 +329,10 @@ class Kalman(object):
     def fit(self, u, z):
         '''Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
         It returns the believed values x, the corresponding probabilities p and the predictions x_tilde'''
-
-        pred_out = pred_out_err = xout = pout = None
-
+        xout = []
+        pout = []
+        pred_out = []
+        pred_out_err = []
         u = np.array(u)
         z = np.array(z)
         assert u.shape[0] == z.shape[0]
@@ -342,15 +342,8 @@ class Kalman(object):
             self.K = self.k()
 
             x, p = self.predict(u[i])
-
-            if pred_out is not None:
-                pred_out = np.vstack((pred_out, [x]))
-            else:
-                pred_out = np.array([x])
-            if pred_out_err is not None:
-                pred_out_err = np.vstack((pred_out_err, [p]))
-            else:
-                pred_out_err = np.array([p])
+            pred_out.append(x)
+            pred_out_err.append(p)
 
             qp = np.dot(C, np.array(pred_out).T).T  - z[:i+1]
             Q = np.cov(qp.T)
@@ -359,15 +352,8 @@ class Kalman(object):
                 print(Q)
                 self.Q = Q
             x, p = self.update(z[i])
-
-            if xout is not None:
-                xout = np.vstack((xout, [x]))
-            else:
-                xout = np.array([x])
-            if pout is not None:
-                pout = np.vstack((pout, [p]))
-            else:
-                pout = np.array([p])
+            xout.append(x)
+            pout.append(p)
 
         return np.array(xout), np.array(pout), np.array(pred_out), np.array(pred_out_err)
 
@@ -382,70 +368,50 @@ class Kalman_Mehra(Kalman):
         return self.z[i]-np.dot(np.dot(self.C, self.A), self.x[i-1])
 
     def c_hat(self, k):
-        n = self.z.shape[0]
         c = np.sum(np.array([
                             np.tensordot(self.v(i, self.z[i]), self.v(i - k, self.z[i - k]).transpose(), axes=0)
-                            for i in range(k, n)
+                            for i in range(len(z))
                             ]), axis=0)
-        c2 = np.tensordot(self.z[:-k], self.z[k:].T, axes=1)
-        return np.array(c/n)
+        c = np.tensordot()
+        return np.array(c/len(z))
 
     @staticmethod
     def pseudo_inverse(m):
         m = np.dot(np.linalg.inv(np.dot(m.transpose(), m)), m.transpose())
         return m
 
-    def A_tilde(self):
-        a = None
-        n = self.z.shape[0]
-        for i in range(n - self.Lag, n):
-            if a is not None:
-                a_ = np.dot(np.dot(self.A, (np.identity(self.A.shape[0]))-np.dot(self.k(), self.C)), a_)
-                a = np.vstack((a, a_))
-            else:
-                a = np.identity(self.A.shape[0])
-                a_ = np.array(a, copy=True)
-        return np.dot(self.C, np.dot(a, self.A))
+    def A_tilde(self, n):
+        a = np.identity(self.A.shape[0])
+        a_ = np.array(a)
+        a = np.dot(self.C, np.dot(a, self.A))
+        for i in range(n-1):
+            a_ = np.dot(np.dot(self.A, (np.identity(self.A.shape[0]))-np.dot(self.k(), self.C)), a_)
+            a = np.vstack((a, np.dot(self.C, np.dot(a_, self.A))))
+        return a
 
-    def c_tilde(self):
-        c = None
-        n = self.z.shape[0]
-        for i in range(n - self.Lag, n):
-            if c is not None:
-                c = np.vstack((c, self.c_hat(i)))
-            else:
-                c = self.c_hat(i)
+    def c_tilde(self, z):
+        c = self.c_hat(0, z)
+        for i in range(len(z)-1):
+            c = np.vstack((c, self.c_hat(i, z)))
         return c
 
     def mh_hat(self, z):
-        cc = self.c_tilde()
-        a_cross = self.pseudo_inverse(self.A_tilde())
+        cc = self.c_tilde(z)
+        a_cross = self.pseudo_inverse(self.A_tilde(len(z)))
 
-        return np.dot(self.k(), self.c_hat(0)) + np.dot(a_cross, cc)
+        return np.dot(self.k(), self.c_hat(0, z)) + np.dot(a_cross, cc)
 
-    def r_hat(self):
+    def r_hat(self, z):
         try:
-            cc = self.c_tilde()
-            a_cross = self.pseudo_inverse(self.A_tilde())
-            mh_hat = np.dot(self.k(), self.c_hat(0)) + np.dot(a_cross, cc)
+            cc = self.c_tilde(z)
+            a_cross = self.pseudo_inverse(self.A_tilde(len(z)))
+            mh_hat = np.dot(self.k(), self.c_hat(0, z)) + np.dot(a_cross, cc)
 
-            r = self.c_hat(0) - np.dot(self.C, mh_hat)
+            r = self.c_hat(0, z) - np.dot(self.C, mh_hat)
         except np.linalg.LinAlgError:
             r = self.R
             print("The starting conditions of the uncertainty matrices are to bad. (Inversion Error)")
         return r
-    
-    def predict(self, u):
-        self.R = self.r_hat()
-        return super(Kalman_Mehra, self).predict(u)
-    
-    def update(self, meas):
-        self.z = np.vstack(self.z, [meas])
-        return super(Kalman_Mehra, self).update(meas)
-
-    def fit(self, u, z):
-        self.z = z
-        return super(Kalman_Mehra, self).fit(u, z)
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
@@ -498,7 +464,7 @@ if __name__ == '__main__':
 
         return -1*kal.log_probability(Pred, measurements)
 
-    #optimal = opt.minimize_scalar(loger, bounds=[5, 39], method='Bounded')
+    optimal = opt.minimize_scalar(loger, bounds=[5, 39], method='Bounded')
 
     ucty = 20#optimal['x']
     print(ucty)
@@ -509,7 +475,7 @@ if __name__ == '__main__':
     Q = np.diag([vxvy_uncty, vxvy_uncty])  # Prediction uncertainty
     R = np.diag([meas_uncty, meas_uncty])  # Measurement uncertainty
 
-    kal = Kalman_Mehra(A, B, C, G, Q, R, X, P, lag=5, measurement=measurements)
+    kal = Kalman(A, B, C, G, Q, R, X, P)
 
     X_Post, P_Post, Pred, Pred_err = kal.fit(U, measurements)
 
