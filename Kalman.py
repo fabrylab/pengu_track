@@ -1,6 +1,8 @@
 from __future__ import print_function, division
 import numpy as np
+import numpy.ma as ma
 from scipy import linalg as LA
+
 
 
 class FilterOpt(object):
@@ -56,207 +58,151 @@ class Filter(object):
         data = self.update(predictions)
         return predictions, data
 
+class MultiKalman(object):
+    def __init__(self, a, b, c, g, q, r, x_0, p_0, **kwargs):
+        super(MultiKalman, self).__init__()
+        self.A = np.array(a)
+        self.B = np.array(b)
+        self.C = np.array(c)
+        self.G = np.array(g)
+        self.Q = np.array(q)
+        self.Q_0 = np.array(q)
+        self.R = np.array(r)
+        self.R_0 = np.array(r)
+        self.Filters = []
+        self.ActiveFilters = []
+        self.FilterTreshold = 2
 
-# class KalmanMehra(object):
-#     def __init__(self, a, b, c, g, q, r, x_0, p_0):
-#         '''
-#         The Kalman-Filter evaluates data concerning a physical model mainly implemented in the matrices A,B and C.
-#         Assuming all measurement-errors are gaussian the filter predicts new measurement values from preceding values.
-#         Also it updates its predictions with the data and produces new believed values for the measurement,
-#         which are also gaussian, but have a smaller distribution.
-#
-#         :param a: Array-like nxn dimensional matrix, describing the evolution of a new state out of an old state.
-#         :param b: Array-like nxm dimensional matrix, describing, how a new state is influenced by the control sate u.
-#         :param c: Array-like nxr dimensional matrix, describing how a state projects on a measurement.
-#         :param q: Array-like nxn dimensional matrix. Covariance matrix of the prediction.
-#         :param r: Array-like rxr dimensional matrix. Covariance matrix of the measurement.
-#         :param x_0: Array-like n dimensional vector. Start value of the state vector.
-#         :param p_0: Array-like nxn dimensional matrix. Start value of the believed uncertainty.
-#         '''
-#         super(Kalman).__init__(object)
-#         self.A = np.array(a)
-#         self.B = np.array(b)
-#         self.C = np.array(c)
-#         self.G = np.array(g)
-#         self.Q = np.array(q)
-#         self.Q_0 = np.array(q)
-#         self.R = np.array(r)
-#         self.R_0 = np.array(r)
-#         self.x_0 = np.array(x_0)
-#         self.p_0 = np.array(p_0)
-#         self.x = [self.x_0]
-#         self.p = [self.p_0]
-#
-#         self.K = self.k()
-#
-#     def predict(self, u):
-#         '''Prediction part of the Kalman Filtering process for one step'''
-#         x_ = np.dot(self.A, self.x[-1]) + np.dot(self.B, u)
-#         p_ = np.dot(np.dot(self.A, self.p[-1]), self.A.transpose()) + np.dot(np.dot(self.G, self.Q), self.G.T)
-#         self.x.append(x_)
-#         self.p.append(p_)
-#         return x_, p_
-#
-#     def update(self, z):
-#         '''Updating part of the Kalman Filtering process for one step'''
-#         y = z - np.dot(self.C, self.x[-1])
-#
-#         x_ = self.x[-1] + np.dot(self.K, y)
-#         p_ = self.p[-1] - np.dot(np.dot(self.K, self.C), self.p[-1])
-#
-#         self.x[-1] = x_
-#         self.p[-1] = p_
-#         return x_, p_
-#
-#     def filter(self, u, z):
-#         '''Actual Kalman filtering process for one single step'''
-#         self.predict(u)
-#         x, p = self.update(z)
-#         return x, p
-#
-#     def k(self):
-#         return np.dot(np.dot(self.p[-1], self.C.transpose()),
-#                       np.linalg.inv(np.dot(np.dot(self.C, self.p[-1]), self.C.transpose()) + self.R))
-#
-#     def k_hat(self, z):
-#         a_cross = self.pseudo_inverse(self.A_tilde(len(z)))
-#         cc = self.c_tilde(z)
-#         return self.k() + np.dot(np.dot(a_cross, cc), np.linalg.inv(self.c_hat(0, z)))
-#
-#     def k_opt(self, z):
-#         r = self.R_0
-#         try:
-#             k_hat = self.k_hat(z)
-#         except np.linalg.LinAlgError:
-#             k_hat = self.k()
-#             print("The starting conditions of the uncertainty matrices are to bad. (Inversion Error)")
-#         try:
-#             mh_hat = self.mh_hat(z)
-#         except np.linalg.LinAlgError:
-#             print("The starting conditions of the uncertainty matrices are to bad. (Inversion Error)")
-#             return k_hat
-#
-#         r = self.r_hat(z)
-#         delta_m1_hat = self.p[-1]-self.p[-2]
-#
-#         i = 0
-#         while True:
-#             ikh = np.identity(self.C.shape[1])-np.dot(k_hat, self.C)
-#             k1k0 = k_hat - self.k()
-#
-#             j = 0
-#             while True:
-#                 j += 1
-#                 delta_m1_hat_new = np.dot(np.dot(np.dot(np.dot(self.A,
-#                                                         ikh),
-#                                                  delta_m1_hat),
-#                                           ikh.T),
-#                                           self.A.T) - np.dot(np.dot(np.dot(np.dot(self.A,
-#                                                                                   k1k0),
-#                                                                            self.c_hat(0, z)),
-#                                                                     k1k0.T),
-#                                                             self.A.T)
-#                 if np.allclose(delta_m1_hat, delta_m1_hat_new):
-#                     break
-#                 else:
-#                     delta_m1_hat = delta_m1_hat_new
-#                     if j > 100:
-#                         break
-#             m2ht_hat = mh_hat + np.dot(delta_m1_hat, self.C.T)
-#             try:
-#                 k2_hat = np.dot(m2ht_hat, np.linalg.inv(np.dot(self.C, m2ht_hat) + r))
-#             except np.linalg.LinAlgError:
-#                 return self.k()
-#                 print("The starting conditions of the uncertainty matrices are to bad. (Inversion Error)")
-#             i += 1
-#             if i > 1000:
-#                 break
-#             if np.linalg.norm(k2_hat) > np.linalg.norm(k2_hat-k_hat) or\
-#                 np.linalg.norm(self.p[-2]) > np.linalg.norm(delta_m1_hat):
-#                 print(i)
-#                 break
-#         return k2_hat
-#
-#     def v(self, i, z_i):
-#         return z_i-np.dot(np.dot(self.C, self.A), self.x[i-1])
-#
-#     def c_hat(self, k, z):
-#         c = np.sum(np.array([
-#                             np.tensordot(self.v(i, z[i]), self.v(i - k, z[i - k]).transpose(), axes=0)
-#                             for i in range(len(z))
-#                             ]), axis=0)
-#         return np.array(c/len(z))
-#
-#     @staticmethod
-#     def pseudo_inverse(m):
-#         m = np.dot(np.linalg.inv(np.dot(m.transpose(), m)), m.transpose())
-#         return m
-#
-#     def A_tilde(self, n):
-#         a = np.identity(self.A.shape[0])
-#         a_ = np.array(a)
-#         a = np.dot(self.C, np.dot(a, self.A))
-#         for i in range(n-1):
-#             a_ = np.dot(np.dot(self.A, (np.identity(self.A.shape[0]))-np.dot(self.k(), self.C)), a_)
-#             a = np.vstack((a, np.dot(self.C, np.dot(a_, self.A))))
-#         return a
-#
-#     def c_tilde(self, z):
-#         c = self.c_hat(0, z)
-#         for i in range(len(z)-1):
-#             c = np.vstack((c, self.c_hat(i, z)))
-#         return c
-#
-#     def mh_hat(self, z):
-#         cc = self.c_tilde(z)
-#         a_cross = self.pseudo_inverse(self.A_tilde(len(z)))
-#
-#         return np.dot(self.k(), self.c_hat(0, z)) + np.dot(a_cross, cc)
-#
-#     def r_hat(self, z):
-#         try:
-#             cc = self.c_tilde(z)
-#             a_cross = self.pseudo_inverse(self.A_tilde(len(z)))
-#             mh_hat = np.dot(self.k(), self.c_hat(0, z)) + np.dot(a_cross, cc)
-#
-#             r = self.c_hat(0, z) - np.dot(self.C, mh_hat)
-#         except np.linalg.LinAlgError:
-#             r = self.R
-#             print("The starting conditions of the uncertainty matrices are to bad. (Inversion Error)")
-#         return r
-#
-#     def fit(self, u, z, opt=''):
-#         '''Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
-#         It returns the believed values x, the corresponding probabilities p and the predictions x_tilde'''
-#         xout = []
-#         pout = []
-#         pred_out = []
-#         pred_out_err = []
-#         u = np.array(u)
-#         z = np.array(z)
-#         assert u.shape[0] == z.shape[0]
-#         for i in range(z.shape[0]):
-#             if opt == 'Mehra' and i > 5000000:
-#                 self.R = self.r_hat(z[:i+1])
-#                 self.K = self.k_opt(z[:i+1])
-#             else:
-#                 self.R =self.R_0
-#                 self.K = self.k()
-#             print(self.R)
-#             print(self.K)
-#             if np.any(self.R != self.R):
-#                 break
-#             x, p = self.predict(u[i])
-#             pred_out.append(x)
-#             pred_out_err.append(p)
-#             x, p = self.update(z[i])
-#             xout.append(x)
-#             pout.append(p)
-#         return np.array(xout), np.array(pout), np.array(pred_out), np.array(pred_out_err)
+        self.P0 = np.array(p_0[0])
+
+        for i in range(np.array(x_0).shape[0]):
+            Filter = Kalman(a, b, c, g, q, r, x_0[i], p_0[i])
+            self.ActiveFilters.append(Filter)
+            self.Filters.append(Filter)
+
+    def predict(self, u):
+        '''Prediction part of the Kalman Filtering process for one step'''
+        for kal in self.ActiveFilters:
+            if kal.Predict_Count > self.FilterTreshold:
+                self.ActiveFilters.remove(kal)
+
+        X = []
+        P = []
+        for i, kal in enumerate(self.Filters):
+            if kal in self.ActiveFilters:
+                try:
+                    x, p = kal.predict(u[i])
+                except IndexError:
+                    'Default Controlparameter is zero'
+                    x, p = kal.predict(np.zeros_like(u[0]))
+            else:
+                x = kal.x[-1]*np.nan
+                p = kal.p[-1]*np.nan
+            X.append(x)
+            P.append(p)
+        return np.array(X), np.array(P)
+
+    def update(self, z):
+        '''Updating part of the Kalman Filtering process for one step'''
+        probability_gain = []
+        for zz in z:
+            probability_gain_filter = []
+            if np.all(zz == zz):
+                for i in range(len(self.ActiveFilters)):
+                    pre_probability = self.ActiveFilters[i].log_probability()
+                    self.ActiveFilters[i].update(zz, reset=False)
+                    probability_gain_filter.append(self.ActiveFilters[i].log_probability() - pre_probability)
+                    self.ActiveFilters[i].downdate()
+                probability_gain.append(probability_gain_filter)
+            else:
+                probability_gain.append([np.nan for u in range(len(self.ActiveFilters))])
+        probability_gain = np.array(probability_gain)
+
+        used = set()
+        for i in range(len(self.ActiveFilters)):
+            if np.all(probability_gain != probability_gain):
+                break
+            maxi, maxj = np.unravel_index(np.nanargmax(probability_gain), probability_gain.shape)
+            probability_gain[maxi, :] = np.nan
+            used.add(maxi)
+            probability_gain[:, maxj] = np.nan
+            self.ActiveFilters[maxj].update(z[maxi])
+
+        # for i in range(z.shape[0]):
+        #     if i not in used and np.all(z[i] == z[i]):
+        #         print('AHAAAAAA')
+        #         Filter = Kalman(self.A, self.B, self.C, self.G, self.Q, self.R, np.dot(self.C.T, z[i]), self.P0)
+        #         self.ActiveFilters.append(Filter)
+        #         self.Filters.append(Filter)
+
+        X = []
+        P = []
+        for kal in self.Filters:
+            X.append(kal.x[-1])
+            P.append(kal.p[-1])
+        return X, P
+
+    def fit(self, u, z):
+        pred_out = pred_out_err = xout = pout = None
+
+        u = np.array(u)
+        z = np.array(z)
+        assert u.shape[0] == z.shape[0]
+        for i in range(z.shape[0]):
+
+            print(len(self.ActiveFilters), len(self.Filters))
+
+            x, p = self.predict(u[i])
+
+            if pred_out is not None:
+                try:
+                    pred_out = np.vstack((pred_out, [x]))
+                except ValueError:
+                    print(pred_out.shape, np.array([np.ones_like(pred_out[:, -1]) * np.nan]).shape)
+                    pred_out = np.hstack((pred_out, [np.ones_like(pred_out[:, -1]) * np.nan]))
+                    pred_out = np.vstack((pred_out, [x]))
+            else:
+                pred_out = np.array([x])
+
+            if pred_out_err is not None:
+                try:
+                    pred_out_err = np.vstack((pred_out_err, [p]))
+                except ValueError:
+                    pred_out_err = np.hstack((pred_out_err, [np.ones_like(pred_out_err[:, -1]) * np.nan]))
+                    pred_out_err = np.vstack((pred_out_err, [p]))
+            else:
+                pred_out_err = np.array([p])
+
+            zz = z[i]
+            if np.random.rand() > 0.8:
+                print('added some noise!')
+                zz = np.vstack((zz, [zz[0] + np.random.normal(0, 100, zz[0].shape)]))
+
+            x, p = self.update(zz)
+
+            if xout is not None:
+                try:
+                    xout = np.vstack((xout, [x]))
+                except ValueError:
+                    print(xout.shape, np.array([np.ones_like(xout[:, -1]) * np.nan]).shape)
+                    xout = np.hstack((xout, [np.ones_like(xout[:, -1]) * np.nan]))
+                    xout = np.vstack((xout, [x]))
+            else:
+                xout = np.array([x])
+            if pout is not None:
+                try:
+                    pout = np.vstack((pout, [p]))
+                except ValueError:
+                    pout = np.hstack((pout, [np.ones_like(pout[:, -1]) * np.nan]))
+                    pout = np.vstack((pout, [p]))
+            else:
+                pout = np.array([p])
+
+        return np.array(xout), np.array(pout), np.array(pred_out), np.array(pred_out_err)
 
 
 class Kalman(object):
-    def __init__(self, a, b, c, g, q, r, x_0, p_0):
+    def __init__(self, a, b, c, g, q, r, x_0, p_0, **kwargs):
         '''
         The Kalman-Filter evaluates data concerning a physical model mainly implemented in the matrices A,B and C.
         Assuming all measurement-errors are gaussian the filter predicts new measurement values from preceding values.
@@ -285,19 +231,57 @@ class Kalman(object):
         self.x = np.array([self.x_0])
         self.p = np.array([self.p_0])
 
+        self.z = kwargs.pop('measurement', None)
+        self.u = kwargs.pop('movement', None)
+
         self.K = self.k()
+
+        self.Predict_Count = 0
+
+    def downfilter(self):
+        self.z = self.z[:-1]
+        self.u = self.u[:-1]
+        self.x = self.x[:-1]
+        self.p = self.p[:-1]
+
+    def downdate(self):
+        self.z = self.z[:-1]
+        self.x = self.x[:-1]
+        self.p = self.p[:-1]
+        u = np.array(self.u[-1], copy=True)
+        self.u = self.u[:-1]
+        self.predict(u)
+
+    def downdict(self):
+        self.u = self.u[:-1]
+        self.x = self.x[:-1]
+        self.p = self.p[:-1]
 
     def predict(self, u):
         '''Prediction part of the Kalman Filtering process for one step'''
+        self.Q = self.Q_0
+
+        if self.u is None:
+            self.u = np.array([u])
+        else:
+            self.u = np.vstack((self.u, [u]))
         x_ = np.dot(self.A, self.x[-1]) + np.dot(self.B, u)
         p_ = np.dot(np.dot(self.A, self.p[-1]), self.A.transpose()) + np.dot(np.dot(self.G, self.Q), self.G.T)
 
         self.x = np.vstack((self.x, [x_]))
         self.p = np.vstack((self.p, [p_]))
+
+        self.Predict_Count += 1
         return x_, p_
 
-    def update(self, z):
+    def update(self, z, reset=True):
         '''Updating part of the Kalman Filtering process for one step'''
+        self.K = self.k()
+        self.R = self.R_0
+        if self.z is None:
+            self.z = np.array([z])
+        else:
+            self.z = np.vstack((self.z, [z]))
         y = z - np.dot(self.C, self.x[-1])
 
         x_ = self.x[-1] + np.dot(self.K, y)
@@ -305,6 +289,9 @@ class Kalman(object):
 
         self.x[-1] = x_
         self.p[-1] = p_
+
+        if reset:
+            self.Predict_Count = 0
         return x_, p_
 
     def filter(self, u, z):
@@ -317,14 +304,20 @@ class Kalman(object):
         return np.dot(np.dot(self.p[-1], self.C.transpose()),
                       np.linalg.inv(np.dot(np.dot(self.C, self.p[-1]), self.C.transpose()) + self.R))
 
-    def log_probability(self, x, z):
-        assert len(x) == len(z)
+    def log_probability(self):
+        x = np.array(self.x)
+        z = np.array(self.z)
+        if self.z is None:
+            return 0
+        n = min(x.shape[0], z.shape[0])
+        if n == 0:
+            return 0
+
         tot = 0
-        for i in range(len(z)):
+        for i in range(n):
             xx = z[i]-np.dot(self.C, x[i])
             cov = self.R
-            probability = np.linalg.det(2 * np.pi * cov) ** -0.5 * np.exp(-0.5 * np.dot(np.dot(xx, np.linalg.inv(cov)), xx.T))
-            tot += np.log(probability)
+            tot += -0.5*(np.log(np.linalg.det(2 * np.pi * cov)) + np.dot(np.dot(xx, np.linalg.inv(cov)), xx.T))
         return tot
 
     def fit(self, u, z):
@@ -337,9 +330,6 @@ class Kalman(object):
         z = np.array(z)
         assert u.shape[0] == z.shape[0]
         for i in range(z.shape[0]):
-            self.R = self.R_0
-            self.Q = self.Q_0
-            self.K = self.k()
 
             x, p = self.predict(u[i])
 
@@ -352,12 +342,6 @@ class Kalman(object):
             else:
                 pred_out_err = np.array([p])
 
-            qp = np.dot(C, np.array(pred_out).T).T  - z[:i+1]
-            Q = np.cov(qp.T)
-
-            if np.all(Q == Q):
-                print(Q)
-                self.Q = Q
             x, p = self.update(z[i])
 
             if xout is not None:
@@ -373,21 +357,23 @@ class Kalman(object):
 
 
 class Kalman_Mehra(Kalman):
-    def __init__(self, lag=1, measurement=[], *args):
-        super(Kalman_Mehra, self).__init__(*args)
-        self.Lag = np.assscalar(lag)
-        self.z = np.array(measurement, dtype=float)
+    def __init__(self, *args, **kwargs):
+        super(Kalman_Mehra, self).__init__(*args, **kwargs)
+        self.Lag = int(kwargs.pop('lag', -1))
+        self.LearnTime = int(kwargs.pop('learn_time', 1))
+        self.z = np.array(kwargs.pop('measurement', None), dtype=float)
 
     def v(self, i):
         return self.z[i]-np.dot(np.dot(self.C, self.A), self.x[i-1])
 
     def c_hat(self, k):
+        if k < 0:
+            k = self.z.shape[0]-1
         n = self.z.shape[0]
         c = np.sum(np.array([
-                            np.tensordot(self.v(i, self.z[i]), self.v(i - k, self.z[i - k]).transpose(), axes=0)
+                            np.tensordot(self.v(i), self.v(i - k).T, axes=0)
                             for i in range(k, n)
                             ]), axis=0)
-        c2 = np.tensordot(self.z[:-k], self.z[k:].T, axes=1)
         return np.array(c/n)
 
     @staticmethod
@@ -398,30 +384,27 @@ class Kalman_Mehra(Kalman):
     def A_tilde(self):
         a = None
         n = self.z.shape[0]
-        for i in range(n - self.Lag, n):
+        k = max(0, n - self.Lag)
+        for i in range(k, n):
             if a is not None:
                 a_ = np.dot(np.dot(self.A, (np.identity(self.A.shape[0]))-np.dot(self.k(), self.C)), a_)
-                a = np.vstack((a, a_))
+                a = np.vstack((a, np.dot(self.C, np.dot(a_, self.A))))
             else:
                 a = np.identity(self.A.shape[0])
                 a_ = np.array(a, copy=True)
-        return np.dot(self.C, np.dot(a, self.A))
+                a = np.dot(self.C, np.dot(a, self.A))
+        return a
 
     def c_tilde(self):
         c = None
         n = self.z.shape[0]
-        for i in range(n - self.Lag, n):
+        k = max(0, n - self.Lag)
+        for i in range(k, n):
             if c is not None:
                 c = np.vstack((c, self.c_hat(i)))
             else:
                 c = self.c_hat(i)
         return c
-
-    def mh_hat(self, z):
-        cc = self.c_tilde()
-        a_cross = self.pseudo_inverse(self.A_tilde())
-
-        return np.dot(self.k(), self.c_hat(0)) + np.dot(a_cross, cc)
 
     def r_hat(self):
         try:
@@ -436,16 +419,19 @@ class Kalman_Mehra(Kalman):
         return r
     
     def predict(self, u):
-        self.R = self.r_hat()
+        print(self.c_hat(0))
+        if self.z.shape[0] > self.LearnTime:
+            self.R = self.c_hat(0)
         return super(Kalman_Mehra, self).predict(u)
     
     def update(self, meas):
-        self.z = np.vstack(self.z, [meas])
         return super(Kalman_Mehra, self).update(meas)
 
     def fit(self, u, z):
+        self.z = np.array([z[0]])
+        ret = super(Kalman_Mehra, self).fit(u, z)
         self.z = z
-        return super(Kalman_Mehra, self).fit(u, z)
+        return ret
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
@@ -456,11 +442,13 @@ if __name__ == '__main__':
     tracks = db.getTracks()
     points = []
     for t in tracks:
-        points.append(t.points_corrected)
+        t = t.points_corrected
+        if t.shape[0] > 2:
+            points.append(t)
 
-    #measurements = points[-5][:]
-    measurements = np.array([range(40), range(40)]).T*10
-    measurements = np.random.normal(measurements, scale=2)
+    measurements = points[-5][:]
+    # measurements = np.array([range(40), range(40)]).T*10
+    # measurements = np.random.normal(measurements, scale=2)
     #measurements[:, 1] = 0
     v = measurements[1]-measurements[0]
     X = np.array([measurements[0][0], v[0], measurements[0][1], v[1]])  # initial state (location and velocity)
@@ -489,27 +477,27 @@ if __name__ == '__main__':
 
         lag = 0.933355170212
         A = np.array([[1., 1., 0., 0.],
-                      [0., lag, 0., 0.],
+                      [0., 1, 0., 0.],
                       [0., 0., 1., 1.],
-                      [0., 0., 0., lag]])  # next state function
+                      [0., 0., 0., 1]])  # next state function
 
-        kal = Kalman(A, B, C, G, Q, R, X, P)
+        kal = Kalman_Mehra(A, B, C, G, Q, R, X, P, lag=5, learn_time=5)
+
         X_Post, P_Post, Pred, Pred_err = kal.fit(U, measurements)
 
-        return -1*kal.log_probability(Pred, measurements)
+        return -1*kal.log_probability()
 
     #optimal = opt.minimize_scalar(loger, bounds=[5, 39], method='Bounded')
 
-    ucty = 20#optimal['x']
-    print(ucty)
+    ucty = 20#10.26#optimal['x']
     xy_uncty = ucty
     vxvy_uncty = ucty
-    meas_uncty = 20
+    meas_uncty = 10
     P = np.diag([ucty, ucty, ucty, ucty])  # initial uncertainty
     Q = np.diag([vxvy_uncty, vxvy_uncty])  # Prediction uncertainty
     R = np.diag([meas_uncty, meas_uncty])  # Measurement uncertainty
 
-    kal = Kalman_Mehra(A, B, C, G, Q, R, X, P, lag=5, measurement=measurements)
+    kal = Kalman_Mehra(A, B, C, G, Q, R, X, P, lag=5, learn_time=5)
 
     X_Post, P_Post, Pred, Pred_err = kal.fit(U, measurements)
 
@@ -520,6 +508,59 @@ if __name__ == '__main__':
 
     plt.errorbar(pred.T[0], pred.T[1], xerr=pred_err.T[0], yerr=pred_err.T[1], color='r')
     #plt.plot(X_Post.T[0], X_Post.T[1], '-go')
-    plt.plot(measurements.T[0], measurements.T[1], '-bx')
+    plt.errorbar(measurements.T[0], measurements.T[1], xerr=10, yerr=10, color='b')
+
     plt.axis('equal')
     plt.show()
+
+
+    start_point = np.array([p[0] for p in points])
+    second_point = np.array([p[1] for p in points])
+    V = second_point - start_point
+    X = np.array([start_point.T[0], V.T[0], start_point.T[1], V.T[1]]).T
+    P = [P for v in V]
+    MultiKal = MultiKalman(A, B, C, G, Q, R, X, P, lag=5, learn_time=5)
+
+    maxLen = max([p.shape[0] for p in points])
+
+    timeline = np.array([[p[0] for p in points]])
+
+    for i in range(maxLen):
+        timepoint = []
+        for p in points:
+            try:
+                meas = p[i]
+            except IndexError:
+                meas = [np.nan, np.nan]
+            if np.random.rand < 0.5:
+                timepoint.append(meas)
+            else:
+                meas=[meas]
+                meas.extend(timepoint)
+                timepoint = meas
+        timeline = np.vstack((timeline, [timepoint]))
+
+    # timeline = timeline[:45]
+
+    UU = np.zeros((timeline.shape[0], timeline.shape[1], 4))
+
+    X_Post, P_Post, Pred, Pred_err = MultiKal.fit(UU, timeline)
+    #
+    for i in range(5):
+        plt.errorbar(Pred.T[0][i], Pred.T[2][i], color='r')#, xerr=P_Post.T[0, 0][i], yerr=P_Post.T[2, 2][i], color="b")
+        plt.errorbar(MultiKal.Filters[i].z.T[0], MultiKal.Filters[i].z.T[1], color='b')#, xerr=Pred_err.T[0,0][i], yerr=Pred_err.T[2,2][i], color="r")
+        plt.axis('equal')
+    plt.show()
+    plt.savefig("/home/alex/Desktop/number%s.png"%i)
+    plt.clf()
+    for i in range(5):
+        plt.errorbar(points[i].T[0], points[i].T[1], color='g')#, xerr=P_Post.T[0, 0][i], yerr=P_Post.T[2, 2][i], color="b")
+        plt.axis('equal')
+        plt.savefig("/home/alex/Desktop/true%s.png"%i)
+        plt.clf()
+        #plt.errorbar(points[3].T[0], points[3].T[1], color='g')#, xerr=Pred_err.T[0,0][i], yerr=Pred_err.T[2,2][i], color="r")
+    #plt.plot(X_Post.T[0].T,X_Post.T[1].T)
+    #plt.plot(Pred.T[0].T,Pred.T[1].T)
+
+
+
