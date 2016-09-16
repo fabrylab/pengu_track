@@ -80,6 +80,17 @@ class MultiKalman(object):
             self.ActiveFilters.append(Filter)
             self.Filters.append(Filter)
 
+        self.x = range(len(self.Filters))
+        self.p = range(len(self.Filters))
+        self.predicted_x = range(len(self.Filters))
+        self.predicted_p = range(len(self.Filters))
+
+        for i, kal in enumerate(self.Filters):
+            self.x[i] = kal.x
+            self.p[i] = kal.p
+            self.predicted_x[i] = kal.predicted_x
+            self.predicted_p[i] = kal.predicted_p
+
     def predict(self, u):
         '''Prediction part of the Kalman Filtering process for one step'''
         for kal in self.ActiveFilters:
@@ -96,8 +107,8 @@ class MultiKalman(object):
                     'Default Controlparameter is zero'
                     x, p = kal.predict(np.zeros_like(u[0]))
             else:
-                x = kal.x[-1]*np.nan
-                p = kal.p[-1]*np.nan
+                x = kal.x[max(kal.x.keys())]*np.nan
+                p = kal.p[max(kal.x.keys())]*np.nan
             X.append(x)
             P.append(p)
         return np.array(X), np.array(P)
@@ -128,23 +139,14 @@ class MultiKalman(object):
             probability_gain[:, maxj] = np.nan
             self.ActiveFilters[maxj].update(z[maxi])
 
-        # for i in range(z.shape[0]):
-        #     if i not in used and np.all(z[i] == z[i]):
-        #         print('AHAAAAAA')
-        #         Filter = Kalman(self.A, self.B, self.C, self.G, self.Q, self.R, np.dot(self.C.T, z[i]), self.P0)
-        #         self.ActiveFilters.append(Filter)
-        #         self.Filters.append(Filter)
-
         X = []
         P = []
         for kal in self.Filters:
-            X.append(kal.x[-1])
-            P.append(kal.p[-1])
+            X.append(kal.x[max(kal.x.keys())])
+            P.append(kal.p[max(kal.x.keys())])
         return X, P
 
     def fit(self, u, z):
-        pred_out = pred_out_err = xout = pout = None
-
         u = np.array(u)
         z = np.array(z)
         assert u.shape[0] == z.shape[0]
@@ -154,25 +156,6 @@ class MultiKalman(object):
 
             x, p = self.predict(u[i])
 
-            if pred_out is not None:
-                try:
-                    pred_out = np.vstack((pred_out, [x]))
-                except ValueError:
-                    print(pred_out.shape, np.array([np.ones_like(pred_out[:, -1]) * np.nan]).shape)
-                    pred_out = np.hstack((pred_out, [np.ones_like(pred_out[:, -1]) * np.nan]))
-                    pred_out = np.vstack((pred_out, [x]))
-            else:
-                pred_out = np.array([x])
-
-            if pred_out_err is not None:
-                try:
-                    pred_out_err = np.vstack((pred_out_err, [p]))
-                except ValueError:
-                    pred_out_err = np.hstack((pred_out_err, [np.ones_like(pred_out_err[:, -1]) * np.nan]))
-                    pred_out_err = np.vstack((pred_out_err, [p]))
-            else:
-                pred_out_err = np.array([p])
-
             zz = z[i]
             if np.random.rand() > 0.8:
                 print('added some noise!')
@@ -180,25 +163,10 @@ class MultiKalman(object):
 
             x, p = self.update(zz)
 
-            if xout is not None:
-                try:
-                    xout = np.vstack((xout, [x]))
-                except ValueError:
-                    print(xout.shape, np.array([np.ones_like(xout[:, -1]) * np.nan]).shape)
-                    xout = np.hstack((xout, [np.ones_like(xout[:, -1]) * np.nan]))
-                    xout = np.vstack((xout, [x]))
-            else:
-                xout = np.array([x])
-            if pout is not None:
-                try:
-                    pout = np.vstack((pout, [p]))
-                except ValueError:
-                    pout = np.hstack((pout, [np.ones_like(pout[:, -1]) * np.nan]))
-                    pout = np.vstack((pout, [p]))
-            else:
-                pout = np.array([p])
-
-        return np.array(xout), np.array(pout), np.array(pred_out), np.array(pred_out_err)
+        return [np.array(x.values()) for x in self.x], \
+               [np.array(p.values()) for p in self.p], \
+               [np.array(x.values()) for x in self.predicted_x], \
+               [np.array(p.values()) for p in self.predicted_p]
 
 
 class Kalman(object):
@@ -228,67 +196,87 @@ class Kalman(object):
         self.R_0 = np.array(r)
         self.x_0 = np.array(x_0)
         self.p_0 = np.array(p_0)
-        self.x = np.array([self.x_0])
-        self.p = np.array([self.p_0])
+        self.x = {0: self.x_0}
+        self.p = {0: self.p_0}
+        self.predicted_x = {0: self.x_0}
+        self.predicted_p = {0: self.p_0}
 
-        self.z = kwargs.pop('measurement', None)
-        self.u = kwargs.pop('movement', None)
+        self.z = kwargs.pop('measurement', {})
+        self.u = kwargs.pop('movement', {})
 
         self.K = self.k()
 
         self.Predict_Count = 0
 
     def downfilter(self):
-        self.z = self.z[:-1]
-        self.u = self.u[:-1]
-        self.x = self.x[:-1]
-        self.p = self.p[:-1]
+        t = max(self.x.keys())
+        self.z.pop(t, default=None)
+        self.u.pop(t, default=None)
+        self.x.pop(t, default=None)
+        self.p.pop(t, default=None)
+        self.predicted_x.pop(t, default=None)
+        self.predicted_p.pop(t, default=None)
 
     def downdate(self):
-        self.z = self.z[:-1]
-        self.x = self.x[:-1]
-        self.p = self.p[:-1]
-        u = np.array(self.u[-1], copy=True)
-        self.u = self.u[:-1]
-        self.predict(u)
+        t = max(self.x.keys())
+        self.z.pop(t, None)
+        self.x.update({t: self.predicted_x[t]})
+        self.p.update({t: self.predicted_p[t]})
+        self.u.pop(t, None)
 
     def downdict(self):
-        self.u = self.u[:-1]
-        self.x = self.x[:-1]
-        self.p = self.p[:-1]
+        t = max(self.x.keys())
+        self.u.pop(t, default=None)
+        self.x.pop(t, default=None)
+        self.p.pop(t, default=None)
+        self.predicted_x.pop(t, default=None)
+        self.predicted_x.pop(t, default=None)
 
     def predict(self, u):
         '''Prediction part of the Kalman Filtering process for one step'''
+        if len(self.x.keys()) == 0:
+            t = 0
+        else:
+            t = max(self.x.keys())+1
+
         self.Q = self.Q_0
 
         if self.u is None:
-            self.u = np.array([u])
+            self.u = {t: u}
         else:
-            self.u = np.vstack((self.u, [u]))
-        x_ = np.dot(self.A, self.x[-1]) + np.dot(self.B, u)
-        p_ = np.dot(np.dot(self.A, self.p[-1]), self.A.transpose()) + np.dot(np.dot(self.G, self.Q), self.G.T)
+            self.u.update({t: u})
 
-        self.x = np.vstack((self.x, [x_]))
-        self.p = np.vstack((self.p, [p_]))
+        x_ = np.dot(self.A, self.x[t-1]) + np.dot(self.B, u)
+        p_ = np.dot(np.dot(self.A, self.p[t-1]), self.A.transpose()) + np.dot(np.dot(self.G, self.Q), self.G.T)
+
+        self.x.update({t: x_})
+        self.p.update({t: p_})
+        self.predicted_x.update({t: x_})
+        self.predicted_p.update({t: p_})
 
         self.Predict_Count += 1
         return x_, p_
 
     def update(self, z, reset=True):
         '''Updating part of the Kalman Filtering process for one step'''
+        if len(self.x.keys()) == 0:
+            t = 0
+        else:
+            t = max(self.x.keys())
+
         self.K = self.k()
         self.R = self.R_0
         if self.z is None:
-            self.z = np.array([z])
+            self.z = {t: z}
         else:
-            self.z = np.vstack((self.z, [z]))
-        y = z - np.dot(self.C, self.x[-1])
+            self.z.update({t: z})
+        y = z - np.dot(self.C, self.x[t])
 
-        x_ = self.x[-1] + np.dot(self.K, y)
-        p_ = self.p[-1] - np.dot(np.dot(self.K, self.C), self.p[-1])
+        x_ = self.x[t] + np.dot(self.K, y)
+        p_ = self.p[t] - np.dot(np.dot(self.K, self.C), self.p[t])
 
-        self.x[-1] = x_
-        self.p[-1] = p_
+        self.x.update({t: x_})
+        self.p.update({t: p_})
 
         if reset:
             self.Predict_Count = 0
@@ -301,12 +289,13 @@ class Kalman(object):
         return x, p
 
     def k(self):
-        return np.dot(np.dot(self.p[-1], self.C.transpose()),
-                      np.linalg.inv(np.dot(np.dot(self.C, self.p[-1]), self.C.transpose()) + self.R))
+        t = max(self.x.keys())
+        return np.dot(np.dot(self.p[t], self.C.transpose()),
+                      np.linalg.inv(np.dot(np.dot(self.C, self.p[t]), self.C.transpose()) + self.R))
 
     def log_probability(self):
-        x = np.array(self.x)
-        z = np.array(self.z)
+        x = np.array(self.x.values())
+        z = np.array(self.z.values())
         if self.z is None:
             return 0
         n = min(x.shape[0], z.shape[0])
@@ -324,36 +313,18 @@ class Kalman(object):
         '''Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
         It returns the believed values x, the corresponding probabilities p and the predictions x_tilde'''
 
-        pred_out = pred_out_err = xout = pout = None
-
         u = np.array(u)
         z = np.array(z)
         assert u.shape[0] == z.shape[0]
+
         for i in range(z.shape[0]):
-
             x, p = self.predict(u[i])
-
-            if pred_out is not None:
-                pred_out = np.vstack((pred_out, [x]))
-            else:
-                pred_out = np.array([x])
-            if pred_out_err is not None:
-                pred_out_err = np.vstack((pred_out_err, [p]))
-            else:
-                pred_out_err = np.array([p])
-
             x, p = self.update(z[i])
 
-            if xout is not None:
-                xout = np.vstack((xout, [x]))
-            else:
-                xout = np.array([x])
-            if pout is not None:
-                pout = np.vstack((pout, [p]))
-            else:
-                pout = np.array([p])
-
-        return np.array(xout), np.array(pout), np.array(pred_out), np.array(pred_out_err)
+        return np.array(self.x.values(), dtype=float),\
+               np.array(self.p.values(), dtype=float),\
+               np.array(self.predicted_x.values(), dtype=float),\
+               np.array(self.predicted_p.values(), dtype=float)
 
 
 class Kalman_Mehra(Kalman):
@@ -361,15 +332,17 @@ class Kalman_Mehra(Kalman):
         super(Kalman_Mehra, self).__init__(*args, **kwargs)
         self.Lag = int(kwargs.pop('lag', -1))
         self.LearnTime = int(kwargs.pop('learn_time', 1))
-        self.z = np.array(kwargs.pop('measurement', None), dtype=float)
 
     def v(self, i):
-        return self.z[i]-np.dot(np.dot(self.C, self.A), self.x[i-1])
+        if i == 0:
+            return self.z[min(self.z.keys())]-np.dot(np.dot(self.C, self.A), self.x[max(self.x.keys())])
+        else:
+            return self.z[i]-np.dot(np.dot(self.C, self.A), self.x[i-1])
 
     def c_hat(self, k):
         if k < 0:
-            k = self.z.shape[0]-1
-        n = self.z.shape[0]
+            k = len(self.z.keys())-1
+        n = len(self.z.keys())
         c = np.sum(np.array([
                             np.tensordot(self.v(i), self.v(i - k).T, axes=0)
                             for i in range(k, n)
@@ -383,7 +356,8 @@ class Kalman_Mehra(Kalman):
 
     def A_tilde(self):
         a = None
-        n = self.z.shape[0]
+        a_ = None
+        n = len(self.z.keys())
         k = max(0, n - self.Lag)
         for i in range(k, n):
             if a is not None:
@@ -420,17 +394,17 @@ class Kalman_Mehra(Kalman):
     
     def predict(self, u):
         print(self.c_hat(0))
-        if self.z.shape[0] > self.LearnTime:
+        if len(self.z.keys()) > self.LearnTime:
             self.R = self.c_hat(0)
         return super(Kalman_Mehra, self).predict(u)
     
-    def update(self, meas):
-        return super(Kalman_Mehra, self).update(meas)
+    def update(self, meas, **kwargs):
+        return super(Kalman_Mehra, self).update(meas, **kwargs)
 
     def fit(self, u, z):
-        self.z = np.array([z[0]])
+        z = np.array(z)
+        u = np.array(u)
         ret = super(Kalman_Mehra, self).fit(u, z)
-        self.z = z
         return ret
 
 if __name__ == '__main__':
@@ -545,19 +519,19 @@ if __name__ == '__main__':
     UU = np.zeros((timeline.shape[0], timeline.shape[1], 4))
 
     X_Post, P_Post, Pred, Pred_err = MultiKal.fit(UU, timeline)
-    #
+
     for i in range(5):
-        plt.errorbar(Pred.T[0][i], Pred.T[2][i], color='r')#, xerr=P_Post.T[0, 0][i], yerr=P_Post.T[2, 2][i], color="b")
-        plt.errorbar(MultiKal.Filters[i].z.T[0], MultiKal.Filters[i].z.T[1], color='b')#, xerr=Pred_err.T[0,0][i], yerr=Pred_err.T[2,2][i], color="r")
+        plt.errorbar(Pred[i].T[0], Pred[i].T[2], color='r')#, xerr=P_Post.T[0, 0][i], yerr=P_Post.T[2, 2][i], color="b")
+        plt.errorbar(np.array(MultiKal.Filters[i].z.values()).T[0], np.array(MultiKal.Filters[i].z.values()).T[1], color='b')#, xerr=Pred_err.T[0,0][i], yerr=Pred_err.T[2,2][i], color="r")
         plt.axis('equal')
     plt.show()
-    plt.savefig("/home/alex/Desktop/number%s.png"%i)
-    plt.clf()
-    for i in range(5):
-        plt.errorbar(points[i].T[0], points[i].T[1], color='g')#, xerr=P_Post.T[0, 0][i], yerr=P_Post.T[2, 2][i], color="b")
-        plt.axis('equal')
-        plt.savefig("/home/alex/Desktop/true%s.png"%i)
-        plt.clf()
+    # plt.savefig("/home/alex/Desktop/number%s.png"%i)
+    # plt.clf()
+    # for i in range(5):
+    #     plt.errorbar(points[i].T[0], points[i].T[1], color='g')#, xerr=P_Post.T[0, 0][i], yerr=P_Post.T[2, 2][i], color="b")
+    #     plt.axis('equal')
+    #     plt.savefig("/home/alex/Desktop/true%s.png"%i)
+    #     plt.clf()
         #plt.errorbar(points[3].T[0], points[3].T[1], color='g')#, xerr=Pred_err.T[0,0][i], yerr=Pred_err.T[2,2][i], color="r")
     #plt.plot(X_Post.T[0].T,X_Post.T[1].T)
     #plt.plot(Pred.T[0].T,Pred.T[1].T)
