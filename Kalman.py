@@ -115,6 +115,13 @@ class MultiKalman(object):
 
     def update(self, z):
         '''Updating part of the Kalman Filtering process for one step'''
+        z = np.array(z)
+        for i in range(z.shape[0] - len(self.ActiveFilters)):
+            Filter = Kalman(self.A, self.B, self.C, self.G, self.Q, self.R,
+                        np.ones_like(self.Filters[0].x[0])*np.nan, self.P0)
+            self.ActiveFilters.append(Filter)
+            self.Filters.append(Filter)
+
         probability_gain = []
         for zz in z:
             probability_gain_filter = []
@@ -524,9 +531,9 @@ if __name__ == '__main__':
         plt.errorbar(Pred[i].T[0], Pred[i].T[2], color='r')#, xerr=P_Post.T[0, 0][i], yerr=P_Post.T[2, 2][i], color="b")
         plt.errorbar(np.array(MultiKal.Filters[i].z.values()).T[0], np.array(MultiKal.Filters[i].z.values()).T[1], color='b')#, xerr=Pred_err.T[0,0][i], yerr=Pred_err.T[2,2][i], color="r")
         plt.axis('equal')
-    plt.show()
-    # plt.savefig("/home/alex/Desktop/number%s.png"%i)
-    # plt.clf()
+    # plt.show()
+        plt.savefig("/home/alex/Desktop/number%s.png"%i)
+        plt.clf()
     # for i in range(5):
     #     plt.errorbar(points[i].T[0], points[i].T[1], color='g')#, xerr=P_Post.T[0, 0][i], yerr=P_Post.T[2, 2][i], color="b")
     #     plt.axis('equal')
