@@ -1,7 +1,6 @@
 from __future__ import print_function, division
 import numpy as np
-import numpy.ma as ma
-from scipy import linalg as LA
+import scipy.stats as ss
 
 
 
@@ -414,6 +413,104 @@ class Kalman_Mehra(Kalman):
         ret = super(Kalman_Mehra, self).fit(u, z)
         return ret
 
+
+class Particle(object):
+    def __init__(self, n, a, b, c, q, r, x0):
+        super(Particle, self).__init__()
+        self.N = int(n)
+        self.A = np.array(a)
+        self.B = np.array(b)
+        self.C = np.array(c)
+        self.Q = np.array(q)
+        self.R = np.array(r)
+        self.X0 = np.array(x0)
+        self.X = {}
+        self.X_err = {}
+        self.predicted_X = {}
+        self.predicted_X_err = {}
+
+        self.Particles = {}
+        self.History ={}
+        self.Weights = {}
+
+        for n in range(self.N):
+            self.Particles.update({n: self.X0[np.random.randint(0, self.X0.shape[0])]})
+            self.Weights.update({n: 1./self.N})
+
+        if len(self.X.keys()) == 0:
+            t = 0
+        else:
+            t = max(self.X.keys())+1
+
+        self.X.update({t : np.mean(self.Particles.values(), axis=0)})
+        self.X_err.update({t : np.std(self.Particles.values(), axis=0)})
+
+        # self.history_update()
+
+    def history_update(self):
+        self.History.update({len(self.History.keys()): [np.mean(self.Particles.values(), axis=0),
+                                                        np.std(self.Particles.values(), axis=0),
+                                                        np.mean(self.Weights.values(), axis=0),
+                                                        np.std(self.Weights.values(), axis=0)]})
+    def predict(self, u):
+        if len(self.X.keys()) == 0:
+            t = 0
+        else:
+            t = max(self.X.keys())+1
+
+        for i in self.Particles.keys():
+            # x_ = np.dot(self.A, self.Particles[i]) + np.dot(self.B, u)
+            self.Particles.update({i: ss.multivariate_normal(mean=np.dot(self.A, self.Particles[i])
+                                                                  + np.dot(self.B, u),
+                                                             cov=self.Q).rvs()})
+        
+        self.predicted_X.update({t : np.mean(self.Particles.values(), axis=0)})
+        self.predicted_X_err.update({t : np.std(self.Particles.values(), axis=0)})
+        return self.Particles
+
+    def update(self, z):
+        if len(self.X.keys()) == 0:
+            t = 0
+        else:
+            t = max(self.X.keys())+1
+
+        for i in self.Weights.keys():
+            self.Weights.update({i :ss.multivariate_normal(mean= np.dot(self.C, self.Particles[i]), cov=self.R).pdf(z)})
+
+        w = np.sum(self.Weights.values())
+        if w > 0:
+            for i in self.Weights.keys():
+                self.Weights[i] *= 1./w
+        else:
+            raise ValueError('Sum of weights is smaller than zero. No further Particle computation possible.')
+
+        borders = np.cumsum(self.Weights.values())
+        new = {}
+        for i in self.Particles.keys():
+            sample = np.random.rand()
+            try:
+                idx = list(borders > sample).index(True)
+            except ValueError:
+                idx = len(self.Particles.keys())
+            new.update({i: self.Particles[idx]})
+        self.Particles = new.copy()
+        # self.history_update()
+        self.X.update({t : np.mean(self.Particles.values(), axis=0)})
+        self.X_err.update({t : np.std(self.Particles.values(), axis=0)})
+        return self.Particles
+
+    def fit(self, u, z):
+        for i in range(len(u)):
+            self.predict(u[i])
+            self.History.update({i: self.Particles.values()})
+            self.update(z[i])
+            print(np.amin(self.Weights.values()))
+        return np.array(self.X.values()),\
+               np.array(self.X_err.values()),\
+               np.array(self.predicted_X.values()),\
+               np.array(self.predicted_X_err.values())
+
+
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     import clickpoints
@@ -427,7 +524,12 @@ if __name__ == '__main__':
         if t.shape[0] > 2:
             points.append(t)
 
-    measurements = points[-5][:]
+    # measurements = points[-4][:]
+    D=2*np.random.randint(0,2,size=100)-1
+    X=[[0,0]]
+    for i,d in enumerate(D):
+        X.append([i,X[-1][1]+np.random.normal(loc=d,scale=0.02)])
+    measurements = 50*np.array(X)
     # measurements = np.array([range(40), range(40)]).T*10
     # measurements = np.random.normal(measurements, scale=2)
     #measurements[:, 1] = 0
@@ -436,9 +538,9 @@ if __name__ == '__main__':
     U = np.zeros([measurements.shape[0], 4])  # external motion
 
     A = np.array([[1., 1., 0., 0.],
-                  [0., 1, 0., 0.],
+                  [0., 0., 0., 0.],
                   [0., 0., 1., 1.],
-                  [0., 0., 0., 1]])  # next state function
+                  [0., 0., 0., 0.]])  # next state function
 
     B = np.zeros_like(A)  # next state function for control parameter
     C = np.array([[1., 0., 0., 0.],
@@ -448,100 +550,68 @@ if __name__ == '__main__':
                   [0, 0],
                   [0, 1]])
 
-    def loger(uncty):
-
-        #uncty=20.7
-
-        P = np.diag([uncty, uncty, uncty, uncty])  # initial uncertainty
-        Q = np.diag([uncty, uncty])  # Prediction uncertainty
-        R = np.diag([10, 10])  # Measurement uncertainty
-
-        lag = 0.933355170212
-        A = np.array([[1., 1., 0., 0.],
-                      [0., 1, 0., 0.],
-                      [0., 0., 1., 1.],
-                      [0., 0., 0., 1]])  # next state function
-
-        kal = Kalman_Mehra(A, B, C, G, Q, R, X, P, lag=5, learn_time=5)
-
-        X_Post, P_Post, Pred, Pred_err = kal.fit(U, measurements)
-
-        return -1*kal.log_probability()
-
     #optimal = opt.minimize_scalar(loger, bounds=[5, 39], method='Bounded')
 
-    ucty = 20#10.26#optimal['x']
+    ucty = 2e3#10.26#optimal['x']
     xy_uncty = ucty
     vxvy_uncty = ucty
     meas_uncty = 10
     P = np.diag([ucty, ucty, ucty, ucty])  # initial uncertainty
-    Q = np.diag([vxvy_uncty, vxvy_uncty])  # Prediction uncertainty
+    # Q = np.diag([vxvy_uncty, vxvy_uncty])  # Prediction uncertainty
+    Q = np.diag([vxvy_uncty, vxvy_uncty, vxvy_uncty, vxvy_uncty])  # Prediction uncertainty
+    # Q = np.diag([1, vxvy_uncty, 1, vxvy_uncty])  # Prediction uncertainty
     R = np.diag([meas_uncty, meas_uncty])  # Measurement uncertainty
 
-    kal = Kalman_Mehra(A, B, C, G, Q, R, X, P, lag=5, learn_time=5)
+    Part = Particle(1000, A, B, C, Q, R, [X])
 
-    X_Post, P_Post, Pred, Pred_err = kal.fit(U, measurements)
+    X, X_err, Pred, Pred_err = Part.fit(U, measurements)
 
-    Bel = X_Post.T[::2].T
-    pred_err = np.sqrt(np.abs(np.array([np.linalg.eigvals(p)[::2] for p in Pred_err])))
-    #pred_err = np.sqrt(np.abs(np.array([P.T[0,0],P.T[2,2]])))
-    pred = Pred.T[::2].T
-
-    plt.errorbar(pred.T[0], pred.T[1], xerr=pred_err.T[0], yerr=pred_err.T[1], color='r')
-    #plt.plot(X_Post.T[0], X_Post.T[1], '-go')
-    plt.errorbar(measurements.T[0], measurements.T[1], xerr=10, yerr=10, color='b')
-
+    plt.errorbar(X.T[0], X.T[2], xerr=X_err.T[0], yerr=X_err.T[2], c='b')
+    plt.errorbar(Pred.T[0], Pred.T[2], xerr=Pred_err.T[0], yerr=Pred_err.T[2], c='r')
     plt.axis('equal')
     plt.show()
 
-
-    start_point = np.array([p[0] for p in points])
-    second_point = np.array([p[1] for p in points])
-    V = second_point - start_point
-    X = np.array([start_point.T[0], V.T[0], start_point.T[1], V.T[1]]).T
-    P = [P for v in V]
-    MultiKal = MultiKalman(A, B, C, G, Q, R, X, P, lag=5, learn_time=5)
-
-    maxLen = max([p.shape[0] for p in points])
-
-    timeline = np.array([[p[0] for p in points]])
-
-    for i in range(maxLen):
-        timepoint = []
-        for p in points:
-            try:
-                meas = p[i]
-            except IndexError:
-                meas = [np.nan, np.nan]
-            if np.random.rand < 0.5:
-                timepoint.append(meas)
-            else:
-                meas=[meas]
-                meas.extend(timepoint)
-                timepoint = meas
-        timeline = np.vstack((timeline, [timepoint]))
-
-    # timeline = timeline[:45]
-
-    UU = np.zeros((timeline.shape[0], timeline.shape[1], 4))
-
-    X_Post, P_Post, Pred, Pred_err = MultiKal.fit(UU, timeline)
-
-    for i in range(5):
-        plt.errorbar(Pred[i].T[0], Pred[i].T[2], color='r')#, xerr=P_Post.T[0, 0][i], yerr=P_Post.T[2, 2][i], color="b")
-        plt.errorbar(np.array(MultiKal.Filters[i].z.values()).T[0], np.array(MultiKal.Filters[i].z.values()).T[1], color='b')#, xerr=Pred_err.T[0,0][i], yerr=Pred_err.T[2,2][i], color="r")
-        plt.axis('equal')
-    # plt.show()
-        plt.savefig("/home/alex/Desktop/number%s.png"%i)
-        plt.clf()
+    #
+    # start_point = np.array([p[0] for p in points])
+    # second_point = np.array([p[1] for p in points])
+    # V = second_point - start_point
+    # X = np.array([start_point.T[0], V.T[0], start_point.T[1], V.T[1]]).T
+    # P = [P for v in V]
+    # MultiKal = MultiKalman(A, B, C, G, Q, R, X, P, lag=5, learn_time=5)
+    #
+    # maxLen = max([p.shape[0] for p in points])
+    #
+    # timeline = np.array([[p[0] for p in points]])
+    #
+    # for i in range(maxLen):
+    #     timepoint = []
+    #     for p in points:
+    #         try:
+    #             meas = p[i]
+    #         except IndexError:
+    #             meas = [np.nan, np.nan]
+    #         if np.random.rand < 0.5:
+    #             timepoint.append(meas)
+    #         else:
+    #             meas=[meas]
+    #             meas.extend(timepoint)
+    #             timepoint = meas
+    #     timeline = np.vstack((timeline, [timepoint]))
+    #
+    # # timeline = timeline[:45]
+    #
+    # UU = np.zeros((timeline.shape[0], timeline.shape[1], 4))
+    #
+    # X_Post, P_Post, Pred, Pred_err = MultiKal.fit(UU, timeline)
+    #
     # for i in range(5):
-    #     plt.errorbar(points[i].T[0], points[i].T[1], color='g')#, xerr=P_Post.T[0, 0][i], yerr=P_Post.T[2, 2][i], color="b")
+    #     plt.errorbar(Pred[i].T[0], Pred[i].T[2], color='r')#, xerr=P_Post.T[0, 0][i], yerr=P_Post.T[2, 2][i], color="b")
+    #     plt.errorbar(np.array(MultiKal.Filters[i].z.values()).T[0], np.array(MultiKal.Filters[i].z.values()).T[1], color='b')#, xerr=Pred_err.T[0,0][i], yerr=Pred_err.T[2,2][i], color="r")
     #     plt.axis('equal')
-    #     plt.savefig("/home/alex/Desktop/true%s.png"%i)
+    # # plt.show()
+    #     plt.savefig("/home/alex/Desktop/number%s.png"%i)
     #     plt.clf()
-        #plt.errorbar(points[3].T[0], points[3].T[1], color='g')#, xerr=Pred_err.T[0,0][i], yerr=Pred_err.T[2,2][i], color="r")
-    #plt.plot(X_Post.T[0].T,X_Post.T[1].T)
-    #plt.plot(Pred.T[0].T,Pred.T[1].T)
+
 
 
 
