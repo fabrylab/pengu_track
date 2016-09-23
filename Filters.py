@@ -3,131 +3,53 @@ import numpy as np
 import scipy.stats as ss
 from timeit import default_timer as timer
 
+class Filter(object):
+    def __init__(self, model, meas_Dist=ss.uniform, state_dist=ss.uniform):
+        self.Model = model
+        self.Measurement_Distribution = meas_Dist
+        self.State_Distribution = state_dist
+        
+        self.X = {}
+        self.X_error ={}
+        self.Predicted_X ={}
+        self.Predicted_X_error ={}
+        
+        self.Measurements = {}
+        self.Controls = {}
 
-class Model(object):
-    def __init__(self, state_dim, controle_dim, meas_dim,
-                 state_function = None,
-                 controle_function = None,
-                 meas_function = None):
-        self.State = np.zeros(state_dim)
-        self.Controle = np.zeros(controle_dim)
-        self.Meas = np.zeros(meas_dim)
+    def predict(self, i=-1):
+        if i is -1:
+            i = max(self.X.keys())
+            
+        try:
+            x = self.X[i-1]
+        except KeyError:
+            x = self.predict(i=i-1)
+            
+        try:
+            u = self.Contols[i-1]
+        except KeyError:
+            u = np.zeros(self.Model.Controle_dim)
+            
+        self.X.update({i+1:self.Model.predict(x, u)})
+        return self.X[i+1]
         
-        if state_function is None:
-            state_function = lambda x: np.dot(np.identity(state_dim), x)
-        self.State_Function = state_function
-        
-        if controle_function is None:
-            controle_function = lambda x: np.dot(np.identity(max(state_dim, controle_dim))[:state_dim,:controle_dim], x)
-        self.Controle_Function = controle_function
-        
-        if meas_function is None:
-            meas_function = lambda x: np.dot(np.identity(max(state_dim, meas_dim))[:meas_dim,:state_dim], x)
-        self.Measurement_Function = meas_function
-        
-    def predict(self, state_vector, controle_vector):
-        return self.State_Function(state_vector) + self.Controle_Function(controle_vector)
+    def update(self, z, i=-1):
+        if i is -1:
+            i = max(self.X.keys())
+        self.Measurements.update({i: z})
+        return self.X[i]
     
-    def update(self, state_vector):
-        return self.Measurement_Function(state_vector)
-
-class RandomWalk(Model):
-    def __init__(self, state_dim):
-        super(RandomWalk, self).__init__(state_dim, 0, state_dim)
-        
-class Balistic(Model):
-    def __init__(self, dim, damping=None, mass=1., timeconst=1.):
-        
-        if damping is None:
-            damping = np.zeros(state_dim)
-        else:
-            damping = np.array(damping)
-            if damping.shape != (long(dim),):
-                damping = np.ones(dim) * np.mean(damping)
-        self.Damping = damping
-        
-        self.Mass = mass
-        
-        n = dim
-        Matrix = np.zeros((3*n,3*n))
-        Matrix[::3, ::3] = np.diag(np.ones(n))
-        Matrix[1::3, 1::3] = np.diag(np.exp(-1*self.Damping))
-        Matrix[2::3, 2::3] = np.diag(np.ones(n))
-        Matrix[::3, 1::3] = np.diag(np.ones(n)*timeconst)
-        Matrix[1::3, 2::3] = np.diag(np.ones(n)*timeconst/ self.Mass)
-        
-        Meas = np.zeros((n,n*3))
-        Meas[:,::3] =  np.diag(np.ones(n))
-        
-        state_function = lambda x: np.dot(Matrix,x)
-        meas_function = lambda x: np.dot(Meas,x)
-        
-        super(Balistic, self).__init__(dim*3, 0, dim,
-                                       state_function=state_function,
-                                       meas_function=meas_function)
-
-class AR(Model):
-    def __init__(self, dim, order=1, coefficients=None):
-        if coefficients is None:
-            coefficients = np.ones(order)
-        else:
-            coefficients = np.array(coefficients)
-            if coefficients.shape != (long(order),):
-                coefficients = np.ones(order) * np.mean(coefficients)
-        self.Coefficients = np.array(coefficients)
-        
-        Matrix = np.zeros((order*dim,order*dim))
-        for i,c in enumerate(self.Coefficients):
-            Matrix[::order,i::order] += np.diag(np.ones(dim)*c)
-        
-        for i,c in enumerate(self.Coefficients[1:]):
-            Matrix[i+1::order,i::order] += np.diag(np.ones(dim))
-        
-        Meas = np.zeros((dim,order*dim))
-        Meas[:,::order] = np.diag(np.ones(dim))
-        
-        state_function = lambda x: np.dot(Matrix,x)
-        meas_function = lambda x: np.dot(Meas,x)
-        
-        super(AR,self).__init__(dim*order, 0, dim,
-                                state_function=state_function,
-                                meas_function=meas_function)
- 
-class MA(Model):
-    def __init__(self, dim, order=1, coefficients=None):
-        if coefficients is None:
-            coefficients = np.ones(order)
-        else:
-            coefficients = np.array(coefficients)
-            if coefficients.shape != (long(order),):
-                coefficients = np.ones(order) * np.mean(coefficients)
-        self.Coefficients = np.array(coefficients)
-    
-        Matrix = np.zeros(((order+1)*dim,(order+1)*dim))
-        
-        Matrix[1::dim,::dim] = np.diag(np.ones(dim))
-        
-        Matrix[::dim,::dim] = np.diag(np.ones(dim)*-1*self.Coefficients[0])
-        for i,c in enumerate(self.Coefficients):
-            Matrix[::dim,i+1::dim] = np.diag(np.ones(dim)*c)
-        
-        Matrix[1::dim,::dim] = np.diag(np.ones(dim)*-1)
-        Matrix[1::dim,::dim] = np.diag(np.ones(dim)*-1)
-        for i,c in enumerate(self.Coefficients[1:]):
-            Matrix[1::dim,i+1::dim] += np.diag(np.ones(dim)*c)
-            Matrix[::dim,i+1::dim] += np.diag(np.ones(dim)*c*(self.Coefficients[0]+1))
-        
-        Meas = np.zeros((dim, (order+1)*dim))
-        Meas[:,::order+1] = np.diag(np.ones(dim))
-        
-        state_function = lambda x: np.dot(Matrix,x)
-        meas_function = lambda x: np.dot(Meas,x)
-        
-        super(MA,self).__init__(dim*(order+1), 0, dim,
-                                state_function=state_function,
-                                meas_function=meas_function)
-        
-
+    def log_prob(self):
+        probs = 0
+        for i in self.Measurements.keys():
+            try:
+                probs += np.log(self.Measurement_Distribution().pdf(self.Measurements[i]-self.X[i]))
+            except KeyError:
+                self.predict(i=i)
+                probs += np.log(self.Measurement_Distribution().pdf(self.Measurements[i]-self.X[i]))
+        return probs
+                
 class MultiKalman(object):
     def __init__(self, a, b, c, g, q, r, x_0, p_0, **kwargs):
         super(MultiKalman, self).__init__()
