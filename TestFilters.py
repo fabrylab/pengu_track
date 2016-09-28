@@ -1,9 +1,12 @@
 if __name__ == '__main__':
     import numpy as np
-    from Filters import Particle
+    from Filters import ParticleFilter
+    from Filters import KalmanFilter
+    from Models import VariableSpeed
     import matplotlib.pyplot as plt
     import clickpoints
     import scipy.optimize as opt
+    import scipy.stats as ss
 
     db = clickpoints.DataFile("click0.cdb")
     tracks = db.getTracks()
@@ -13,49 +16,66 @@ if __name__ == '__main__':
         if t.shape[0] > 2:
             points.append(t)
 
-    # measurements = points[-1][:]
-    D = 2*np.random.randint(0, 2, size=100)-1
-    X = [[0, 0]]
-    for i, d in enumerate(D):
-        X.append([i, X[-1][1]+np.random.normal(loc=d, scale=0.1)])
-    measurements = np.array(X)
+    measurements = points[-2][:]
+    # D = 2*np.random.randint(0, 2, size=100)-1
+    # X = [[0, 0]]
+    # for i, d in enumerate(D):
+    #     X.append([i, X[-1][1]+np.random.normal(loc=d, scale=0.1)])
+    # measurements = np.array(X)
     # measurements = np.array([range(40), range(40)]).T*10
     # measurements = np.random.normal(measurements, scale=2)
-    #measurements[:, 1] = 0
+    # measurements[:, 1] = 0
+
+    model = VariableSpeed(2)
     v = measurements[1]-measurements[0]
-    X = np.array([measurements[0][0], v[0], measurements[0][1], v[1]])  # initial state (location and velocity)
-    U = np.zeros([measurements.shape[0], 4])  # external motion
+    X = np.array([measurements[0, 0], v[0], measurements[0, 1], v[1]])
+    # X = np.dot(model.Measurement_Matrix.T, measurements[0])
+    U = np.zeros((measurements.shape[0], model.Control_dim))
+    A = model.State_Matrix
+    B = model.Control_Matrix
+    C = model.Measurement_Matrix
+    G = model.Evolution_Matrix
+    #
 
-    A = np.array([[1., 1., 0., 0.],
-                  [0., 1., 0., 0.],
-                  [0., 0., 1., 1.],
-                  [0., 0., 0., 0.]])  # next state function
+    # v = measurements[1]-measurements[0]
+    # X = np.array([measurements[0][0], v[0], measurements[0][1], v[1]])  # initial state (location and velocity)
+    # U = np.zeros([measurements.shape[0], 4])  # external motion
 
-    B = np.zeros_like(A)  # next state function for control parameter
-    C = np.array([[1., 0., 0., 0.],
-                  [0., 0., 1., 0.]])  # measurement function
-    G = np.array([[0, 0],
-                  [1, 0],
-                  [0, 0],
-                  [0, 1]])
+    # A = np.array([[1., 1., 0., 0.],
+    #               [0., 1., 0., 0.],
+    #               [0., 0., 1., 1.],
+    #               [0., 0., 0., 0.]])  # next state function
+    #
+    # B = np.zeros_like(A)  # next state function for control parameter
+    # C = np.array([[1., 0., 0., 0.],
+    #               [0., 0., 1., 0.]])  # measurement function
+    # G = np.array([[0, 0],
+    #               [1, 0],
+    #               [0, 0],
+    #               [0, 1]])
 
-    #optimal = opt.minimize_scalar(loger, bounds=[5, 39], method='Bounded')
-
-    ucty = 1#10.26#optimal['x']
+    ucty = 20#10.26#optimal['x']
     xy_uncty = ucty
     vxvy_uncty = ucty
-    meas_uncty = 0.1
+    meas_uncty = 10
     P = np.diag([ucty, ucty, ucty, ucty])  # initial uncertainty
     # Q = np.diag([vxvy_uncty, vxvy_uncty])  # Prediction uncertainty
     # Q = np.diag([vxvy_uncty, vxvy_uncty, vxvy_uncty, vxvy_uncty])  # Prediction uncertainty
-    Q = np.diag([0., vxvy_uncty, 0., vxvy_uncty])  # Prediction uncertainty
+    Q = np.diag([0., vxvy_uncty, 0, vxvy_uncty])  # Prediction uncertainty
     R = np.diag([meas_uncty, meas_uncty])  # Measurement uncertainty
 
-    Part = Particle(100, A, B, C, Q, R, [X])
+    # Part = Particle(100, A, B, C, Q, R, [X])
+    State_Dist = ss.multivariate_normal(cov=Q)
+    Meas_Dist = ss.multivariate_normal(cov=R)
 
-    X, X_err, Pred, Pred_err = Part.fit(U, measurements)
+    # Part = ParticleFilter(model, [X], n=1000, meas_dist=Meas_Dist, state_dist=State_Dist)
+    kal = KalmanFilter(model, np.array([vxvy_uncty,vxvy_uncty]), np.array([meas_uncty,meas_uncty]), X)
+    # X, X_err, Pred, Pred_err = Part.fit(U, measurements)
+    X, X_err, Pred, Pred_err = kal.fit(U[1:], measurements[1:])
+    X_err = np.array([np.diag(x) for x in X_err])
+    Pred_err = np.array([np.diag(p) for p in Pred_err])
 
-    # plt.errorbar(X.T[0], X.T[2], xerr=X_err.T[0], yerr=X_err.T[2], c='b')
+    # plt.errorbar(X.T[0], X.T[2], xerr=X_err.T[0], yerr=X_err.T[2], c='g')
     plt.errorbar(Pred.T[0], Pred.T[2], xerr=Pred_err.T[0], yerr=Pred_err.T[2], c='r')
     plt.errorbar(measurements.T[0], measurements.T[1], xerr=meas_uncty, yerr=meas_uncty, c='b')
     plt.axis('equal')
