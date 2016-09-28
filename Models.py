@@ -181,3 +181,4 @@ class MA(Model):
         self.State_Matrix = matrix
         self.Measurement_Matrix = meas
         self.Evolution_Matrix = evo
+

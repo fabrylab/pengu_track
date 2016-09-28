@@ -1,7 +1,7 @@
 if __name__ == '__main__':
     import numpy as np
     from Filters import ParticleFilter
-    from Filters import KalmanFilter
+    from Filters import AdvancedKalmanFilter as KalmanFilter
     from Models import VariableSpeed
     import matplotlib.pyplot as plt
     import clickpoints
@@ -54,7 +54,7 @@ if __name__ == '__main__':
     #               [0, 0],
     #               [0, 1]])
 
-    ucty = 20#10.26#optimal['x']
+    ucty = 10.26#10.26#optimal['x']
     xy_uncty = ucty
     vxvy_uncty = ucty
     meas_uncty = 10

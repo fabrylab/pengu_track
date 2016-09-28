@@ -2,7 +2,7 @@ if __name__ == '__main__':
 
     import numpy as np
     from Filters import ParticleFilter
-    from Filters import KalmanFilter
+    from Filters import AdvancedKalmanFilter as KalmanFilter
     from Models import VariableSpeed
     import clickpoints
     import scipy.stats as ss
@@ -15,7 +15,7 @@ if __name__ == '__main__':
         if t.shape[0] > 2:
             points.append(t)
 
-    measurements = points[-3][:]
+    measurements = points[-1][:]
     model = VariableSpeed(2)#, damping=np.log(1/0.9)
     X = np.dot(model.Measurement_Matrix.T, measurements[0])
     U = np.zeros((measurements.shape[0], model.Control_dim))
@@ -59,12 +59,14 @@ if __name__ == '__main__':
     fig.set_size_inches(20, 9)
 
     measured_plot, n, m = plt.errorbar([], [], xerr=meas_uncty, yerr=meas_uncty, c='b')
-    predicted_plot, = plt.plot([], [], 'ro')
-    predicted2_plot, = plt.plot([], [], 'o', markerfacecolor='None')
+    predicted_plot, = plt.plot([], [], 'ro', markerfacecolor='None')
+    predicted2_plot, = plt.plot([], [], 'ko', markerfacecolor='None')
     # believed_plot, n, m = plt.errorbar([], [], xerr=[], yerr=[], c='g')
 
-    plt.xlim(1500, 3500)
-    plt.ylim(600, 1500)
+    predicted2_plot.set_markeredgecolor('r')
+
+    plt.xlim(np.amin(X.T[0]), np.amax(X.T[0]))
+    plt.ylim(np.amin(X.T[2]), np.amax(X.T[2]))
 
     # plt.axis('equal')
 
@@ -74,5 +76,7 @@ if __name__ == '__main__':
             measured_plot.set_data(measurements[:i+1].T[0], measurements[:i+1].T[1])
             # believed_plot.set_data(X[:i+2].T[0], X[:i+2].T[2])
             predicted_plot.set_data(p[0], p[2])
+            predicted_plot.set_markersize((Pred_err[i+1, 0]*Pred_err[i+1, 2])**0.5)
             predicted2_plot.set_data(Pred[i][0], Pred[i][2])
+            predicted2_plot.set_markersize((Pred_err[i, 0]*Pred_err[i, 2])**0.5)
             writer.grab_frame()

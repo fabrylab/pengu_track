@@ -55,10 +55,12 @@ class Filter(object):
         probs = 0
         for i in self.Measurements.keys():
             try:
-                probs += np.log(self.Measurement_Distribution().pdf(self.Measurements[i]-self.X[i]))
+                probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(self.Measurements[i]
+                                                                                   -self.Model.measure(self.X[i]))))
             except KeyError:
                 self.predict(i=i)
-                probs += np.log(self.Measurement_Distribution().pdf(self.Measurements[i]-self.X[i]))
+                probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(self.Measurements[i]
+                                                                                   -self.Model.measure(self.X[i]))))
         return probs
 
     def downfilter(self):
@@ -95,7 +97,7 @@ class Filter(object):
         for i in range(z.shape[0]):
             self.predict(u=u[i], i=i+1)
             self.update(z=z[i], i=i+1)
-            print(self.X.values()[-1])
+            print(self.log_prob())
 
         return np.array(self.X.values(), dtype=float),\
                np.array(self.X_error.values(), dtype=float),\
@@ -105,12 +107,7 @@ class Filter(object):
 
 class KalmanFilter(Filter):
     def __init__(self, model, evolution_variance, measurement_variance, x0):
-        super(KalmanFilter, self).__init__(model, meas_Dist=ss.norm, state_dist=ss.norm)
         self.Model = model
-        self.A = self.Model.State_Matrix
-        self.B = self.Model.Control_Matrix
-        self.C = self.Model.Measurement_Matrix
-        self.G = self.Model.Evolution_Matrix
 
         evolution_variance = np.array(evolution_variance, dtype=float)
         if evolution_variance.shape != (long(self.Model.Evolution_dim),):
@@ -124,6 +121,13 @@ class KalmanFilter(Filter):
         self.R = np.diag(measurement_variance)
         self.R_0 = np.diag(measurement_variance)
 
+        super(KalmanFilter, self).__init__(model, meas_Dist=ss.multivariate_normal(cov=self.R),
+                                           state_dist=ss.multivariate_normal(cov=self.Q))
+        self.A = self.Model.State_Matrix
+        self.B = self.Model.Control_Matrix
+        self.C = self.Model.Measurement_Matrix
+        self.G = self.Model.Evolution_Matrix
+
         p = np.diag(np.ones(self.Model.State_dim) * max(measurement_variance))
         self.X_error.update({0: p})
         self.Predicted_X_error.update({0: p})
@@ -131,7 +135,7 @@ class KalmanFilter(Filter):
         self.X_0 = np.array(x0)
         self.X.update({0: x0})
         self.Predicted_X.update({0: x0})
-        self.Measurements.update({0: x0})
+        self.Measurements.update({0: self.Model.measure(x0)})
 
     def predict(self, u=None, i=None):
         '''Prediction part of the Kalman Filtering process for one step'''
@@ -168,6 +172,28 @@ class KalmanFilter(Filter):
 
         return x_, p_
 
+
+class AdvancedKalmanFilter(KalmanFilter):
+    def __init__(self, *args, **kwargs):
+        super(AdvancedKalmanFilter, self).__init__(*args, **kwargs)
+
+    def predict(self, *args, **kwargs):
+        self.Q = np.dot(np.dot(self.G.T, np.cov(np.asarray(self.Predicted_X.values()).T)), self.G)
+        if np.any(np.isnan(self.Q)):
+            self.Q = self.Q_0
+        print("Q at %s"%self.Q)
+        super(AdvancedKalmanFilter, self).predict(*args, **kwargs)
+
+    def update(self, *args, **kwargs):
+        dif = np.array([np.dot(self.C, np.array(self.X.get(k, None)).T).T
+                        - self.Measurements[k] for k in self.Measurements.keys()])
+        self.R = np.cov(dif.T)
+        if np.any(np.isnan(self.R)) or np.any(np.diag(self.R) < np.diag(self.R_0)):
+            self.R = self.R_0
+        print("R at %s"%self.R)
+        super(AdvancedKalmanFilter, self).update(*args, **kwargs)
+
+
 class ParticleFilter(Filter):
     def __init__(self, model, x0, n=100, meas_dist=ss.uniform(), state_dist=ss.uniform()):
         super(ParticleFilter, self).__init__(model, state_dist=state_dist, meas_Dist=meas_dist)
@@ -185,17 +211,15 @@ class ParticleFilter(Filter):
         self.X.update({0: np.mean(self.Particles.values(), axis=0)})
         self.X_error.update({0: np.std(self.Particles.values(), axis=0)})
 
+        self.Measurements.update({0: self.Model.measure(np.mean(x0, axis=0))})
+
     def predict(self, u=None, i=None):
         '''Prediction part of the Particle Filtering process for one step'''
-        super(ParticleFilter, self).predict(u=u, i=i)
-        if i is None:
-            i = max(self.X.keys())
+        x_, i = super(ParticleFilter, self).predict(u=u, i=i)
 
         for j in self.Particles.keys():
             mean = self.Model.predict(self.Particles[j], u)
             self.Particles.update({j: self.State_Distribution.rvs() + mean})
-            #self.Particles.update({i: ss.multivariate_normal(mean=np.dot(self.A, self.Particles[i]) + np.dot(self.B, u),
-                                                             # cov=self.Q).rvs()})
 
         self.Predicted_X.update({i: np.mean(self.Particles.values(), axis=0)})
         self.Predicted_X_error.update({i: np.std(self.Particles.values(), axis=0)})
@@ -203,14 +227,7 @@ class ParticleFilter(Filter):
 
     def update(self, z=None, i=None):
         '''Updating part of the Kalman Filtering process for one step'''
-        super(ParticleFilter, self).update(z=z, i=i)
-        if i is None:
-            i = max(self.X.keys())
-        try:
-            x = self.Predicted_X[i]
-            p = self.Predicted_X_error[i]
-        except KeyError:
-            x, p = self.predict(i=i)
+        x, i = super(ParticleFilter, self).update(z=z, i=i)
 
         for j in self.Weights.keys():
             self.Weights.update({j: self.Measurement_Distribution.pdf(z-self.Model.measure(self.Particles[j]))})
@@ -236,6 +253,7 @@ class ParticleFilter(Filter):
         self.X_error.update({i: np.std(self.Particles.values(), axis=0)})
 
         return self.Particles
+
 
 class MultiKalman(object):
     def __init__(self, a, b, c, g, q, r, x_0, p_0, **kwargs):
@@ -355,83 +373,83 @@ class MultiKalman(object):
                [np.array(p.values()) for p in self.predicted_p]
 
 
-class Kalman_Mehra(Kalman):
-    def __init__(self, *args, **kwargs):
-        super(Kalman_Mehra, self).__init__(*args, **kwargs)
-        self.Lag = int(kwargs.pop('lag', -1))
-        self.LearnTime = int(kwargs.pop('learn_time', 1))
-
-    def v(self, i):
-        if i == 0:
-            return self.z[min(self.z.keys())]-np.dot(np.dot(self.C, self.A), self.x[max(self.x.keys())])
-        else:
-            return self.z[i]-np.dot(np.dot(self.C, self.A), self.x[i-1])
-
-    def c_hat(self, k):
-        if k < 0:
-            k = len(self.z.keys())-1
-        n = len(self.z.keys())
-        c = np.sum(np.array([
-                            np.tensordot(self.v(i), self.v(i - k).T, axes=0)
-                            for i in range(k, n)
-                            ]), axis=0)
-        return np.array(c/n)
-
-    @staticmethod
-    def pseudo_inverse(m):
-        m = np.dot(np.linalg.inv(np.dot(m.transpose(), m)), m.transpose())
-        return m
-
-    def A_tilde(self):
-        a = None
-        a_ = None
-        n = len(self.z.keys())
-        k = max(0, n - self.Lag)
-        for i in range(k, n):
-            if a is not None:
-                a_ = np.dot(np.dot(self.A, (np.identity(self.A.shape[0]))-np.dot(self.k(), self.C)), a_)
-                a = np.vstack((a, np.dot(self.C, np.dot(a_, self.A))))
-            else:
-                a = np.identity(self.A.shape[0])
-                a_ = np.array(a, copy=True)
-                a = np.dot(self.C, np.dot(a, self.A))
-        return a
-
-    def c_tilde(self):
-        c = None
-        n = self.z.shape[0]
-        k = max(0, n - self.Lag)
-        for i in range(k, n):
-            if c is not None:
-                c = np.vstack((c, self.c_hat(i)))
-            else:
-                c = self.c_hat(i)
-        return c
-
-    def r_hat(self):
-        try:
-            cc = self.c_tilde()
-            a_cross = self.pseudo_inverse(self.A_tilde())
-            mh_hat = np.dot(self.k(), self.c_hat(0)) + np.dot(a_cross, cc)
-
-            r = self.c_hat(0) - np.dot(self.C, mh_hat)
-        except np.linalg.LinAlgError:
-            r = self.R
-            print("The starting conditions of the uncertainty matrices are to bad. (Inversion Error)")
-        return r
-    
-    def predict(self, u):
-        print(self.c_hat(0))
-        if len(self.z.keys()) > self.LearnTime:
-            self.R = self.c_hat(0)
-        return super(Kalman_Mehra, self).predict(u)
-    
-    def update(self, meas, **kwargs):
-        return super(Kalman_Mehra, self).update(meas, **kwargs)
-
-    def fit(self, u, z):
-        z = np.array(z)
-        u = np.array(u)
-        ret = super(Kalman_Mehra, self).fit(u, z)
-        return ret
+# class Kalman_Mehra(Kalman):
+#     def __init__(self, *args, **kwargs):
+#         super(Kalman_Mehra, self).__init__(*args, **kwargs)
+#         self.Lag = int(kwargs.pop('lag', -1))
+#         self.LearnTime = int(kwargs.pop('learn_time', 1))
+#
+#     def v(self, i):
+#         if i == 0:
+#             return self.z[min(self.z.keys())]-np.dot(np.dot(self.C, self.A), self.x[max(self.x.keys())])
+#         else:
+#             return self.z[i]-np.dot(np.dot(self.C, self.A), self.x[i-1])
+#
+#     def c_hat(self, k):
+#         if k < 0:
+#             k = len(self.z.keys())-1
+#         n = len(self.z.keys())
+#         c = np.sum(np.array([
+#                             np.tensordot(self.v(i), self.v(i - k).T, axes=0)
+#                             for i in range(k, n)
+#                             ]), axis=0)
+#         return np.array(c/n)
+#
+#     @staticmethod
+#     def pseudo_inverse(m):
+#         m = np.dot(np.linalg.inv(np.dot(m.transpose(), m)), m.transpose())
+#         return m
+#
+#     def A_tilde(self):
+#         a = None
+#         a_ = None
+#         n = len(self.z.keys())
+#         k = max(0, n - self.Lag)
+#         for i in range(k, n):
+#             if a is not None:
+#                 a_ = np.dot(np.dot(self.A, (np.identity(self.A.shape[0]))-np.dot(self.k(), self.C)), a_)
+#                 a = np.vstack((a, np.dot(self.C, np.dot(a_, self.A))))
+#             else:
+#                 a = np.identity(self.A.shape[0])
+#                 a_ = np.array(a, copy=True)
+#                 a = np.dot(self.C, np.dot(a, self.A))
+#         return a
+#
+#     def c_tilde(self):
+#         c = None
+#         n = self.z.shape[0]
+#         k = max(0, n - self.Lag)
+#         for i in range(k, n):
+#             if c is not None:
+#                 c = np.vstack((c, self.c_hat(i)))
+#             else:
+#                 c = self.c_hat(i)
+#         return c
+#
+#     def r_hat(self):
+#         try:
+#             cc = self.c_tilde()
+#             a_cross = self.pseudo_inverse(self.A_tilde())
+#             mh_hat = np.dot(self.k(), self.c_hat(0)) + np.dot(a_cross, cc)
+#
+#             r = self.c_hat(0) - np.dot(self.C, mh_hat)
+#         except np.linalg.LinAlgError:
+#             r = self.R
+#             print("The starting conditions of the uncertainty matrices are to bad. (Inversion Error)")
+#         return r
+#
+#     def predict(self, u):
+#         print(self.c_hat(0))
+#         if len(self.z.keys()) > self.LearnTime:
+#             self.R = self.c_hat(0)
+#         return super(Kalman_Mehra, self).predict(u)
+#
+#     def update(self, meas, **kwargs):
+#         return super(Kalman_Mehra, self).update(meas, **kwargs)
+#
+#     def fit(self, u, z):
+#         z = np.array(z)
+#         u = np.array(u)
+#         ret = super(Kalman_Mehra, self).fit(u, z)
+#         return ret
 
