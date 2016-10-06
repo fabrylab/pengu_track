@@ -38,8 +38,8 @@ class Model(object):
     def state_function(self, state_vector):
         return np.dot(self.State_Matrix, state_vector)
 
-    def control_function(self, state_vector):
-        return np.dot(self.Control_Matrix, state_vector)
+    def control_function(self, controle_vector):
+        return np.dot(self.Control_Matrix, controle_vector)
 
     def measurement_function(self, state_vector):
         return np.dot(self.Measurement_Matrix, state_vector)
