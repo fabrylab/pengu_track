@@ -31,7 +31,7 @@ class Filter(object):
             x = self.X[i-1]
         except KeyError:
             print('recursion, i=%s'%i)
-            x = self.predict(u, i=i-1)
+            u, i = self.predict(u, i=i-1)
         self.X.update({i: self.Model.predict(x, u)})
         return u, i
         
@@ -337,7 +337,7 @@ class MultiFilter(Filter):
         predicted_x_error = {}
         for j in self.Filters.keys():
             if j in self.ActiveFilters.keys():
-                self.ActiveFilters[j].predict(u=u[j], i=i)
+                self.ActiveFilters[j].predict(u=u, i=i)
                 predicted_x.update({j: self.ActiveFilters[j].Predicted_X[i]})
                 predicted_x_error.update({j: self.ActiveFilters[j].Predicted_X_error[i]})
         self.Predicted_X.update({i: predicted_x})

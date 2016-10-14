@@ -28,7 +28,7 @@ class Model(object):
         
     def predict(self, state_vector, controle_vector):
         return self.state_function(state_vector) + self.control_function(controle_vector)
-    
+
     def measure(self, state_vector):
         return self.measurement_function(state_vector)
         
