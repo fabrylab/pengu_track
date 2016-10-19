@@ -38,8 +38,8 @@ class ViBeDetector(Detector):
 
     def detect(self, image):
         super(ViBeDetector, self).detect(image)
-        width, height = image.getShape()
-        data = np.array(image.data, ndmin=3)
+        width, height = image.shape[:2] #image.getShape()
+        data = np.array(image, ndmin=3)
         this_skale = np.mean(np.linalg.norm(data, axis=-1).astype(float))
         if this_skale == 0:
             this_skale = self.Skale
@@ -164,6 +164,9 @@ if __name__ == '__main__':
     import clickpoints
     import skimage.feature
     import skimage.transform
+    import skimage.measure
+    import skimage.filters
+    import skimage.morphology
     from Filters import AdvancedKalmanFilter
     from Filters import MultiFilter
     from Models import VariableSpeed
@@ -200,43 +203,84 @@ if __name__ == '__main__':
     db.deleteMarkers(type=marker_type)
     marker_type2 = db.setMarkerType(name="ViBe_Kalman_Marker", color="#00FF00", mode=db.TYPE_Track)
     db.deleteMarkers(type=marker_type2)
-    # marker_type3 = db.setMarkerType(name="ViBe_Kalman_Marker", color="#0000FF", mode=db.TYPE_Track)
-    # db.deleteMarkers(type=marker_type3)
+    marker_type3 = db.setMarkerType(name="ViBe_Kalman_Marker_Predictions", color="#0000FF")
+    db.deleteMarkers(type=marker_type3)
 
     db.deleteTracks()
     images = db.getImageIterator()
     for image in images:
         i = image.get_id()
         MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
+        # VB.detect(skimage.filters.gaussian(image.data, 5.))
+        VB.detect(image.data)
 
-        VB.detect(image)
         db.setMask(image=image, data=(VB.SegMap ^ True).astype(np.uint8))
         print("Mask save")
-        n = 8
-        blobs = skimage.feature.blob_log(skimage.transform.downscale_local_mean(VB.SegMap, (n, n)),
-                                         min_sigma=3./(n**0.5))
-        db.setMarkers(image=image, x=blobs.T[1]*n, y=blobs.T[0]*n, type=marker_type)
-        print("Markers Saved (%s)" % blobs.shape[0])
-        MultiKal.update(z=np.array([blobs.T[1]*n, blobs.T[0]*n]).T, i=i)
+        n = 1
 
-        for k in MultiKal.Filters.keys():
-            x = y = np.nan
-            if i in MultiKal.Filters[k].Measurements.keys():
-                x, y = MultiKal.Filters[k].Measurements[i]
-                prob = MultiKal.Filters[k].log_prob(keys=[i])
-            elif i in MultiKal.Filters[k].X.keys():
-                x, y = MultiKal.Filters[k].X[i]
-                prob = MultiKal.Filters[k].log_prob(keys=[i])
-            if np.isnan(x) or np.isnan(y):
-                pass
-            else:
-                try:
-                    db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text=str(prob))
-                    print('Set Track(%s)-Marker at %s, %s'%(k,x,y))
-                except:
-                    db.setTrack(marker_type2, id=k)
-                    db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text=str(prob))
-                    print('Set new Track %s and Track-Marker at %s, %s'%(k,x,y))
+        # regions = skimage.measure.regionprops(
+        #             skimage.measure.label(
+        #                 skimage.filters.laplace(
+        #                     skimage.filters.gaussian(VB.SegMap.astype(np.uint8), 10, multichannel=False))
+        #           , neighbors=8))
+        # IMG = skimage.filters.laplace(
+        #                     skimage.filters.gaussian(
+        #                         skimage.morphology.closing(
+        #                             VB.SegMap.astype(np.uint8), skimage.morphology.square(5)
+        #                 ),10))
+        # IMG = skimage.filters.laplace(
+        #             skimage.filters.gaussian(VB.SegMap.astype(np.uint8), 10)) > 7e-6#, skimage.morphology.square(3)))
+        # IMG = (IMG - IMG.min())*255/(IMG.max()-IMG.min())
+        # IMG = (IMG > 200)
+        regions = skimage.measure.regionprops(
+                    skimage.measure.label(
+                        skimage.filters.laplace(
+                            skimage.filters.gaussian(VB.SegMap.astype(np.uint8), 10)) > 7e-6
+                        ))
+
+        # print(np.amin(IMG), np.amax(IMG), np.mean(IMG), np.std(IMG))
+        # plt.imshow(IMG)
+        # plt.show()
+        blobs = np.array([])
+        if len(regions) > 0:
+            blobs = np.array([[props.centroid[0], props.centroid[1], props.area] for props in regions], ndmin=2)
+            # plt.hist(blobs.T[2], bins=500)
+            # plt.show()
+            # blobs = blobs[blobs.T[2] > 150]
+            #######
+        # blobs = np.array([])
+        ####################
+        if blobs.shape[0] > 0:
+            # blobs = skimage.feature.blob_log(skimage.transform.downscale_local_mean(VB.SegMap, (n, n)),
+            #                                  min_sigma=3./(n**0.5))
+            db.setMarkers(image=image, x=blobs.T[1]*n, y=blobs.T[0]*n, type=marker_type)
+            print("Markers Saved (%s)" % blobs.shape[0])
+            MultiKal.update(z=np.array([blobs.T[1]*n, blobs.T[0]*n]).T, i=i)
+
+            for k in MultiKal.Filters.keys():
+                x = y = np.nan
+                if i in MultiKal.Filters[k].Measurements.keys():
+                    x, y = MultiKal.Filters[k].Measurements[i]
+                    prob = MultiKal.Filters[k].log_prob(keys=[i])
+                elif i in MultiKal.Filters[k].X.keys():
+                    x, y = MultiKal.Model.measure(MultiKal.Filters[k].X[i])
+                    prob = MultiKal.Filters[k].log_prob(keys=[i])
+
+                if i in MultiKal.Filters[k].Measurements.keys():
+                    pred_x, pred_y = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])
+                    prob = MultiKal.Filters[k].log_prob(keys=[i])
+
+                if np.isnan(x) or np.isnan(y):
+                    pass
+                else:
+                    db.setMarker(image=image, x=pred_x, y=pred_y, text="Track %s"%k, type=marker_type3)
+                    try:
+                        db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
+                        print('Set Track(%s)-Marker at %s, %s'%(k,x,y))
+                    except:
+                        db.setTrack(marker_type2, id=k)
+                        db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
+                        print('Set new Track %s and Track-Marker at %s, %s'%(k,x,y))
 
     print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
 
@@ -250,25 +294,3 @@ if __name__ == '__main__':
 
     print('done with ViBe')
 
-
-    #
-    # import skimage.filters
-    # import skimage.feature
-    # import skimage.transform
-    # import skimage.color
-    # plt.ion()
-    # images = db.getImageIterator(start_frame=40)
-    # p1 = plt.plot([], [], 'wo')
-    # for image in images:
-    #     MAP = (db.getMask(image=image).data.astype(bool) ^ True)#.astype(np.uint8)
-    #     PIC = np.linalg.norm(image.data, axis=-1) < 30*3**0.5
-    #     n = 8
-    #     blobs = skimage.feature.blob_log(skimage.transform.downscale_local_mean(MAP,(n,n)), min_sigma=5./(n**0.5))
-    #     plt.imshow(skimage.transform.downscale_local_mean(MAP,(n,n)))
-    #     # blobs = skimage.feature.blob_log(skimage.transform.downscale_local_mean(PIC,(n,n)), min_sigma=0.1/(n**0.5), max_sigma=0.5/(n**0.5))
-    #     # plt.imshow(skimage.transform.downscale_local_mean(PIC,(n,n)))
-    #     try:
-    #         p1[0].set_data(blobs.T[1], blobs.T[0])
-    #     except IndexError:
-    #         pass
-    #     plt.pause(0.05)

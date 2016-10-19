@@ -449,7 +449,7 @@ class MultiFilter(Filter):
             for m in range(M):
                 probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: z[m]})
 
-        print(probability_gain)
+        # print(probability_gain)
         x = {}
         x_err = {}
         for j in range(M):
@@ -474,7 +474,7 @@ class MultiFilter(Filter):
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
             probability_gain[k, :] = np.nan
             probability_gain[:, m] = np.nan
-        print(probability_gain)
+        # print(probability_gain)
 
         if len(self.ActiveFilters.keys()) < M:
             raise RuntimeError('Lost Filters on the way. This should never happen')
