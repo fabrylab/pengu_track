@@ -4,7 +4,7 @@ import scipy.stats as ss
 from timeit import default_timer as timer
 
 class Filter(object):
-    def __init__(self, model, meas_Dist=ss.uniform, state_dist=ss.uniform):
+    def __init__(self, model, meas_Dist=ss.uniform(), state_dist=ss.uniform()):
         self.Model = model
         self.Measurement_Distribution = meas_Dist
         self.State_Distribution = state_dist
@@ -18,8 +18,10 @@ class Filter(object):
         self.Controls = {}
 
     def predict(self, u=None, i=None):
+        # Generate i
         if i is None:
-            i = max(self.X.keys())
+            i = max(self.Predicted_X.keys())+1
+        # Generate u
         if u is None:
             try:
                 u = self.Controls[i-1]
@@ -27,22 +29,41 @@ class Filter(object):
                 u = np.zeros(self.Model.Control_dim)
         else:
             self.Controls.update({i-1: u})
+
+        # Try to get previous x from believe
         try:
             x = self.X[i-1]
         except KeyError:
-            print('recursion, i=%s'%i)
-            u, i = self.predict(u, i=i-1)
-        self.X.update({i: self.Model.predict(x, u)})
+            # Try to get previous prediction
+            try:
+                x = self.Predicted_X[i-1]
+            except KeyError:
+                # Try recursive prediction from previous timesteps
+                if np.any(self.Predicted_X.keys() < i):
+                    print('Recursive Prediction, i = %s'%i)
+                    u, i = self.predict(u, i=i-1)
+                    x = self.Predicted_X[i-1]
+                else:
+                    raise KeyError("Nothing to predict from. Need initial value")
+
+        # Make simplest possible Prediction (can be overwritten)
+        self.Predicted_X.update({i: self.Model.predict(x, u)})
         return u, i
         
     def update(self, z=None, i=None):
+        # Generate i
         if i is None:
-            i = max(self.X.keys())
+            i = max(self.Measurements.keys())+1
+        # Generate z
         if z is None:
-            z = self.Measurements[i]
+            try:
+                z = self.Measurements[i]
+            except KeyError:
+                raise KeyError("No measurement for timepoint %s."%i)
         else:
             self.Measurements.update({i: z})
-        # self.X.update({i: z})
+        # simplest possible update
+        self.X.update({i: z})
         return z, i
 
     def filter(self, u=None, z=None, i=None):
@@ -50,46 +71,75 @@ class Filter(object):
         x = self.update(z=z, i=i)
         return x
     
-    def log_prob(self, keys=None):
+    def log_prob(self, keys=None, measurements=None):
         probs = 0
         if keys is None:
             keys = self.Measurements.keys()
-        for i in keys:
-            try:
+
+        if measurements is None:
+            for i in keys:
+                # Generate Value for comparison with measurement
+                try:
+                    comparison = self.X[i]
+                except KeyError:
+                    try:
+                        comparison = self.Predicted_X[i]
+                    except KeyError:
+                        self.predict(i=i)
+                        comparison = self.Predicted_X[i]
+
                 probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(self.Measurements[i]
-                                                                                 - self.Model.measure(self.X[i]))))
-            except KeyError:
-                self.predict(i=i)
-                probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(self.Measurements[i]
-                                                                                 - self.Model.measure(self.X[i]))))
+                                                                                 - self.Model.measure(comparison))))
+        else:
+            for i in keys:
+                # Generate Value for comparison with measurement
+                try:
+                    comparison = self.X[i]
+                except KeyError:
+                    try:
+                        comparison = self.Predicted_X[i]
+                    except KeyError:
+                        self.predict(i=i)
+                        comparison = self.Predicted_X[i]
+
+                probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(measurements[i]
+                                                                                 - self.Model.measure(comparison))))
         return probs
 
     def downfilter(self, t=None):
+        # Generate t
         if t is None:
-            t = max(self.x.keys())
-        self.Measurements.pop(t, default=None)
-        self.Controls.pop(t, default=None)
-        self.X.pop(t, default=None)
-        self.X_error.pop(t, default=None)
-        self.Predicted_X.pop(t, default=None)
-        self.Predicted_X_error.pop(t, default=None)
+            t = max([max(self.X.keys()),
+                     max(self.Predicted_X.keys()),
+                     max(self.Measurements.keys()),
+                     self.Controls.keys()])
+        # Remove all entries for this timestep
+        self.Measurements.pop(t, None)
+        self.Controls.pop(t, None)
+        self.X.pop(t, None)
+        self.X_error.pop(t, None)
+        self.Predicted_X.pop(t, None)
+        self.Predicted_X_error.pop(t, None)
 
     def downdate(self, t=None):
+        # Generate t
         if t is None:
             t = max(self.X.keys())
+        # Remove believe and Measurement entries for this timestep
+        self.X.pop(t, None)
+        self.X_error.pop(t, None)
         self.Measurements.pop(t, None)
-        self.X.update({t: self.Predicted_X[t]})
-        self.X_error.update({t: self.Predicted_X_error[t]})
-        # self.Controls.pop(t, None)
 
     def unpredict(self, t=None):
+        # Generate t
         if t is None:
-            t = max(self.X.keys())
-        # self.Controls.pop(t, default=None)
-        self.X.pop(t, default=None)
-        self.X_error.pop(t, default=None)
-        self.Predicted_X.pop(t, default=None)
-        self.Predicted_X_error.pop(t, default=None)
+            t = max(self.Predicted_X.keys())
+        # Remove believe and Prediction entries for this timestep
+        self.Controls.pop(t, None)
+        self.X.pop(t, None)
+        self.X_error.pop(t, None)
+        self.Predicted_X.pop(t, None)
+        self.Predicted_X_error.pop(t, None)
 
     def fit(self, u, z):
         '''Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
@@ -110,18 +160,26 @@ class Filter(object):
 
 
 class KalmanFilter(Filter):
-    def __init__(self, model, x0, evolution_variance, measurement_variance, **kwargs):
+    def __init__(self, model, evolution_variance, measurement_variance, **kwargs):
         self.Model = model
+
+        # if x0 is None:
+        #     x0 = np.zeros(self.Model.State_dim)
+        # x0 = np.asarray(x0)
 
         evolution_variance = np.array(evolution_variance, dtype=float)
         if evolution_variance.shape != (long(self.Model.Evolution_dim),):
             evolution_variance = np.ones(self.Model.Evolution_dim) * np.mean(evolution_variance)
+
+        self.Evolution_Variance = evolution_variance
         self.Q = np.diag(evolution_variance)
         self.Q_0 = np.diag(evolution_variance)
 
         measurement_variance = np.array(measurement_variance, dtype=float)
         if measurement_variance.shape != (long(self.Model.Meas_dim),):
             measurement_variance = np.ones(self.Model.Meas_dim) * np.mean(measurement_variance)
+
+        self.Measurement_Variance = measurement_variance
         self.R = np.diag(measurement_variance)
         self.R_0 = np.diag(measurement_variance)
 
@@ -133,23 +191,32 @@ class KalmanFilter(Filter):
         self.G = self.Model.Evolution_Matrix
 
         p = np.diag(np.ones(self.Model.State_dim) * max(measurement_variance))
+        self.P_0 = p
         self.X_error.update({0: p})
         self.Predicted_X_error.update({0: p})
 
-        self.X_0 = np.array(x0)
-        self.X.update({0: x0})
-        self.Predicted_X.update({0: x0})
-        self.Measurements.update({0: self.Model.measure(x0)})
+        # self.X_0 = np.array(x0)
+        # self.X.update({0: x0})
+        # self.Predicted_X.update({0: x0})
+        # self.Measurements.update({0: self.Model.measure(x0)})
 
     def predict(self, u=None, i=None):
         '''Prediction part of the Kalman Filtering process for one step'''
         u, i = super(KalmanFilter, self).predict(u=u, i=i)
 
-        x_ = np.dot(self.A, self.X[i-1]) + np.dot(self.B, u)
-        p_ = np.dot(np.dot(self.A, self.X_error[i-1]), self.A.transpose()) + np.dot(np.dot(self.G, self.Q), self.G.T)
+        try:
+            x_ = np.dot(self.A, self.X[i-1]) + np.dot(self.B, u)
+        except KeyError:
+            x_ = np.dot(self.A, self.Predicted_X[i-1]) + np.dot(self.B, u)
 
-        self.X.update({i: x_})
-        self.X_error.update({i: p_})
+        try:
+            p_ = np.dot(np.dot(self.A, self.X_error[i-1]), self.A.T) + np.dot(np.dot(self.G, self.Q), self.G.T)
+        except KeyError:
+            try:
+                p_ = np.dot(np.dot(self.A, self.Predicted_X_error[i-1]), self.A.T) + np.dot(np.dot(self.G, self.Q), self.G.T)
+            except KeyError:
+                p_ = np.dot(np.dot(self.A, self.P_0), self.A.T) + np.dot(np.dot(self.G, self.Q), self.G.T)
+
         self.Predicted_X.update({i: x_})
         self.Predicted_X_error.update({i: p_})
 
@@ -160,11 +227,24 @@ class KalmanFilter(Filter):
         z, i = super(KalmanFilter, self).update(z=z, i=i)
         try:
             x = self.Predicted_X[i]
+        except KeyError:
+            u, i = self.predict(i=i)
+            x = self.Predicted_X[i]
+
+        try:
             p = self.Predicted_X_error[i]
         except KeyError:
-            x, p = self.predict(i=i)
+            try:
+                u, i = self.predict(i=i)
+                p = self.Predicted_X_error[i]
+            except KeyError:
+                p = self.P_0
 
-        k = np.dot(np.dot(p, self.C.transpose()), np.linalg.inv(np.dot(np.dot(self.C, p), self.C.transpose()) + self.R))
+        try:
+            k = np.dot(np.dot(p, self.C.transpose()), np.linalg.inv(np.dot(np.dot(self.C, p), self.C.transpose()) + self.R))
+        except np.linalg.LinAlgError, e:
+            print(p)
+            raise np.linalg.LinAlgError(e)
 
         y = z - np.dot(self.C, x)
 
@@ -173,6 +253,16 @@ class KalmanFilter(Filter):
 
         self.X.update({i: x_})
         self.X_error.update({i: p_})
+
+        try:
+            self.Measurement_Distribution = ss.multivariate_normal(cov=self.R)
+        except np.linalg.LinAlgError:
+            self.Measurement_Distribution = ss.multivariate_normal(cov=self.R_0)
+
+        try:
+            self.State_Distribution = ss.multivariate_normal(cov=self.Q)
+        except np.linalg.LinAlgError:
+            self.State_Distribution = ss.multivariate_normal(cov=self.Q_0)
 
         return z, i
 
@@ -190,7 +280,7 @@ class AdvancedKalmanFilter(KalmanFilter):
         self.Q = np.dot(np.dot(self.G.T, np.cov(np.asarray(self.Predicted_X.values()[lag:]).T)), self.G)
         if np.any(np.isnan(self.Q)):
             self.Q = self.Q_0
-        print("Q at %s"%self.Q)
+        # print("Q at %s"%self.Q)
         return super(AdvancedKalmanFilter, self).predict(*args, **kwargs)
 
     def update(self, *args, **kwargs):
@@ -199,14 +289,16 @@ class AdvancedKalmanFilter(KalmanFilter):
         self.R = np.cov(dif.T)
         if np.any(np.isnan(self.R)) or np.any(np.diag(self.R) < np.diag(self.R_0)):
             self.R = self.R_0
-        print("R at %s"%self.R)
+        # print("R at %s"%self.R)
         return super(AdvancedKalmanFilter, self).update(*args, **kwargs)
 
 
 class ParticleFilter(Filter):
-    def __init__(self, model, x0, n=100, meas_dist=ss.uniform(), state_dist=ss.uniform()):
+    def __init__(self, model, x0=None, n=100, meas_dist=ss.uniform(), state_dist=ss.uniform()):
         super(ParticleFilter, self).__init__(model, state_dist=state_dist, meas_Dist=meas_dist)
         self.N = n
+        if x0 is None:
+            x0 = np.zeros(self.Model.State_dim)
         self.X0 = np.array([x0])
 
         self.Particles = {}
@@ -234,8 +326,8 @@ class ParticleFilter(Filter):
 
         self.Predicted_X.update({i: np.mean(self.Particles.values(), axis=0)})
         self.Predicted_X_error.update({i: np.std(self.Particles.values(), axis=0)})
-        self.X.update({i: np.mean(self.Particles.values(), axis=0)})
-        self.X_error.update({i: np.std(self.Particles.values(), axis=0)})
+        # self.X.update({i: np.mean(self.Particles.values(), axis=0)})
+        # self.X_error.update({i: np.std(self.Particles.values(), axis=0)})
         return u, i
 
     def update(self, z=None, i=None):
@@ -257,21 +349,6 @@ class ParticleFilter(Filter):
             weights = weights/weights[-1]
             print("Workaround")
 
-        # print(w)
-        # if w > 0:
-        #     for j in self.Weights.keys():
-        #         self.Weights[j] += np.amin(self.Weights.values())
-        #         self.Weights[j] *= 1./w
-        # else:
-        #     print("Updating failed. Starting New Filter.")
-        #     # self.__init__(self.Model, z,
-        #     #               n=self.N, meas_dist=self.Measurement_Distribution, state_dist=self.State_Distribution)
-        #     for j in self.Particles.keys():
-        #         self.Particles.update({j: z})
-        #     self.predict(i=i)
-        #     return self.update(z=z, i=i)
-        #     # raise ValueError('Sum of weights is smaller than zero. No further Particle computation possible.')
-
         idx = np.sum(np.array(np.tile(weights, self.N).reshape((self.N, -1)) <
                      np.tile(np.random.rand(self.N), self.N).reshape((self.N, -1)).T, dtype=int), axis=1)
         print(len(set(idx)))
@@ -289,121 +366,121 @@ class ParticleFilter(Filter):
 
 
 class MultiFilter(Filter):
-    def __init__(self, _filter, model, x0, *args, **kwargs):
+    def __init__(self, _filter, model, *args, **kwargs):
         super(MultiFilter, self).__init__(model)
         self.Filter_Class = _filter
         self.Filters = {}
         self.ActiveFilters = {}
-        self.FilterThreshold = 2
-        self.LogProbabilityThreshold = -1 * np.inf
+        self.FilterThreshold = 3
+        self.LogProbabilityThreshold = -200. #-1 * np.inf
         self.filter_args = args
         self.filter_kwargs = kwargs
 
-        predicted_x = {}
-        predicted_x_err = {}
-        for j in range(np.array(x0).shape[0]):
-            _filter = self.Filter_Class(model, x0[j], *args, **kwargs)
-            self.ActiveFilters.update({j: _filter})
-            self.Filters.update({j: _filter})
-            predicted_x.update({j: self.Filters[j].X[0]})
-            predicted_x_err.update({j: self.Filters[j].X_error[0]})
-
-        self.Predicted_X.update({0: predicted_x})
-        self.Predicted_X_error.update({0: predicted_x_err})
-        self.X.update({0: predicted_x})
-        self.X_error.update({0: predicted_x_err})
-
     def predict(self, u=None, i=None):
-        if i is None:
-            i = max(self.X.keys())
-        if u is None:
-            try:
-                u = self.Controls[i-1]
-            except KeyError:
-                u = np.zeros(self.Model.Control_dim)
-        else:
-            self.Controls.update({i-1: u})
-        try:
-            x = self.X[i-1]
-        except KeyError:
-            print('recursion, i=%s'%i)
-            x = self.predict(u, i=i-1)
+        # if i is None:
+        #     i = max(self.Predicted_X.keys())+1
+        # if u is None:
+        #     try:
+        #         u = self.Controls[i-1]
+        #     except KeyError:
+        #         u = np.zeros(self.Model.Control_dim)
+        # else:
+        #     self.Controls.update({i-1: u})
+        # # try:
+        # #     x = self.X[i-1]
+        # # except KeyError:
+        # #     print('recursion, i=%s'%i)
+        # #     x = self.predict(u, i=i-1)
 
         for j in self.ActiveFilters.keys():
             _filter = self.ActiveFilters[j]
-            if np.array(_filter.Predicted_X.keys()[-1])-np.array(_filter.X.keys()[-1]) > self.FilterThreshold:
-                self.ActiveFilters.pop(j, default=None)
+            if np.array(_filter.Predicted_X.keys()[-1])-np.array(_filter.X.keys()[-1]) >= self.FilterThreshold:
+                self.ActiveFilters.pop(j)
+
         predicted_x = {}
         predicted_x_error = {}
-        for j in self.Filters.keys():
-            if j in self.ActiveFilters.keys():
-                self.ActiveFilters[j].predict(u=u, i=i)
+        for j in self.ActiveFilters.keys():
+            self.ActiveFilters[j].predict(u=u, i=i)
+            if i in self.ActiveFilters[j].Predicted_X.keys():
                 predicted_x.update({j: self.ActiveFilters[j].Predicted_X[i]})
                 predicted_x_error.update({j: self.ActiveFilters[j].Predicted_X_error[i]})
+
         self.Predicted_X.update({i: predicted_x})
         self.Predicted_X_error.update({i: predicted_x_error})
-        self.X.update({i: predicted_x})
-        self.X_error.update({i: predicted_x_error})
+        # self.X.update({i: predicted_x})
+        # self.X_error.update({i: predicted_x_error})
         return u, i
 
-    def update(self, z=None, i=None):
-        z, i = super(MultiFilter, self).update(z=z, i=i)
-        z = np.array(z)
+    def initial_update(self, z, i):
+        print("Initial Filter Update")
+
+        z = np.array(z, ndmin=2)
         M = z.shape[0]
 
-        if M > len(self.ActiveFilters.keys()):
-            for j in range(M - len(self.ActiveFilters.keys())):
-                _filter = self.Filter_Class(self.Model, np.ones_like(self.ActiveFilters[0].X[0]) * np.nan,
-                                            *self.filter_args, **self.filter_kwargs)
-                J = max(self.Filters.keys()) + 1
-                self.ActiveFilters.update({J: _filter})
-                self.Filters.update({J: _filter})
+        for j in range(M):
+            _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
 
+            _filter.Predicted_X.update({i: _filter.Model.infer_state(z[j])})
+            _filter.X.update({i: _filter.Model.infer_state(z[j])})
+            _filter.Measurements.update({i: z[j]})
+
+            try:
+                J = max(self.Filters.keys()) + 1
+            except ValueError:
+                J = 0
+            self.ActiveFilters.update({J: _filter})
+            self.Filters.update({J: _filter})
+
+    def update(self, z=None, i=None):
+        # z, i = super(MultiFilter, self).update(z=z, i=i)
+        z = np.array(z, ndmin=2)
+        M = z.shape[0]
         N = len(self.ActiveFilters.keys())
 
+        if N == 0 and M > 0:
+            self.initial_update(z, i)
+            return z, i
+
         gain_dict = {}
-        probability_gain = []
+        probability_gain = -1./np.zeros((max(M,N),M))
 
-        for k, j in enumerate(self.ActiveFilters.keys()):
-            gain_dict.update({k: j})
-            prob_gain_inner = []
-            for n in range(M):
-                try:
-                    self.ActiveFilters[j].update(z=z[n], i=i)
-                    prob_gain_inner.append(self.ActiveFilters[j].log_prob(keys=[i]))
-                except ValueError:
-                    prob_gain_inner.append(-1*np.inf)
-                self.ActiveFilters[j].downdate(t=i)
+        for j, k in enumerate(self.ActiveFilters.keys()):
+            gain_dict.update({j: k})
+            for m in range(M):
+                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: z[m]})
 
-            # if np.all(np.array(prob_gain_inner) <= self.LogProbabilityThreshold):
-            #     self.ActiveFilters.pop(j, default=None)
-            #     _filter = self.Filter_Class(self.Model, np.ones_like(self.ActiveFilters[0].X[0]) * np.nan,
-            #                                 *self.filter_args, **self.filter_kwargs)
-            #     J = max(self.Filters.keys()) + 1
-            #     self.ActiveFilters.update({J: _filter})
-            #     self.Filters.update({J: _filter})
-            #     gain_dict.update({k: J})
-
-            probability_gain.append(prob_gain_inner)
-
-        probability_gain = np.array(probability_gain)
+        print(probability_gain)
         x = {}
         x_err = {}
-        for j in range(N):
-            # print(probability_gain)
-            if np.all(probability_gain != probability_gain):
-                break
-            j, m = np.unravel_index(np.nanargmax(probability_gain), probability_gain.shape)
-            # print(np.linalg.norm(self.ActiveFilters[gain_dict[j]].Predicted_X[i][::2]-z[m]))
-            probability_gain[j, :] = np.nan
+        for j in range(M):
+
+            if not np.all(np.isnan(probability_gain)+np.isinf(probability_gain)):
+                k, m = np.unravel_index(np.nanargmax(probability_gain), probability_gain.shape)
+            else:
+                k, m = np.unravel_index(np.nanargmin(probability_gain), probability_gain.shape)
+
+            if probability_gain[k, m] <= self.LogProbabilityThreshold:
+                l = max(self.Filters.keys()) + 1
+                _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
+                _filter.Predicted_X.update({i: self.Model.infer_state(z[m])})
+                _filter.X.update({i: self.Model.infer_state(z[m])})
+                _filter.Measurements.update({i: z[m]})
+
+                self.ActiveFilters.update({l: _filter})
+                self.Filters.update({l: _filter})
+            else:
+                self.ActiveFilters[gain_dict[k]].update(z=z[m], i=i)
+                x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
+                x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
+            probability_gain[k, :] = np.nan
             probability_gain[:, m] = np.nan
-            self.ActiveFilters[gain_dict[j]].update(z=z[m], i=i)
-            x.update({gain_dict[j]: self.ActiveFilters[gain_dict[j]].X[i]})
-            x_err.update({gain_dict[j]: self.ActiveFilters[gain_dict[j]].X_error[i]})
+        print(probability_gain)
 
-        self.X.update({i: x})
-        self.X_error.update({i: x_err})
+        if len(self.ActiveFilters.keys()) < M:
+            raise RuntimeError('Lost Filters on the way. This should never happen')
 
+        # self.X.update({i: x})
+        # self.X_error.update({i: x_err})
         return z, i
 
     def fit(self, u, z):

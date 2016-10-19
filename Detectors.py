@@ -170,10 +170,10 @@ if __name__ == '__main__':
     import scipy.stats as ss
 
     model = VariableSpeed(2)
-    ucty = 10.26#optimal['x']
+    ucty = 10#10.26#optimal['x']
     xy_uncty = ucty
     vxvy_uncty = ucty
-    meas_uncty = 10
+    meas_uncty = 30
     X = np.zeros(4).T
     P = np.diag([ucty, ucty, ucty, ucty])
     # Q = np.diag([0., vxvy_uncty, 0, vxvy_uncty])  # Prediction uncertainty
@@ -182,7 +182,7 @@ if __name__ == '__main__':
 
     State_Dist = ss.multivariate_normal(cov=Q)
     Meas_Dist = ss.multivariate_normal(cov=R)
-    MultiKal = MultiFilter(AdvancedKalmanFilter, model, [X], np.array([vxvy_uncty, vxvy_uncty]),
+    MultiKal = MultiFilter(AdvancedKalmanFilter, model, np.array([vxvy_uncty, vxvy_uncty]),
                            np.array([meas_uncty, meas_uncty]), meas_dist=Meas_Dist, state_dist=State_Dist)
 
 
@@ -196,10 +196,12 @@ if __name__ == '__main__':
     ## plt.imshow(Image.fromarray(next(images).data))
     # plt.ion()
     ## s = 0
-    marker_type = db.setMarkerType(name="ViBe_Marker", color="#FF0000")
+    marker_type = db.setMarkerType(name="ViBe_Marker", color="#FF0000", style='{"scale":1.2}')
     db.deleteMarkers(type=marker_type)
     marker_type2 = db.setMarkerType(name="ViBe_Kalman_Marker", color="#00FF00", mode=db.TYPE_Track)
     db.deleteMarkers(type=marker_type2)
+    # marker_type3 = db.setMarkerType(name="ViBe_Kalman_Marker", color="#0000FF", mode=db.TYPE_Track)
+    # db.deleteMarkers(type=marker_type3)
 
     db.deleteTracks()
     images = db.getImageIterator()
@@ -213,27 +215,33 @@ if __name__ == '__main__':
         n = 8
         blobs = skimage.feature.blob_log(skimage.transform.downscale_local_mean(VB.SegMap, (n, n)),
                                          min_sigma=3./(n**0.5))
-        try:
-            db.setMarkers(image=image, x=blobs.T[1]*n, y=blobs.T[0]*n, type=marker_type)
-            print("Markers Saved (%s)" % blobs.shape[0])
-            print([MultiKal.Filters[k].X.values() for k in MultiKal.Filters.keys()])
-            MultiKal.update(z=blobs.T[:2].T, i=i)
-            for k in MultiKal.Filters.keys():
-                x, y = model.measure(MultiKal.Filters[k].X[i])
-                if x != np.nan and y != np.nan:
-                    try:
-                        db.setMarker(image=image, track=k, x=x,y=y)
-                    except:
-                        db.setTrack(type=marker_type2, id=k)
-                        db.setMarker(image=image, track=k, x=x, y=y)
+        db.setMarkers(image=image, x=blobs.T[1]*n, y=blobs.T[0]*n, type=marker_type)
+        print("Markers Saved (%s)" % blobs.shape[0])
+        MultiKal.update(z=np.array([blobs.T[1]*n, blobs.T[0]*n]).T, i=i)
+
+        for k in MultiKal.Filters.keys():
+            x = y = np.nan
+            if i in MultiKal.Filters[k].Measurements.keys():
+                x, y = MultiKal.Filters[k].Measurements[i]
+                prob = MultiKal.Filters[k].log_prob(keys=[i])
+            elif i in MultiKal.Filters[k].X.keys():
+                x, y = MultiKal.Filters[k].X[i]
+                prob = MultiKal.Filters[k].log_prob(keys=[i])
+            if np.isnan(x) or np.isnan(y):
+                pass
+            else:
+                try:
+                    db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text=str(prob))
+                    print('Set Track(%s)-Marker at %s, %s'%(k,x,y))
+                except:
+                    db.setTrack(marker_type2, id=k)
+                    db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text=str(prob))
+                    print('Set new Track %s and Track-Marker at %s, %s'%(k,x,y))
+
+    print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
 
 
-        except IndexError:
-            print("No Markers")
-            pass
 
-        db.setTrack()
-        db.setMarkers()
         # plt.imshow(skimage.transform.downscale_local_mean(MAP, (n, n)))
         # plt.imshow(VB.Blobs&VB.SegMap)
         # plt.savefig('./adelie_data/Tracked/Image%04d.png'%s)

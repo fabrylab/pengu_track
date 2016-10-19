@@ -47,6 +47,13 @@ class Model(object):
     def evolution_function(self, random_vector):
         return np.dot(self.Evolution_Matrix, random_vector)
 
+    def infer_state(self, meas_vector):
+        return np.dot(self.pseudo_inverse(self.Measurement_Matrix), meas_vector)
+
+    def pseudo_inverse(self, matrix):
+        matrix = np.asarray(matrix)
+        return np.dot(matrix.T, np.linalg.inv(np.dot(matrix, matrix.T)))
+
 
 class RandomWalk(Model):
     def __init__(self, state_dim):
