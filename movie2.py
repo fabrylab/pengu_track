@@ -29,10 +29,10 @@ if __name__ == '__main__':
     C = model.Measurement_Matrix
     G = model.Evolution_Matrix
 
-    ucty = 10#10.26#optimal['x']
+    ucty = 30**0.5#10.26#optimal['x']
     xy_uncty = ucty
     vxvy_uncty = ucty
-    meas_uncty = 10
+    meas_uncty = 30**0.5
     P = np.diag([ucty, ucty, ucty, ucty])  # initial uncertainty
     Q = np.diag([0., vxvy_uncty, 0, vxvy_uncty])  # Prediction uncertainty
     R = np.diag([meas_uncty, meas_uncty])  # Measurement uncertainty
@@ -47,7 +47,7 @@ if __name__ == '__main__':
     P = [P for v in V]
     # MultiKal = MultiFilter(ParticleFilter, model, X, n=1000, meas_dist=Meas_Dist, state_dist=State_Dist)
     MultiKal = MultiFilter(KalmanFilter, model, X, np.array([vxvy_uncty, vxvy_uncty]),
-                           np.array([meas_uncty,meas_uncty]), meas_dist=Meas_Dist, state_dist=State_Dist, lag=10)
+                           np.array([meas_uncty,meas_uncty]), meas_dist=Meas_Dist, state_dist=State_Dist, lag=5)
 
     maxLen = max([p.shape[0] for p in points])
 

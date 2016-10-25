@@ -1,12 +1,13 @@
 from __future__ import print_function, division
 import numpy as np
 import scipy.stats as ss
+import scipy.optimize as opt
 from timeit import default_timer as timer
 
 class Filter(object):
-    def __init__(self, model, meas_Dist=ss.uniform(), state_dist=ss.uniform()):
+    def __init__(self, model, meas_dist=ss.uniform(), state_dist=ss.uniform(), *args, **kwargs):
         self.Model = model
-        self.Measurement_Distribution = meas_Dist
+        self.Measurement_Distribution = meas_dist
         self.State_Distribution = state_dist
         
         self.X = {}
@@ -141,6 +142,8 @@ class Filter(object):
         self.Predicted_X.pop(t, None)
         self.Predicted_X_error.pop(t, None)
 
+    def analyze_model(self):
+
     def fit(self, u, z):
         '''Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
         It returns the believed values x, the corresponding probabilities p and the predictions x_tilde'''
@@ -157,6 +160,28 @@ class Filter(object):
                np.array(self.X_error.values(), dtype=float),\
                np.array(self.Predicted_X.values(), dtype=float),\
                np.array(self.Predicted_X_error.values(), dtype=float)
+
+    # def fit(self, u, z, params):
+    #     '''Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
+    #     It returns the believed values x, the corresponding probabilities p and the predictions x_tilde'''
+    #     u = np.array(u)
+    #     z = np.array(z)
+    #     assert u.shape[0] == z.shape[0]
+    #
+    #     def evaluate(*args):
+    #         self.__init__(self.Model, *args)
+    #         for i in range(z.shape[0]):
+    #             self.predict(u=u[i], i=i+1)
+    #             self.update(z=z[i], i=i+1)
+    #         return -1*self.log_prob(self.Measurements.keys())
+    #
+    #     opt.minimize(evaluate, )
+    #
+    #
+    #     return np.array(self.X.values(), dtype=float),\
+    #            np.array(self.X_error.values(), dtype=float),\
+    #            np.array(self.Predicted_X.values(), dtype=float),\
+    #            np.array(self.Predicted_X_error.values(), dtype=float)
 
 
 class KalmanFilter(Filter):
@@ -183,7 +208,7 @@ class KalmanFilter(Filter):
         self.R = np.diag(measurement_variance)
         self.R_0 = np.diag(measurement_variance)
 
-        super(KalmanFilter, self).__init__(model, meas_Dist=ss.multivariate_normal(cov=self.R),
+        super(KalmanFilter, self).__init__(model, meas_dist=ss.multivariate_normal(cov=self.R),
                                            state_dist=ss.multivariate_normal(cov=self.Q))
         self.A = self.Model.State_Matrix
         self.B = self.Model.Control_Matrix
@@ -278,7 +303,8 @@ class AdvancedKalmanFilter(KalmanFilter):
         else:
             lag = self.Lag
         self.Q = np.dot(np.dot(self.G.T, np.cov(np.asarray(self.Predicted_X.values()[lag:]).T)), self.G)
-        if np.any(np.isnan(self.Q)):
+        print("Q at %s"%self.Q)
+        if np.any(np.isnan(self.Q)):# or np.any(np.linalg.eigvals(self.Q) < np.diag(self.Q_0)):
             self.Q = self.Q_0
         # print("Q at %s"%self.Q)
         return super(AdvancedKalmanFilter, self).predict(*args, **kwargs)
@@ -287,15 +313,15 @@ class AdvancedKalmanFilter(KalmanFilter):
         dif = np.array([np.dot(self.C, np.array(self.X.get(k, None)).T).T
                         - self.Measurements[k] for k in self.Measurements.keys()])
         self.R = np.cov(dif.T)
-        if np.any(np.isnan(self.R)) or np.any(np.diag(self.R) < np.diag(self.R_0)):
+        if np.any(np.isnan(self.R)) or np.any(np.linalg.eigvals(self.R) < np.diag(self.R_0)):
             self.R = self.R_0
-        # print("R at %s"%self.R)
+        print("R at %s"%self.R)
         return super(AdvancedKalmanFilter, self).update(*args, **kwargs)
 
 
 class ParticleFilter(Filter):
     def __init__(self, model, x0=None, n=100, meas_dist=ss.uniform(), state_dist=ss.uniform()):
-        super(ParticleFilter, self).__init__(model, state_dist=state_dist, meas_Dist=meas_dist)
+        super(ParticleFilter, self).__init__(model, state_dist=state_dist, meas_dist=meas_dist)
         self.N = n
         if x0 is None:
             x0 = np.zeros(self.Model.State_dim)
@@ -372,7 +398,7 @@ class MultiFilter(Filter):
         self.Filters = {}
         self.ActiveFilters = {}
         self.FilterThreshold = 3
-        self.LogProbabilityThreshold = -200. #-1 * np.inf
+        self.LogProbabilityThreshold = -1000. #-1 * np.inf
         self.filter_args = args
         self.filter_kwargs = kwargs
 
@@ -455,11 +481,17 @@ class MultiFilter(Filter):
         for j in range(M):
 
             if not np.all(np.isnan(probability_gain)+np.isinf(probability_gain)):
+                # k = np.nanargmin(np.nanmean(probability_gain, axis=1))
+                # m = np.nanargmax(probability_gain[k])
                 k, m = np.unravel_index(np.nanargmax(probability_gain), probability_gain.shape)
             else:
                 k, m = np.unravel_index(np.nanargmin(probability_gain), probability_gain.shape)
 
-            if probability_gain[k, m] <= self.LogProbabilityThreshold:
+            if probability_gain[k, m] > self.LogProbabilityThreshold:
+                self.ActiveFilters[gain_dict[k]].update(z=z[m], i=i)
+                x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
+                x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
+            else:
                 l = max(self.Filters.keys()) + 1
                 _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
                 _filter.Predicted_X.update({i: self.Model.infer_state(z[m])})
@@ -468,10 +500,6 @@ class MultiFilter(Filter):
 
                 self.ActiveFilters.update({l: _filter})
                 self.Filters.update({l: _filter})
-            else:
-                self.ActiveFilters[gain_dict[k]].update(z=z[m], i=i)
-                x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
-                x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
             probability_gain[k, :] = np.nan
             probability_gain[:, m] = np.nan
         # print(probability_gain)

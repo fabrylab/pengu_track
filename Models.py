@@ -8,6 +8,7 @@ Created on Fri Sep 23 11:36:54 2016
 from __future__ import print_function, division
 import numpy as np
 import scipy.stats as ss
+import scipy.optimize as opt
 
 
 class Model(object):
@@ -53,6 +54,7 @@ class Model(object):
     def pseudo_inverse(self, matrix):
         matrix = np.asarray(matrix)
         return np.dot(matrix.T, np.linalg.inv(np.dot(matrix, matrix.T)))
+
 
 
 class RandomWalk(Model):

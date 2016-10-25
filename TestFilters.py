@@ -1,7 +1,7 @@
 if __name__ == '__main__':
     import numpy as np
     from Filters import ParticleFilter
-    from Filters import AdvancedKalmanFilter as KalmanFilter
+    from Filters import KalmanFilter as KalmanFilter
     from Filters import MultiFilter
     from Models import VariableSpeed
     import matplotlib.pyplot as plt

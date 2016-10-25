@@ -1,6 +1,6 @@
 import numpy as np
 from PIL import Image
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import skimage.filters as filters
 from time import time
 
@@ -22,8 +22,6 @@ class ViBeDetector(Detector):
         self.Samples = None
         if init_image is not None:
             data = np.array(init_image, ndmin=3)
-            std = data.std()
-            print(np.random.normal(data, scale=std).shape)
             self.Samples = np.tile(data, self.N).reshape(data.shape+(self.N,)).transpose((3, 0, 1, 2))
             self.Skale = np.mean(np.linalg.norm(self.Samples, axis=-1).astype(float))
         self.SegMap = None
@@ -167,16 +165,16 @@ if __name__ == '__main__':
     import skimage.measure
     import skimage.filters
     import skimage.morphology
-    from Filters import AdvancedKalmanFilter
+    from Filters import KalmanFilter
     from Filters import MultiFilter
     from Models import VariableSpeed
     import scipy.stats as ss
 
     model = VariableSpeed(2)
-    ucty = 10#10.26#optimal['x']
+    ucty = 4*30**0.5#10.26#optimal['x']
     xy_uncty = ucty
     vxvy_uncty = ucty
-    meas_uncty = 30
+    meas_uncty = 30**0.5
     X = np.zeros(4).T
     P = np.diag([ucty, ucty, ucty, ucty])
     # Q = np.diag([0., vxvy_uncty, 0, vxvy_uncty])  # Prediction uncertainty
@@ -185,11 +183,14 @@ if __name__ == '__main__':
 
     State_Dist = ss.multivariate_normal(cov=Q)
     Meas_Dist = ss.multivariate_normal(cov=R)
-    MultiKal = MultiFilter(AdvancedKalmanFilter, model, np.array([vxvy_uncty, vxvy_uncty]),
+    MultiKal = MultiFilter(KalmanFilter, model, np.array([vxvy_uncty, vxvy_uncty]),
                            np.array([meas_uncty, meas_uncty]), meas_dist=Meas_Dist, state_dist=State_Dist)
 
 
     db = clickpoints.DataFile("click2.cdb")
+
+    db2 = clickpoints.DataFile('./adelie_data/gt.cdb')
+
     images = db.getImageIterator(start_frame=30, end_frame=40)
 
     init = np.array(np.median([np.array(i.data, dtype=np.uint8) for i in images], axis=0), dtype=np.uint8)
@@ -205,6 +206,15 @@ if __name__ == '__main__':
     db.deleteMarkers(type=marker_type2)
     marker_type3 = db.setMarkerType(name="ViBe_Kalman_Marker_Predictions", color="#0000FF")
     db.deleteMarkers(type=marker_type3)
+
+
+    # db2marker_type = db2.setMarkerType(name="ViBe_Marker", color="#FF0000", style='{"scale":1.2}')
+    # db2.deleteMarkers(type=db2marker_type)
+    # db2marker_type2 = db2.setMarkerType(name="ViBe_Kalman_Marker", color="#00FF00", mode=db.TYPE_Track)
+    # db2.deleteMarkers(type=db2marker_type2)
+    # db2marker_type3 = db2.setMarkerType(name="ViBe_Kalman_Marker_Predictions", color="#0000FF")
+    # db2.deleteMarkers(type=db2marker_type3)
+
 
     db.deleteTracks()
     images = db.getImageIterator()
@@ -274,12 +284,16 @@ if __name__ == '__main__':
                     pass
                 else:
                     db.setMarker(image=image, x=pred_x, y=pred_y, text="Track %s"%k, type=marker_type3)
+                    # db2.setMarker(image=image, x=pred_x, y=pred_y, text="Track %s"%k, type=db2marker_type3)
                     try:
                         db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
+                        # db2.setMarker(image=image, type=db2marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
                         print('Set Track(%s)-Marker at %s, %s'%(k,x,y))
                     except:
                         db.setTrack(marker_type2, id=k)
+                        # db2.setTrack(db2marker_type2, id=k)
                         db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
+                        # db2.setMarker(image=image, type=db2marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
                         print('Set new Track %s and Track-Marker at %s, %s'%(k,x,y))
 
     print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
@@ -294,3 +308,23 @@ if __name__ == '__main__':
 
     print('done with ViBe')
 
+    ground_truth = []
+    for t in db2.getTracks():
+        ground_truth.append(np.array(t.points))
+
+    tracked = []
+    for t in db.getTracks():
+        tracked.append(np.array(t.points))
+
+    corrs = {}
+    corrs2 = np.zeros((len(ground_truth),len(tracked)))
+    for i, gt in enumerate(ground_truth):
+        for j, t in enumerate(tracked):
+            corr = np.zeros((2, 2))
+            corr[0, 0] = np.amax(np.correlate(gt.T[0], t.T[0])/(np.correlate(t.T[0], t.T[0])*np.correlate(gt.T[0], gt.T[0]))**0.5)
+            corr[0, 1] = np.amax(np.correlate(gt.T[0], t.T[1])/(np.correlate(t.T[1], t.T[1])*np.correlate(gt.T[0], gt.T[0]))**0.5)
+            corr[1, 0] = np.amax(np.correlate(gt.T[1], t.T[0])/(np.correlate(t.T[0], t.T[0])*np.correlate(gt.T[1], gt.T[1]))**0.5)
+            corr[1, 1] = np.amax(np.correlate(gt.T[1], t.T[1])/(np.correlate(t.T[1], t.T[1])*np.correlate(gt.T[1], gt.T[1]))**0.5)
+            corrs.update({(i, j): corr})
+            corrs2[i,j] = 0.5**0.5*(corr[0,0]**2+corr[1,1]**2)**0.5
+    print('Correlation over all %s , %s'%(np.prod(np.amax(corrs2, axis=1)), np.prod(np.amax(corrs2, axis=0))))
