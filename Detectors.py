@@ -170,7 +170,7 @@ if __name__ == '__main__':
     from Models import VariableSpeed
     import scipy.stats as ss
 
-    model = VariableSpeed(2)
+    model = VariableSpeed(1, 1, dim=2)
     ucty = 4*30**0.5#10.26#optimal['x']
     xy_uncty = ucty
     vxvy_uncty = ucty

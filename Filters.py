@@ -142,7 +142,7 @@ class Filter(object):
         self.Predicted_X.pop(t, None)
         self.Predicted_X_error.pop(t, None)
 
-    def analyze_model(self):
+    # def analyze_model(self):
 
     def fit(self, u, z):
         '''Function to auto-evaluate all measurements z with control-vectors u and starting probability p.

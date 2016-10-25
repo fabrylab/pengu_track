@@ -12,20 +12,22 @@ import scipy.optimize as opt
 
 
 class Model(object):
-    def __init__(self, state_dim, control_dim, meas_dim, evo_dim):
-            
-        self.State_dim = int(state_dim)
-        self.Control_dim = int(control_dim)
-        self.Meas_dim = int(meas_dim)
-        self.Evolution_dim = int(evo_dim)
+    def __init__(self, *args, **kwargs):
+        self.State_dim = int(kwargs.pop('state_dim', 1))
+        self.Control_dim = int(kwargs.pop('control_dim', 1))
+        self.Meas_dim = int(kwargs.pop('meas_dim', 1))
+        self.Evolution_dim = int(kwargs.pop('evo_dim', 1))
+
+        self.Initial_Args = args
+        self.Initial_KWArgs = kwargs
         
-        self.State_Matrix = np.identity(state_dim)
+        self.State_Matrix = np.identity(self.State_dim)
         
-        self.Control_Matrix = np.identity(max(state_dim, control_dim))[:state_dim, :control_dim]
+        self.Control_Matrix = np.identity(max(self.State_dim, self.Control_dim))[:self.State_dim, : self.Control_dim]
         
-        self.Measurement_Matrix = np.identity(max(state_dim, meas_dim))[:meas_dim, :state_dim]
+        self.Measurement_Matrix = np.identity(max(self.State_dim, self.Meas_dim))[: self.Meas_dim, :self.State_dim]
         
-        self.Evolution_Matrix = np.identity(max(evo_dim, state_dim))[:state_dim, :evo_dim]
+        self.Evolution_Matrix = np.identity(max(self.Evolution_dim, self.State_dim))[:self.State_dim, :self.Evolution_dim]
         
     def predict(self, state_vector, controle_vector):
         return self.state_function(state_vector) + self.control_function(controle_vector)
@@ -58,31 +60,41 @@ class Model(object):
 
 
 class RandomWalk(Model):
-    def __init__(self, state_dim):
-        super(RandomWalk, self).__init__(state_dim, 0, state_dim, state_dim)
+    def __init__(self, *args, **kwargs):
+        dim = kwargs.get('dim', default=1)
+
+        kwargs.update({'state_dim': dim,
+                       'control_dim': 0,
+                       'meas_dim': dim,
+                       'evo_dim': dim})
+
+        super(RandomWalk, self).__init__(*args, **kwargs)
 
 
 class Balistic(Model):
-    def __init__(self, dim, damping=None, mass=1., timeconst=1.):
-        super(Balistic, self).__init__(dim * 3, 0, dim, dim)
+    def __init__(self, *args, **kwargs):
+        dim = kwargs.get('dim', default=1)
+        kwargs.update({'state_dim': dim*3,
+                       'control_dim': 0,
+                       'meas_dim': dim,
+                       'evo_dim': dim})
 
-        if damping is None:
-            damping = np.zeros(dim)
-        else:
-            damping = np.array(damping)
-            if damping.shape != (long(dim),):
-                damping = np.ones(dim) * np.mean(damping)
-        self.Damping = damping
+        super(Balistic, self).__init__(*args, **kwargs)
 
-        self.Mass = mass
+        self.Damping = np.zeros(dim)
+        self.Damping[:] = kwargs.get('damping', default=0)
+        self.Mass = float(kwargs.get('mass', default=1))
+        self.Timeconst = float(kwargs.get('timeconst', default=1))
+
+        self.Opt_Params = ['damping', 'mass', 'timeconst']
 
         n = dim
         matrix = np.zeros((3 * n, 3 * n))
         matrix[::3, ::3] = np.diag(np.ones(n))
         matrix[1::3, 1::3] = np.diag(np.exp(-1 * self.Damping))
         matrix[2::3, 2::3] = np.diag(np.ones(n))
-        matrix[::3, 1::3] = np.diag(np.ones(n) * timeconst)
-        matrix[1::3, 2::3] = np.diag(np.ones(n) * timeconst / self.Mass)
+        matrix[::3, 1::3] = np.diag(np.ones(n) * self.Timeconst)
+        matrix[1::3, 2::3] = np.diag(np.ones(n) * self.Timeconst / self.Mass)
 
         meas = np.zeros((n, n * 3))
         meas[:, ::3] = np.diag(np.ones(n))
@@ -96,16 +108,19 @@ class Balistic(Model):
 
 
 class VariableSpeed(Model):
-    def __init__(self, dim, damping=None, timeconst=1.):
-        super(VariableSpeed, self).__init__(dim*2, 0, dim, dim)
+    def __init__(self, *args, **kwargs):
 
-        if damping is None:
-            damping = np.zeros(dim)
-        else:
-            damping = np.array(damping)
-            if damping.shape != (long(dim),):
-                damping = np.ones(dim) * np.mean(damping)
-        self.Damping = damping
+        dim = kwargs.get('dim', default=1)
+        kwargs.update({'state_dim': dim*2,
+                       'control_dim': 0,
+                       'meas_dim': dim,
+                       'evo_dim': dim})
+
+        super(VariableSpeed, self).__init__(*args, **kwargs)
+
+        self.Damping = np.zeros(dim)
+        self.Damping[:] = kwargs.get('damping', default=0)
+        self.Timeconst = float(kwargs.get('timeconst', default=1))
 
         n = dim
         matrix = np.zeros((2*n, 2*n))
@@ -125,17 +140,21 @@ class VariableSpeed(Model):
 
 
 class AR(Model):
-    def __init__(self, dim, order=1, coefficients=None):
-        order += 1
-        super(AR, self).__init__(dim*order, 0, dim, dim)
+    def __init__(self, *args, **kwargs):
 
-        if coefficients is None:
-            coefficients = np.ones(order)
-        else:
-            coefficients = np.array(coefficients)
-            if coefficients.shape != (long(order),):
-                coefficients = np.ones(order) * np.mean(coefficients)
-        self.Coefficients = np.array(coefficients)
+        order = kwargs.get('order', default=1)
+        order += 1
+        dim = kwargs.get('dim', default=1)
+        kwargs.update({'state_dim': dim * order,
+                       'control_dim': 0,
+                       'meas_dim': dim,
+                       'evo_dim': dim})
+
+        super(AR, self).__init__(*args, **kwargs)
+
+        self.Coefficients = np.zeros(order)
+        self.Coefficients[:] = kwargs.get('coefficients', default=0)
+        self.Order = order
         
         matrix = np.zeros((order*dim, order*dim))
         for i, c in enumerate(self.Coefficients):
@@ -156,16 +175,21 @@ class AR(Model):
 
  
 class MA(Model):
-    def __init__(self, dim, order=1, coefficients=None):
+    def __init__(self, *args, **kwargs):
+
+        order = kwargs.get('order', default=1)
         order += 1
-        super(MA, self).__init__(dim*(order+1), 0, dim, dim)
-        if coefficients is None:
-            coefficients = np.ones(order)
-        else:
-            coefficients = np.array(coefficients)
-            if coefficients.shape != (long(order),):
-                coefficients = np.ones(order) * np.mean(coefficients)
-        self.Coefficients = np.array(coefficients)
+        dim = kwargs.get('dim', default=1)
+        kwargs.update({'state_dim': dim * (order+1),
+                       'control_dim': 0,
+                       'meas_dim': dim,
+                       'evo_dim': dim})
+
+        super(MA, self).__init__(*args, **kwargs)
+
+        self.Coefficients = np.zeros(order)
+        self.Coefficients[:] = kwargs.get('coefficients', default=0)
+        self.Order = order
         
         matrix = np.zeros(((order+1)*dim, (order+1)*dim))
         
