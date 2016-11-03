@@ -142,13 +142,53 @@ class Filter(object):
         self.Predicted_X.pop(t, None)
         self.Predicted_X_error.pop(t, None)
 
-    # def analyze_model(self):
+    # def _evaluation(self, optargs, x, u):
+    #     u = np.asarray(u)
+    #     x = np.asarray(x)
+    #     assert u.shape[0] == x.shape[0]
+    #
+    #     opt_params = {}
+    #     start = 0
+    #     for k in self.Model.Opt_Params:
+    #         opt_params.update({k: optargs[start:start + np.prod(self.Model.Opt_Params_Shape[k])]})
+    #         start += np.prod(self.Model.Opt_Params_Shape[k])
+    #
+    #     self.Model.__init__(opt_params)
+    #     x_ = np.zeros_like(x[1:])
+    #     for i in range(x.shape[0] - 1):
+    #         x_[i] = self.Model.predict(u[i], x[i])
+    #     return np.mean((x[1:] - x_) ** 2) ** 0.5
+
+    # def fit_model(self, u, x):
+    #     x0 = ()
+    #     borders = ()
+    #     for k in self.Model.Opt_Params:
+    #         param = np.zeros(self.Model.Opt_Params_Shape[k])
+    #         param[:] = self.Model.Initial_KWArgs[k]
+    #         if param.shape[0] == (1,):
+    #             x0 += tuple(param)
+    #         else:
+    #             print(x0)
+    #             print(param)
+    #             x0 = x0 + tuple(map(tuple, param.ravel()))
+    #         borders += tuple(map(tuple, self.Model.Opt_Params_Borders))
+    #
+    #     x0 = np.asarray(x0)
+    #     print(x0, borders)
+    #
+    #     res = opt.minimize(self._evaluation, x0=x0, bounds=borders, args=(x, u))
+    #     opt_params = {}
+    #     start = 0
+    #     for k in self.Model.Opt_Params:
+    #         opt_params.update({k: res.x[start:start + np.prod(self.Model.Opt_Params_Shape[k])]})
+    #         start += np.prod(self.Model.Opt_Params_Shape[k])
+    #     return opt_params
 
     def fit(self, u, z):
         '''Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
         It returns the believed values x, the corresponding probabilities p and the predictions x_tilde'''
-        u = np.array(u)
-        z = np.array(z)
+        u = np.asarray(u)
+        z = np.asarray(z)
         assert u.shape[0] == z.shape[0]
 
         for i in range(z.shape[0]):
@@ -160,28 +200,6 @@ class Filter(object):
                np.array(self.X_error.values(), dtype=float),\
                np.array(self.Predicted_X.values(), dtype=float),\
                np.array(self.Predicted_X_error.values(), dtype=float)
-
-    # def fit(self, u, z, params):
-    #     '''Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
-    #     It returns the believed values x, the corresponding probabilities p and the predictions x_tilde'''
-    #     u = np.array(u)
-    #     z = np.array(z)
-    #     assert u.shape[0] == z.shape[0]
-    #
-    #     def evaluate(*args):
-    #         self.__init__(self.Model, *args)
-    #         for i in range(z.shape[0]):
-    #             self.predict(u=u[i], i=i+1)
-    #             self.update(z=z[i], i=i+1)
-    #         return -1*self.log_prob(self.Measurements.keys())
-    #
-    #     opt.minimize(evaluate, )
-    #
-    #
-    #     return np.array(self.X.values(), dtype=float),\
-    #            np.array(self.X_error.values(), dtype=float),\
-    #            np.array(self.Predicted_X.values(), dtype=float),\
-    #            np.array(self.Predicted_X_error.values(), dtype=float)
 
 
 class KalmanFilter(Filter):
@@ -320,27 +338,31 @@ class AdvancedKalmanFilter(KalmanFilter):
 
 
 class ParticleFilter(Filter):
-    def __init__(self, model, x0=None, n=100, meas_dist=ss.uniform(), state_dist=ss.uniform()):
+    def __init__(self, model, n=100, meas_dist=ss.uniform(), state_dist=ss.uniform()):
         super(ParticleFilter, self).__init__(model, state_dist=state_dist, meas_dist=meas_dist)
         self.N = n
-        if x0 is None:
-            x0 = np.zeros(self.Model.State_dim)
-        self.X0 = np.array([x0])
+        # if x0 is None:
+        #     x0 = np.zeros(self.Model.State_dim)
+        # self.X0 = np.array([x0])
 
         self.Particles = {}
         self.History = {}
         self.Weights = {}
 
-        for n in range(self.N):
-            self.Particles.update({n: self.X0[np.random.randint(0, self.X0.shape[0])]})
-            self.Weights.update({n: 1./self.N})
+        # for n in range(self.N):
+        #     self.Particles.update({n: self.X0[np.random.randint(0, self.X0.shape[0])]})
+        #     self.Weights.update({n: 1./self.N})
 
-        self.X.update({0: np.mean(self.Particles.values(), axis=0)})
-        self.Predicted_X.update({0: np.mean(self.Particles.values(), axis=0)})
-        self.X_error.update({0: np.std(self.Particles.values(), axis=0)})
-        self.Predicted_X_error.update({0: np.std(self.Particles.values(), axis=0)})
+        # for n in range(self.N):
+        #     self.Particles.update({n: self.Model.evolute(self.State_Distribution.rvs())})
+        #     self.Weights.update({n: 1./self.N})
 
-        self.Measurements.update({0: self.Model.measure(np.mean(self.X0, axis=0))})
+        # self.X.update({0: np.mean(self.Particles.values(), axis=0)})
+        # self.Predicted_X.update({0: np.mean(self.Particles.values(), axis=0)})
+        # self.X_error.update({0: np.std(self.Particles.values(), axis=0)})
+        # self.Predicted_X_error.update({0: np.std(self.Particles.values(), axis=0)})
+
+        # self.Measurements.update({0: self.Model.measure(np.mean(self.X0, axis=0))})
 
     def predict(self, u=None, i=None):
         '''Prediction part of the Particle Filtering process for one step'''
@@ -348,7 +370,7 @@ class ParticleFilter(Filter):
 
         for j in self.Particles.keys():
             mean = self.Model.predict(self.Particles[j], u)
-            self.Particles.update({j: self.State_Distribution.rvs() + mean})
+            self.Particles.update({j: self.Model.evolute(self.State_Distribution.rvs()) + mean})
 
         self.Predicted_X.update({i: np.mean(self.Particles.values(), axis=0)})
         self.Predicted_X_error.update({i: np.std(self.Particles.values(), axis=0)})
@@ -360,7 +382,7 @@ class ParticleFilter(Filter):
         '''Updating part of the Kalman Filtering process for one step'''
         z, i = super(ParticleFilter, self).update(z=z, i=i)
 
-        for j in self.Weights.keys():
+        for j in range(slef):
             self.Weights.update({j: self.Measurement_Distribution.logpdf(z-self.Model.measure(self.Particles[j]))})
         weights = self.Weights.values()
         min = np.amin(weights)
@@ -474,15 +496,14 @@ class MultiFilter(Filter):
             gain_dict.update({j: k})
             for m in range(M):
                 probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: z[m]})
-
+        with open("./LogProbFile.txt", 'wa') as myfile:
+            np.savetxt(myfile,probability_gain,fmt='%.2e',delimiter=';',newline='\n',header='Evaluation of Frame: %s'%i, footer='%s'%gain_dict)
         # print(probability_gain)
         x = {}
         x_err = {}
         for j in range(M):
 
             if not np.all(np.isnan(probability_gain)+np.isinf(probability_gain)):
-                # k = np.nanargmin(np.nanmean(probability_gain, axis=1))
-                # m = np.nanargmax(probability_gain[k])
                 k, m = np.unravel_index(np.nanargmax(probability_gain), probability_gain.shape)
             else:
                 k, m = np.unravel_index(np.nanargmin(probability_gain), probability_gain.shape)
@@ -491,7 +512,13 @@ class MultiFilter(Filter):
                 self.ActiveFilters[gain_dict[k]].update(z=z[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
+
             else:
+                try:
+                    n = len(self.ActiveFilters[gain_dict[k]].X.keys())
+                except KeyError:
+                    n = np.inf
+
                 l = max(self.Filters.keys()) + 1
                 _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
                 _filter.Predicted_X.update({i: self.Model.infer_state(z[m])})
@@ -500,6 +527,22 @@ class MultiFilter(Filter):
 
                 self.ActiveFilters.update({l: _filter})
                 self.Filters.update({l: _filter})
+                #
+                # if n > 1:
+                #     l = max(self.Filters.keys()) + 1
+                #     _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
+                #     _filter.Predicted_X.update({i: self.Model.infer_state(z[m])})
+                #     _filter.X.update({i: self.Model.infer_state(z[m])})
+                #     _filter.Measurements.update({i: z[m]})
+                #
+                #     self.ActiveFilters.update({l: _filter})
+                #     self.Filters.update({l: _filter})
+                #
+                # else:
+                #     self.ActiveFilters[gain_dict[k]].update(z=z[m], i=i)
+                #     x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
+                #     x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
+
             probability_gain[k, :] = np.nan
             probability_gain[:, m] = np.nan
         # print(probability_gain)

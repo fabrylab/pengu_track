@@ -18,6 +18,10 @@ class Model(object):
         self.Meas_dim = int(kwargs.pop('meas_dim', 1))
         self.Evolution_dim = int(kwargs.pop('evo_dim', 1))
 
+        self.Opt_Params = []
+        self.Opt_Params_Shape = {}
+        self.Opt_Params_Borders = {}
+
         self.Initial_Args = args
         self.Initial_KWArgs = kwargs
         
@@ -35,7 +39,9 @@ class Model(object):
     def measure(self, state_vector):
         return self.measurement_function(state_vector)
         
-    def evolute(self, state_vector, random_vector):
+    def evolute(self, random_vector,  state_vector=None):
+        if state_vector is None:
+            state_vector = np.zeros(self.State_dim)
         return state_vector + self.evolution_function(random_vector)
 
     def state_function(self, state_vector):
@@ -58,10 +64,9 @@ class Model(object):
         return np.dot(matrix.T, np.linalg.inv(np.dot(matrix, matrix.T)))
 
 
-
 class RandomWalk(Model):
     def __init__(self, *args, **kwargs):
-        dim = kwargs.get('dim', default=1)
+        dim = kwargs.get('dim', 1)
 
         kwargs.update({'state_dim': dim,
                        'control_dim': 0,
@@ -70,10 +75,13 @@ class RandomWalk(Model):
 
         super(RandomWalk, self).__init__(*args, **kwargs)
 
+        self.Opt_Params = []
+        self.Opt_Params_Shape = {}
+        self.Opt_Params_Borders = {}
 
 class Balistic(Model):
     def __init__(self, *args, **kwargs):
-        dim = kwargs.get('dim', default=1)
+        dim = kwargs.get('dim', 1)
         kwargs.update({'state_dim': dim*3,
                        'control_dim': 0,
                        'meas_dim': dim,
@@ -82,11 +90,13 @@ class Balistic(Model):
         super(Balistic, self).__init__(*args, **kwargs)
 
         self.Damping = np.zeros(dim)
-        self.Damping[:] = kwargs.get('damping', default=0)
-        self.Mass = float(kwargs.get('mass', default=1))
-        self.Timeconst = float(kwargs.get('timeconst', default=1))
+        self.Damping[:] = kwargs.get('damping', 0)
+        self.Mass = float(kwargs.get('mass', 1))
+        self.Timeconst = float(kwargs.get('timeconst', 1))
 
         self.Opt_Params = ['damping', 'mass', 'timeconst']
+        self.Opt_Params_Shape = {'damping': (dim,), 'mass':(1,), 'timeconst':(1,)}
+        self.Opt_Params_Borders = {'damping': (0, np.inf), 'mass': (0, np.inf), 'timeconst': (0, np.inf)}
 
         n = dim
         matrix = np.zeros((3 * n, 3 * n))
@@ -110,23 +120,28 @@ class Balistic(Model):
 class VariableSpeed(Model):
     def __init__(self, *args, **kwargs):
 
-        dim = kwargs.get('dim', default=1)
+        dim = kwargs.get('dim', 1)
         kwargs.update({'state_dim': dim*2,
                        'control_dim': 0,
                        'meas_dim': dim,
                        'evo_dim': dim})
 
+        self.Damping = np.zeros(dim)
+        self.Damping[:] = kwargs.get('damping', 0)
+        kwargs.update({'damping': self.Damping})
+        self.Timeconst = float(kwargs.get('timeconst', 1))
+        kwargs.update({'timeconst': self.Timeconst})
+
         super(VariableSpeed, self).__init__(*args, **kwargs)
 
-        self.Damping = np.zeros(dim)
-        self.Damping[:] = kwargs.get('damping', default=0)
-        self.Timeconst = float(kwargs.get('timeconst', default=1))
-
+        self.Opt_Params = ['damping', 'timeconst']
+        self.Opt_Params_Shape = {'damping': (dim,), 'timeconst':(1,)}
+        self.Opt_Params_Borders = {'damping': (0, np.inf), 'timeconst': (0, np.inf)}
         n = dim
         matrix = np.zeros((2*n, 2*n))
         matrix[::2, ::2] = np.diag(np.ones(n))
         matrix[1::2, 1::2] = np.diag(np.exp(-1*self.Damping))
-        matrix[::2, 1::2] = np.diag(np.ones(n)*timeconst)
+        matrix[::2, 1::2] = np.diag(np.ones(n)*self.Timeconst)
 
         meas = np.zeros((n, n*2))
         meas[:, ::2] = np.diag(np.ones(n))
@@ -142,9 +157,9 @@ class VariableSpeed(Model):
 class AR(Model):
     def __init__(self, *args, **kwargs):
 
-        order = kwargs.get('order', default=1)
+        order = kwargs.get('order', 1)
         order += 1
-        dim = kwargs.get('dim', default=1)
+        dim = kwargs.get('dim', 1)
         kwargs.update({'state_dim': dim * order,
                        'control_dim': 0,
                        'meas_dim': dim,
@@ -153,8 +168,12 @@ class AR(Model):
         super(AR, self).__init__(*args, **kwargs)
 
         self.Coefficients = np.zeros(order)
-        self.Coefficients[:] = kwargs.get('coefficients', default=0)
+        self.Coefficients[:] = kwargs.get('coefficients', 0)
         self.Order = order
+
+        self.Opt_Params = ['coefficients']
+        self.Opt_Params_Shape = {'coefficients': (order,)}
+        self.Opt_Params_Borders = {'coefficients': (-np.inf, np.inf)}
         
         matrix = np.zeros((order*dim, order*dim))
         for i, c in enumerate(self.Coefficients):
@@ -177,9 +196,9 @@ class AR(Model):
 class MA(Model):
     def __init__(self, *args, **kwargs):
 
-        order = kwargs.get('order', default=1)
+        order = kwargs.get('order', 1)
         order += 1
-        dim = kwargs.get('dim', default=1)
+        dim = kwargs.get('dim', 1)
         kwargs.update({'state_dim': dim * (order+1),
                        'control_dim': 0,
                        'meas_dim': dim,
@@ -188,8 +207,12 @@ class MA(Model):
         super(MA, self).__init__(*args, **kwargs)
 
         self.Coefficients = np.zeros(order)
-        self.Coefficients[:] = kwargs.get('coefficients', default=0)
+        self.Coefficients[:] = kwargs.get('coefficients', 0)
         self.Order = order
+
+        self.Opt_Params = ['coefficients']
+        self.Opt_Params_Shape = {'coefficients': (order,)}
+        self.Opt_Params_Borders = {'coefficients': (-np.inf, np.inf)}
         
         matrix = np.zeros(((order+1)*dim, (order+1)*dim))
         
@@ -214,4 +237,3 @@ class MA(Model):
         self.State_Matrix = matrix
         self.Measurement_Matrix = meas
         self.Evolution_Matrix = evo
-
