@@ -6,11 +6,13 @@ if __name__ == '__main__':
     import scipy.stats as ss
     import numpy as np
 
+    penguin_size = 10
+
     model = VariableSpeed(1, 1, dim=2)
-    ucty = 4*30**0.5#10.26#optimal['x']
+    ucty = 4*penguin_size/0.5#10.26#optimal['x']
     xy_uncty = ucty
     vxvy_uncty = ucty
-    meas_uncty = 30**0.5
+    meas_uncty = penguin_size/0.5
     X = np.zeros(4).T
     P = np.diag([ucty, ucty, ucty, ucty])
     # Q = np.diag([0., vxvy_uncty, 0, vxvy_uncty])  # Prediction uncertainty
@@ -21,7 +23,6 @@ if __name__ == '__main__':
     Meas_Dist = ss.multivariate_normal(cov=R)
     MultiKal = MultiFilter(KalmanFilter, model, np.array([vxvy_uncty, vxvy_uncty]),
                            np.array([meas_uncty, meas_uncty]), meas_dist=Meas_Dist, state_dist=State_Dist)
-    # MultiKal = MultiFilter(KalmanFilter, model, n=100, meas_dist=Meas_Dist, state_dist=State_Dist)
 
     db = clickpoints.DataFile('./adelie_data/gt.cdb')
 
@@ -38,7 +39,7 @@ if __name__ == '__main__':
         i = image.get_id()
         MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
         blobs = np.asarray([[m.y, m.x] for m in db.getMarkers(image=image)])
-        print(blobs)
+        # print(blobs)
         n = 1
         if blobs.shape[0] > 0:
             db.setMarkers(image=image, x=blobs.T[1]*n, y=blobs.T[0]*n, type=marker_type)

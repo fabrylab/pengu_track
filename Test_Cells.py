@@ -21,8 +21,8 @@ if __name__ == '__main__':
     import skimage.filters as filters
     # import matplotlib.pyplot as plt
 
-    penguin_size = 5
-    n_penguins = 50
+    penguin_size = 7
+    n_penguins = 125
 
     model = VariableSpeed(1, 1, dim=2, timeconst=0.5)
     ucty = 4*penguin_size/0.5#10.26#optimal['x']
@@ -41,7 +41,7 @@ if __name__ == '__main__':
                            np.array([meas_uncty, meas_uncty]), meas_dist=Meas_Dist, state_dist=State_Dist)
 
 
-    db = clickpoints.DataFile("click3.cdb")
+    db = clickpoints.DataFile("click5.cdb")
 
     # db2 = clickpoints.DataFile('./adelie_data/gt.cdb')
 
@@ -54,8 +54,8 @@ if __name__ == '__main__':
     init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int) for j in J], axis=0), dtype=np.int)
     plt.imshow(init)
     plt.savefig("./init.png")
-    VB = ViBeSegmentation(init_image=init, n_min=15, r=20, phi=1)
-    # MG = MoGSegmentation(init_image=init, k=3)
+    VB = ViBeSegmentation(init_image=init, n_min=15, r=15, phi=1)
+    MG = MoGSegmentation(init_image=init, k=5)
 
     BD = BlobDetector(penguin_size, n_penguins)
     AD = AreaDetector(penguin_size, n_penguins)
@@ -72,32 +72,26 @@ if __name__ == '__main__':
     db.deleteTracks()
     images = db.getImageIterator()
 
-    import skimage.morphology as morph
-
     print('Starting Iteration')
     for image in images:
         i = image.get_id()
         MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
-
         # blobs = VB.detect(filters.gaussian(image.data, 5, multichannel=True))
         SegMap = VB.detect(image.data)
         # SegMap = MG.detect(image.data)
-
         selem = np.ones((3, 3))
         # SegMap = morph.binary_opening(SegMap, selem=selem)
         # SegMap = morph.binary_opening(SegMap, selem=morph.disk(int(penguin_size*0.9)))
-        # SegMap = morph.binary_closing(SegMap, selem=morph.disk(penguin_size))
-        if image.get_id() > 20:
-            blobs = BD.detect(SegMap)
-        else:
-            blobs = []
+        # SegMap = morph.binary_closing(SegMap, selem=morph.disk(penguin_size//2))
+        blobs = BD.detect(SegMap)
+        # print(blobs)
         blobs = np.array(blobs, ndmin=2)
         db.setMask(image=image, data=(SegMap ^ True).astype(np.uint8))
         print("Mask save")
         n = 1
         if blobs != np.array([]):
             for l in range(blobs.shape[0]):
-                db.setMarker(image=image, x=blobs[l][1]*n, y=blobs[l][0]*n, type=marker_type)#, text=str(180/np.pi*np.arctan2(axes[l][0], axes[l][1])))
+                db.setMarker(image=image, x=blobs[l] [1]*n, y=blobs[l][0]*n, type=marker_type)#, text=str(180/np.pi*np.arctan2(axes[l][0], axes[l][1])))
             print("Markers Saved (%s)" % blobs.shape[0])
             MultiKal.update(z=np.array([blobs.T[1]*n, blobs.T[0]*n]).T, i=i)
 

@@ -496,7 +496,7 @@ class MultiFilter(Filter):
             gain_dict.update({j: k})
             for m in range(M):
                 probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: z[m]})
-        with open("./LogProbFile.txt", 'wa') as myfile:
+        with open("./LogProbFile.txt", 'a') as myfile:
             np.savetxt(myfile,probability_gain,fmt='%.2e',delimiter=';',newline='\n',header='Evaluation of Frame: %s'%i, footer='%s'%gain_dict)
         # print(probability_gain)
         x = {}

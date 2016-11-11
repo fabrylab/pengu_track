@@ -1,5 +1,3 @@
-# Evaluation of Frame: 8
--4.84e+00;-inf;-inf
--inf;-4.85e+00;-2.87e+02
--inf;-2.89e+02;-4.84e+00
-# {0: 0, 1: 1, 2: 3}
+version https://git-lfs.github.com/spec/v1
+oid sha256:a3206836c2f623043ffbfa950bff7d02918798195d615eb09de49b909e5602bb
+size 280202512
