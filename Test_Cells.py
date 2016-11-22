@@ -5,14 +5,14 @@ if __name__ == '__main__':
     # pr.enable()
 
     import clickpoints
-    from Filters import KalmanFilter
-    from Filters import MultiFilter
-    from Models import VariableSpeed
-    from Detectors import ViBeSegmentation
-    from Detectors import MoGSegmentation
-    from Detectors import BlobDetector
-    from Detectors import AreaDetector
-    from Detectors import WatershedDetector
+    from PenguTrack.Filters import KalmanFilter
+    from PenguTrack.Filters import MultiFilter
+    from PenguTrack.Models import VariableSpeed
+    from PenguTrack.Detectors import ViBeSegmentation
+    from PenguTrack.Detectors import MoGSegmentation
+    from PenguTrack.Detectors import BlobDetector
+    from PenguTrack.Detectors import AreaDetector
+    from PenguTrack.Detectors import WatershedDetector
     import scipy.stats as ss
     import numpy as np
     import matplotlib as mpl
@@ -41,7 +41,7 @@ if __name__ == '__main__':
                            np.array([meas_uncty, meas_uncty]), meas_dist=Meas_Dist, state_dist=State_Dist)
 
 
-    db = clickpoints.DataFile("click5.cdb")
+    db = clickpoints.DataFile("./Databases/click5.cdb")
 
     # db2 = clickpoints.DataFile('./adelie_data/gt.cdb')
 

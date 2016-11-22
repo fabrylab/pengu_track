@@ -28,7 +28,7 @@ class BlobDetector(Detector):
         self.ObjectNumber = int(object_number)
         self.Threshold = threshold
 
-    def detect(self, image):
+    def detect(self, image, return_regions=False):
         image = np.array(image, dtype=int)
         while len(image.shape) > 2:
             image = np.linalg.norm(image, axis=-1)
@@ -49,7 +49,9 @@ class BlobDetector(Detector):
                         skimage.filters.laplace(
                             skimage.filters.gaussian(image.astype(np.uint8), self.ObjectSize)) > self.Threshold
                         ))
-        if len(regions) > 0:
+        if return_regions:
+            return regions
+        elif len(regions) > 0:
             return np.array([[props.centroid[0], props.centroid[1], props.area] for props in regions], ndmin=2)
         else:
             return []

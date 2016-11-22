@@ -5,14 +5,14 @@ if __name__ == '__main__':
     # pr.enable()
 
     import clickpoints
-    from Filters import KalmanFilter
-    from Filters import MultiFilter
-    from Models import VariableSpeed
-    from Detectors import ViBeSegmentation
-    from Detectors import MoGSegmentation
-    from Detectors import BlobDetector
-    from Detectors import AreaDetector
-    from Detectors import WatershedDetector
+    from PenguTrack.Filters import KalmanFilter
+    from PenguTrack.Filters import MultiFilter
+    from PenguTrack.Models import VariableSpeed
+    from PenguTrack.Detectors import ViBeSegmentation
+    from PenguTrack.Detectors import MoGSegmentation
+    from PenguTrack.Detectors import BlobDetector
+    from PenguTrack.Detectors import AreaDetector
+    from PenguTrack.Detectors import WatershedDetector
     import scipy.stats as ss
     import numpy as np
     import matplotlib as mpl
@@ -21,8 +21,8 @@ if __name__ == '__main__':
     import skimage.filters as filters
     # import matplotlib.pyplot as plt
 
-    penguin_size = 5
-    n_penguins = 50
+    penguin_size = 100
+    n_penguins = 30
 
     model = VariableSpeed(1, 1, dim=2, timeconst=0.5)
     ucty = 4*penguin_size/0.5#10.26#optimal['x']
@@ -41,7 +41,7 @@ if __name__ == '__main__':
                            np.array([meas_uncty, meas_uncty]), meas_dist=Meas_Dist, state_dist=State_Dist)
 
 
-    db = clickpoints.DataFile("click3.cdb")
+    db = clickpoints.DataFile("./Databases/click_people.cdb")
 
     # db2 = clickpoints.DataFile('./adelie_data/gt.cdb')
 
@@ -54,7 +54,11 @@ if __name__ == '__main__':
     init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int) for j in J], axis=0), dtype=np.int)
     plt.imshow(init)
     plt.savefig("./init.png")
-    VB = ViBeSegmentation(init_image=init, n_min=15, r=20, phi=1)
+    VB = ViBeSegmentation(init_image=init, n_min=15, r=15, phi=1)
+    images = db.getImageIterator(start_frame=0, end_frame=20)
+    for img in images:
+        SegMap = VB.detect(img.data)
+        print("Done")
     # MG = MoGSegmentation(init_image=init, k=3)
 
     BD = BlobDetector(penguin_size, n_penguins)
@@ -87,10 +91,7 @@ if __name__ == '__main__':
         # SegMap = morph.binary_opening(SegMap, selem=selem)
         # SegMap = morph.binary_opening(SegMap, selem=morph.disk(int(penguin_size*0.9)))
         # SegMap = morph.binary_closing(SegMap, selem=morph.disk(penguin_size))
-        if image.get_id() > 20:
-            blobs = BD.detect(SegMap)
-        else:
-            blobs = []
+        blobs = WD.detect(SegMap)
         blobs = np.array(blobs, ndmin=2)
         db.setMask(image=image, data=(SegMap ^ True).astype(np.uint8))
         print("Mask save")
