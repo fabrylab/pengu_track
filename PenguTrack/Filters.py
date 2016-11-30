@@ -1,11 +1,40 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# Detectors.py
+
+# Copyright (c) 2016, Red Hulk Productions
+#
+# This file is part of PenguTrack
+#
+# PenguTrack is beer software: you can serve it and/or drink
+# it under the terms of the Book of Revelation as published by
+# the evangelist John, either version 3 of the Book, or
+# (at your option) any later version.
+#
+# PenguTrack is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. It may cause
+# penguins to explode. It may also cause further harm on coworkers,
+# advisors or even lab equipment. See the Book of Revelation for
+# more details.
+#
+# You should have received a copy of the Book of Revelation
+# along with PenguTrack. If not, see <http://trumpdonald.org/>
+
+"""
+Module containing filter classes to be used with pengu-track detectors and models.
+"""
+
 from __future__ import print_function, division
 import numpy as np
 import scipy.stats as ss
 import scipy.optimize as opt
 from timeit import default_timer as timer
 
+
 class Filter(object):
     def __init__(self, model, meas_dist=ss.uniform(), state_dist=ss.uniform(), *args, **kwargs):
+
         self.Model = model
         self.Measurement_Distribution = meas_dist
         self.State_Distribution = state_dist

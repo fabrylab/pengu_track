@@ -4,6 +4,11 @@ if __name__ == '__main__':
     # pr = cProfile.Profile()
     # pr.enable()
 
+    import resource
+
+    resource.setrlimit(resource.RLIMIT_AS, (12L*1024L * 1048576L, -1L))
+
+    import sys
     import clickpoints
     from PenguTrack.Filters import KalmanFilter
     from PenguTrack.Filters import MultiFilter
@@ -16,21 +21,24 @@ if __name__ == '__main__':
     import scipy.stats as ss
     import numpy as np
     import matplotlib as mpl
+
     mpl.use('AGG')
     import matplotlib.pyplot as plt
     import skimage.filters as filters
+
     # import matplotlib.pyplot as plt
 
-    penguin_size = 7
-    n_penguins = 125
+    penguin_size = 4
+    n_penguins = 60
 
     model = VariableSpeed(1, 1, dim=2, timeconst=0.5)
-    ucty = 4*penguin_size/0.5#10.26#optimal['x']
+    ucty = 4 * penguin_size / 0.5  # 10.26#optimal['x']
     xy_uncty = ucty
     vxvy_uncty = ucty
-    meas_uncty = penguin_size/0.5
+    meas_uncty = penguin_size / 0.5
     X = np.zeros(4).T
     P = np.diag([ucty, ucty, ucty, ucty])
+    # Q = np.diag([0., vxvy_uncty, 0, vxvy_uncty])  # Prediction uncertainty
     Q = np.diag([vxvy_uncty, vxvy_uncty])  # Prediction uncertainty
     R = np.diag([meas_uncty, meas_uncty])  # Measurement uncertainty
 
@@ -39,22 +47,25 @@ if __name__ == '__main__':
     MultiKal = MultiFilter(KalmanFilter, model, np.array([vxvy_uncty, vxvy_uncty]),
                            np.array([meas_uncty, meas_uncty]), meas_dist=Meas_Dist, state_dist=State_Dist)
 
-
-    db = clickpoints.DataFile("./Databases/click5.cdb")
+    db = clickpoints.DataFile(str(sys.argv[1]))
 
     # db2 = clickpoints.DataFile('./adelie_data/gt.cdb')
 
-    images = db.getImageIterator()#start_frame=30, end_frame=40)
+    images = db.getImageIterator()  # start_frame=30, end_frame=40)
 
     N = db.getImages().count()
-    J = np.random.randint(0, N, 20)
+    J = np.random.randint(0, N, 5)
     # J = np.random.randint(3, 20, 20)
 
     init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int) for j in J], axis=0), dtype=np.int)
     plt.imshow(init)
     plt.savefig("./init.png")
-    VB = ViBeSegmentation(init_image=init, n_min=15, r=15, phi=1)
-    MG = MoGSegmentation(init_image=init, k=5)
+    VB = ViBeSegmentation(init_image=init, n_min=15, r=15, phi=1, n=16)
+    images = db.getImageIterator(start_frame=0, end_frame=10)
+    for j in np.arange(10)[::-1]:
+        SegMap = VB.detect(db.getImage(frame=j).data, doNeighbours=False)
+        print("Done")
+    # MG = MoGSegmentation(init_image=init, k=3)
 
     BD = BlobDetector(penguin_size, n_penguins)
     AD = AreaDetector(penguin_size, n_penguins)
@@ -68,31 +79,35 @@ if __name__ == '__main__':
     marker_type3 = db.setMarkerType(name="ViBe_Kalman_Marker_Predictions", color="#0000FF")
     db.deleteMarkers(type=marker_type3)
 
-    db.deleteTracks()
+    # db.deleteTracks()
     images = db.getImageIterator()
+
+    import skimage.morphology as morph
 
     print('Starting Iteration')
     for image in images:
         i = image.get_id()
         MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
+
         # blobs = VB.detect(filters.gaussian(image.data, 5, multichannel=True))
         SegMap = VB.detect(image.data)
         # SegMap = MG.detect(image.data)
+
         selem = np.ones((3, 3))
         # SegMap = morph.binary_opening(SegMap, selem=selem)
         # SegMap = morph.binary_opening(SegMap, selem=morph.disk(int(penguin_size*0.9)))
-        # SegMap = morph.binary_closing(SegMap, selem=morph.disk(penguin_size//2))
+        # SegMap = morph.binary_closing(SegMap, selem=morph.disk(penguin_size))
         blobs = BD.detect(SegMap)
-        # print(blobs)
         blobs = np.array(blobs, ndmin=2)
         db.setMask(image=image, data=(SegMap ^ True).astype(np.uint8))
         print("Mask save")
         n = 1
         if blobs != np.array([]):
             for l in range(blobs.shape[0]):
-                db.setMarker(image=image, x=blobs[l] [1]*n, y=blobs[l][0]*n, type=marker_type)#, text=str(180/np.pi*np.arctan2(axes[l][0], axes[l][1])))
+                db.setMarker(image=image, x=blobs[l][1] * n, y=blobs[l][0] * n,
+                             type=marker_type)  # , text=str(180/np.pi*np.arctan2(axes[l][0], axes[l][1])))
             print("Markers Saved (%s)" % blobs.shape[0])
-            MultiKal.update(z=np.array([blobs.T[1]*n, blobs.T[0]*n]).T, i=i)
+            MultiKal.update(z=np.array([blobs.T[1] * n, blobs.T[0] * n]).T, i=i)
 
             for k in MultiKal.Filters.keys():
                 x = y = np.nan
@@ -110,14 +125,16 @@ if __name__ == '__main__':
                 if np.isnan(x) or np.isnan(y):
                     pass
                 else:
-                    db.setMarker(image=image, x=pred_x, y=pred_y, text="Track %s"%k, type=marker_type3)
+                    db.setMarker(image=image, x=pred_x, y=pred_y, text="Track %s" % k, type=marker_type3)
                     try:
-                        db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
-                        print('Set Track(%s)-Marker at %s, %s'%(k,x,y))
+                        db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y,
+                                     text='Track %s, Prob %.2f' % (k, prob))
+                        print('Set Track(%s)-Marker at %s, %s' % (k, x, y))
                     except:
                         db.setTrack(marker_type2, id=k)
-                        db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
-                        print('Set new Track %s and Track-Marker at %s, %s'%(k, x, y))
+                        db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y,
+                                     text='Track %s, Prob %.2f' % (k, prob))
+                        print('Set new Track %s and Track-Marker at %s, %s' % (k, x, y))
 
         print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
 

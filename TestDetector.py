@@ -21,8 +21,8 @@ if __name__ == '__main__':
     import skimage.filters as filters
     # import matplotlib.pyplot as plt
 
-    penguin_size = 100
-    n_penguins = 30
+    penguin_size = 8
+    n_penguins = 2
 
     model = VariableSpeed(1, 1, dim=2, timeconst=0.5)
     ucty = 4*penguin_size/0.5#10.26#optimal['x']
@@ -41,7 +41,7 @@ if __name__ == '__main__':
                            np.array([meas_uncty, meas_uncty]), meas_dist=Meas_Dist, state_dist=State_Dist)
 
 
-    db = clickpoints.DataFile("./Databases/click_people.cdb")
+    db = clickpoints.DataFile("./Databases/click2.cdb")
 
     # db2 = clickpoints.DataFile('./adelie_data/gt.cdb')
 
@@ -55,16 +55,19 @@ if __name__ == '__main__':
     plt.imshow(init)
     plt.savefig("./init.png")
     VB = ViBeSegmentation(init_image=init, n_min=15, r=15, phi=1)
-    images = db.getImageIterator(start_frame=0, end_frame=20)
-    for img in images:
-        SegMap = VB.detect(img.data)
+    # images = db.getImageIterator(start_frame=0, end_frame=20)
+    for j in np.arange(20)[::-1]:
+        SegMap = VB.detect(db.getImage(frame=j).data)
         print("Done")
     # MG = MoGSegmentation(init_image=init, k=3)
-
     BD = BlobDetector(penguin_size, n_penguins)
     AD = AreaDetector(penguin_size, n_penguins)
     WD = WatershedDetector(penguin_size, n_penguins)
     print('Initialized')
+
+    from PenguTrack.Detectors import AreaBlobDetector
+    ABD = AreaBlobDetector()
+    ABD.detect()
 
     marker_type = db.setMarkerType(name="ViBe_Marker", color="#FF0000", style='{"scale":1.2}')
     db.deleteMarkers(type=marker_type)
@@ -73,7 +76,7 @@ if __name__ == '__main__':
     marker_type3 = db.setMarkerType(name="ViBe_Kalman_Marker_Predictions", color="#0000FF")
     db.deleteMarkers(type=marker_type3)
 
-    db.deleteTracks()
+    # db.deleteTracks()
     images = db.getImageIterator()
 
     import skimage.morphology as morph
@@ -87,11 +90,11 @@ if __name__ == '__main__':
         SegMap = VB.detect(image.data)
         # SegMap = MG.detect(image.data)
 
-        selem = np.ones((3, 3))
+        # selem = np.ones((2, 2))
         # SegMap = morph.binary_opening(SegMap, selem=selem)
         # SegMap = morph.binary_opening(SegMap, selem=morph.disk(int(penguin_size*0.9)))
         # SegMap = morph.binary_closing(SegMap, selem=morph.disk(penguin_size))
-        blobs = WD.detect(SegMap)
+        blobs = BD.detect(SegMap)
         blobs = np.array(blobs, ndmin=2)
         db.setMask(image=image, data=(SegMap ^ True).astype(np.uint8))
         print("Mask save")
