@@ -73,7 +73,7 @@ class BlobDetector(Detector):
         super(BlobDetector, self).__init__()
         self.ObjectSize = int(object_size)
         self.ObjectNumber = int(object_number)
-        self.Threshold = float(threshold)
+        self.Threshold = threshold
 
     def detect(self, image, return_regions=False):
         """
@@ -269,7 +269,8 @@ class WatershedDetector(Detector):
 
 class Segmentation(object):
     """
-    Base-class describing segmentation functions. Only meant for subclassing.
+    This Class describes the abstract function of a image-segmentation-algorithm in the pengu-track package.
+    It is only meant for subclassing.
     """
     def __init__(self):
         super(Segmentation, self).__init__()

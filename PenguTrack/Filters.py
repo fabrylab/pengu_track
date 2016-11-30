@@ -29,12 +29,48 @@ from __future__ import print_function, division
 import numpy as np
 import scipy.stats as ss
 import scipy.optimize as opt
-from timeit import default_timer as timer
-
 
 class Filter(object):
-    def __init__(self, model, meas_dist=ss.uniform(), state_dist=ss.uniform(), *args, **kwargs):
+    """
+    This Class describes the abstract function of a filter in the pengu-track package.
+    It is only meant for subclassing.
 
+    Attributes
+    ----------
+    Model: PenguTrack.model object
+        A physical model to gain predictions from data.
+    Measurement_Distribution: scipy.stats.distributions object
+        The distribution which describes measurement uncertainty.
+    State_Distribution: scipy.stats.distributions object
+        The distribution which describes state vector fluctuations.
+    X: dict
+        The time series of believes calculated for this filter. The keys equal the time stamp.
+    X_error: dict
+        The time series of errors on the corresponding believes. The keys equal the time stamp.
+    Predicted_X: dict
+        The time series of predictions made from the associated data. The keys equal the time stamp.
+    Predicted_X_error: dict
+        The time series of estimated prediction errors. The keys equal the time stamp.
+    Measurements: dict
+        The time series of measurements assigned to this filter. The keys equal the time stamp.
+    Controls: dict
+        The time series of control-vectors assigned to this filter. The keys equal the time stamp.
+
+    """
+    def __init__(self, model, meas_dist=ss.uniform(), state_dist=ss.uniform()):
+        """
+        This Class describes the abstract function of a filter in the pengu-track package.
+        It is only meant for subclassing.
+
+        Parameters
+        ----------
+        model: PenguTrack.model object
+            A physical model to gain predictions from data.
+        meas_dist: scipy.stats.distributions object
+            The distribution which describes measurement uncertainty.
+        state_dist: scipy.stats.distributions object
+            The distribution which describes state vector fluctuations.
+        """
         self.Model = model
         self.Measurement_Distribution = meas_dist
         self.State_Distribution = state_dist
@@ -48,6 +84,23 @@ class Filter(object):
         self.Controls = {}
 
     def predict(self, u=None, i=None):
+        """
+        Function to get predictions from the corresponding model. Handles time-stamps and control-vectors.
+
+        Parameters
+        ----------
+        u: array_like, optional
+            Recent control-vector.
+        i: int
+            Recent/corresponding time-stamp
+
+        Returns
+        ----------
+        u: array_like
+            Recent control-vector.
+        i: int
+            Recent/corresponding time-stamp.
+        """
         # Generate i
         if i is None:
             i = max(self.Predicted_X.keys())+1
@@ -81,6 +134,23 @@ class Filter(object):
         return u, i
         
     def update(self, z=None, i=None):
+        """
+        Function to get updates to the corresponding model. Handles time-stamps and measurement-vectors.
+
+        Parameters
+        ----------
+        z: array_like, optional
+            Recent measurement-vector.
+        i: int
+            Recent/corresponding time-stamp
+
+        Returns
+        ----------
+        z: array_like
+            Recent measurement-vector.
+        i: int
+            Recent/corresponding time-stamp.
+        """
         # Generate i
         if i is None:
             i = max(self.Measurements.keys())+1
@@ -97,11 +167,47 @@ class Filter(object):
         return z, i
 
     def filter(self, u=None, z=None, i=None):
+        """
+        Function to get predictions from the model and update the same timestep i.
+
+        Parameters
+        ----------
+        u: array_like, optional
+            Recent control-vector.
+        z: array_like, optional
+            Recent measurement-vector.
+        i: int
+            Recent/corresponding time-stamp
+
+        Returns
+        ----------
+        u: array_like, optional
+            Recent control-vector.
+        z: array_like
+            Recent measurement-vector.
+        i: int
+            Recent/corresponding time-stamp.
+        """
         self.predict(u=u, i=i)
         x = self.update(z=z, i=i)
         return x
     
     def log_prob(self, keys=None, measurements=None):
+        """
+        Function to calculate the probability measure by predictions, measurements and corresponding distributions.
+
+        Parameters
+        ----------
+        keys: list of int, optional
+            Time-steps for which probability should be calculated.
+        measurements: dict, optional
+            Measurements for which probability should be calculated.
+
+        Returns
+        ----------
+        probs : float
+            Probability of measurements at the given time-keys.
+        """
         probs = 0
         if keys is None:
             keys = self.Measurements.keys()
@@ -137,6 +243,14 @@ class Filter(object):
         return probs
 
     def downfilter(self, t=None):
+        """
+        Function erases the timestep t from the class dictionaries (Measurement, X, Preditcion)
+
+        Parameters
+        ----------
+        t: int, optional
+            Time-steps for which filtering should be erased.
+        """
         # Generate t
         if t is None:
             t = max([max(self.X.keys()),
@@ -152,6 +266,15 @@ class Filter(object):
         self.Predicted_X_error.pop(t, None)
 
     def downdate(self, t=None):
+        """
+        Function erases the time-step t from the Measurements and Believes.
+
+        Parameters
+        ----------
+        t: int, optional
+            Time-steps for which filtering should be erased.
+        """
+
         # Generate t
         if t is None:
             t = max(self.X.keys())
@@ -161,6 +284,14 @@ class Filter(object):
         self.Measurements.pop(t, None)
 
     def unpredict(self, t=None):
+        """
+        Function erases the time-step t from the Believes, Predictions and Controls.
+
+        Parameters
+        ----------
+        t: int, optional
+            Time-steps for which filtering should be erased.
+        """
         # Generate t
         if t is None:
             t = max(self.Predicted_X.keys())
@@ -171,51 +302,18 @@ class Filter(object):
         self.Predicted_X.pop(t, None)
         self.Predicted_X_error.pop(t, None)
 
-    # def _evaluation(self, optargs, x, u):
-    #     u = np.asarray(u)
-    #     x = np.asarray(x)
-    #     assert u.shape[0] == x.shape[0]
-    #
-    #     opt_params = {}
-    #     start = 0
-    #     for k in self.Model.Opt_Params:
-    #         opt_params.update({k: optargs[start:start + np.prod(self.Model.Opt_Params_Shape[k])]})
-    #         start += np.prod(self.Model.Opt_Params_Shape[k])
-    #
-    #     self.Model.__init__(opt_params)
-    #     x_ = np.zeros_like(x[1:])
-    #     for i in range(x.shape[0] - 1):
-    #         x_[i] = self.Model.predict(u[i], x[i])
-    #     return np.mean((x[1:] - x_) ** 2) ** 0.5
-
-    # def fit_model(self, u, x):
-    #     x0 = ()
-    #     borders = ()
-    #     for k in self.Model.Opt_Params:
-    #         param = np.zeros(self.Model.Opt_Params_Shape[k])
-    #         param[:] = self.Model.Initial_KWArgs[k]
-    #         if param.shape[0] == (1,):
-    #             x0 += tuple(param)
-    #         else:
-    #             print(x0)
-    #             print(param)
-    #             x0 = x0 + tuple(map(tuple, param.ravel()))
-    #         borders += tuple(map(tuple, self.Model.Opt_Params_Borders))
-    #
-    #     x0 = np.asarray(x0)
-    #     print(x0, borders)
-    #
-    #     res = opt.minimize(self._evaluation, x0=x0, bounds=borders, args=(x, u))
-    #     opt_params = {}
-    #     start = 0
-    #     for k in self.Model.Opt_Params:
-    #         opt_params.update({k: res.x[start:start + np.prod(self.Model.Opt_Params_Shape[k])]})
-    #         start += np.prod(self.Model.Opt_Params_Shape[k])
-    #     return opt_params
 
     def fit(self, u, z):
-        '''Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
-        It returns the believed values x, the corresponding probabilities p and the predictions x_tilde'''
+        """Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
+        It returns the believed values x, the corresponding probabilities p and the predictions x_tilde.
+
+        Parameters
+        ----------
+        u: array_like
+            List of control-vectors.
+        z: array_like
+            List of measurement-vectors.
+        """
         u = np.asarray(u)
         z = np.asarray(z)
         assert u.shape[0] == z.shape[0]
@@ -232,12 +330,68 @@ class Filter(object):
 
 
 class KalmanFilter(Filter):
-    def __init__(self, model, evolution_variance, measurement_variance, **kwargs):
-        self.Model = model
+    """
+    This Class describes a kalman-filter in the pengu-track package. It calculates actual believed values from
+    predictions and measurements.
 
-        # if x0 is None:
-        #     x0 = np.zeros(self.Model.State_dim)
-        # x0 = np.asarray(x0)
+    Attributes
+    ----------
+    Model: PenguTrack.model object
+        A physical model to gain predictions from data.
+    Measurement_Distribution: scipy.stats.distributions object
+        The distribution which describes measurement uncertainty.
+    State_Distribution: scipy.stats.distributions object
+        The distribution which describes state vector fluctuations.
+    X: dict
+        The time series of believes calculated for this filter. The keys equal the time stamp.
+    X_error: dict
+        The time series of errors on the corresponding believes. The keys equal the time stamp.
+    Predicted_X: dict
+        The time series of predictions made from the associated data. The keys equal the time stamp.
+    Predicted_X_error: dict
+        The time series of estimated prediction errors. The keys equal the time stamp.
+    Measurements: dict
+        The time series of measurements assigned to this filter. The keys equal the time stamp.
+    Controls: dict
+        The time series of control-vectors assigned to this filter. The keys equal the time stamp.
+    A: np.array
+        State-Transition-Matrix, describing the evolution of the state without fluctuation.
+        Received from the physical Model.
+    B: np.array
+        State-Control-Matrix, describing the influence of external-control on the states.
+        Received from the physical Model.
+    C: np.array
+        Measurement-Matrix , describing the projection of the measurement-vector from the state-vector.
+        Received from the physical Model.
+    G: np.array
+        Evolution-Matrix, describing the evolution of state vectors by fluctuations from the state-distribution.
+        Received from the physical Model.
+    Q: np.array
+        Covariance matrix (time-evolving) for the state-distribution.
+    Q_0: np.array
+        Covariance matrix (initial state) for the state-distribution.
+    R: np.array
+        Covariance matrix (time-evolving) for the measurement-distribution.
+    R_0: np.array
+        Covariance matrix (initial state) for the measurement-distribution.
+    P_0: np.array
+        Covariance matrix (initial state) for the believe-distribution.
+    """
+    def __init__(self, model, evolution_variance, measurement_variance, **kwargs):
+        """
+        This Class describes a kalman-filter in the pengu-track package. It calculates actual believed values from
+        predictions and measurements.
+
+        Parameters
+        ----------
+        model: PenguTrack.model object
+            A physical model to gain predictions from data.
+        evolution_variance: array_like
+            Vector containing the estimated variances of the state-vector-entries.
+        measurement_variance: array_like
+            Vector containing the estimated variances of the measurement-vector-entries.
+        """
+        self.Model = model
 
         evolution_variance = np.array(evolution_variance, dtype=float)
         if evolution_variance.shape != (long(self.Model.Evolution_dim),):
@@ -267,13 +421,24 @@ class KalmanFilter(Filter):
         self.X_error.update({0: p})
         self.Predicted_X_error.update({0: p})
 
-        # self.X_0 = np.array(x0)
-        # self.X.update({0: x0})
-        # self.Predicted_X.update({0: x0})
-        # self.Measurements.update({0: self.Model.measure(x0)})
-
     def predict(self, u=None, i=None):
-        '''Prediction part of the Kalman Filtering process for one step'''
+        """
+        Function to get predictions from the corresponding model. Handles time-stamps and control-vectors.
+
+        Parameters
+        ----------
+        u: array_like, optional
+            Recent control-vector.
+        i: int
+            Recent/corresponding time-stamp
+
+        Returns
+        ----------
+        u: array_like
+            Recent control-vector.
+        i: int
+            Recent/corresponding time-stamp.
+        """
         u, i = super(KalmanFilter, self).predict(u=u, i=i)
 
         try:
@@ -295,7 +460,23 @@ class KalmanFilter(Filter):
         return u, i
 
     def update(self, z=None, i=None):
-        '''Updating part of the Kalman Filtering process for one step'''
+        """
+        Function to get updates to the corresponding model. Handles time-stamps and measurement-vectors.
+
+        Parameters
+        ----------
+        z: array_like, optional
+            Recent measurement-vector.
+        i: int
+            Recent/corresponding time-stamp
+
+        Returns
+        ----------
+        z: array_like
+            Recent measurement-vector.
+        i: int
+            Recent/corresponding time-stamp.
+        """
         z, i = super(KalmanFilter, self).update(z=z, i=i)
         try:
             x = self.Predicted_X[i]
@@ -340,11 +521,90 @@ class KalmanFilter(Filter):
 
 
 class AdvancedKalmanFilter(KalmanFilter):
+    """
+    This Class describes a advanced, self tuning version of the kalman-filter in the pengu-track package.
+    It calculates actual believed values from predictions and measurements.
+
+    Attributes
+    ----------
+    Model: PenguTrack.model object
+        A physical model to gain predictions from data.
+    Lag: int
+        The number of state-vectors, which are taken into acount for the self-tuning algorithm.
+    Measurement_Distribution: scipy.stats.distributions object
+        The distribution which describes measurement uncertainty.
+    State_Distribution: scipy.stats.distributions object
+        The distribution which describes state vector fluctuations.
+    X: dict
+        The time series of believes calculated for this filter. The keys equal the time stamp.
+    X_error: dict
+        The time series of errors on the corresponding believes. The keys equal the time stamp.
+    Predicted_X: dict
+        The time series of predictions made from the associated data. The keys equal the time stamp.
+    Predicted_X_error: dict
+        The time series of estimated prediction errors. The keys equal the time stamp.
+    Measurements: dict
+        The time series of measurements assigned to this filter. The keys equal the time stamp.
+    Controls: dict
+        The time series of control-vectors assigned to this filter. The keys equal the time stamp.
+    A: np.array
+        State-Transition-Matrix, describing the evolution of the state without fluctuation.
+        Received from the physical Model.
+    B: np.array
+        State-Control-Matrix, describing the influence of external-control on the states.
+        Received from the physical Model.
+    C: np.array
+        Measurement-Matrix , describing the projection of the measurement-vector from the state-vector.
+        Received from the physical Model.
+    G: np.array
+        Evolution-Matrix, describing the evolution of state vectors by fluctuations from the state-distribution.
+        Received from the physical Model.
+    Q: np.array
+        Covariance matrix (time-evolving) for the state-distribution.
+    Q_0: np.array
+        Covariance matrix (initial state) for the state-distribution.
+    R: np.array
+        Covariance matrix (time-evolving) for the measurement-distribution.
+    R_0: np.array
+        Covariance matrix (initial state) for the measurement-distribution.
+    P_0: np.array
+        Covariance matrix (initial state) for the believe-distribution.
+    """
     def __init__(self, *args, **kwargs):
+        """
+        This Class describes a advanced, self tuning version of the kalman-filter in the pengu-track package.
+        It calculates actual believed values from predictions and measurements.
+
+        Parameters
+        ----------
+        model: PenguTrack.model object
+            A physical model to gain predictions from data.
+        evolution_variance: array_like
+            Vector containing the estimated variances of the state-vector-entries.
+        measurement_variance: array_like
+            Vector containing the estimated variances of the measurement-vector-entries.
+        """
         super(AdvancedKalmanFilter, self).__init__(*args, **kwargs)
         self.Lag = -1 * int(kwargs.pop('lag', -1))
 
     def predict(self, *args, **kwargs):
+        """
+        Function to get predictions from the corresponding model. Handles time-stamps and control-vectors.
+
+        Parameters
+        ----------
+        u: array_like, optional
+            Recent control-vector.
+        i: int
+            Recent/corresponding time-stamp
+
+        Returns
+        ----------
+        u: array_like
+            Recent control-vector.
+        i: int
+            Recent/corresponding time-stamp.
+        """
         if self.Lag == 1 or (-1 * self.Lag > len(self.Predicted_X.keys())):
             lag = 0
         else:
@@ -357,6 +617,23 @@ class AdvancedKalmanFilter(KalmanFilter):
         return super(AdvancedKalmanFilter, self).predict(*args, **kwargs)
 
     def update(self, *args, **kwargs):
+        """
+        Function to get updates to the corresponding model. Handles time-stamps and measurement-vectors.
+
+        Parameters
+        ----------
+        z: array_like, optional
+            Recent measurement-vector.
+        i: int
+            Recent/corresponding time-stamp
+
+        Returns
+        ----------
+        z: array_like
+            Recent measurement-vector.
+        i: int
+            Recent/corresponding time-stamp.
+        """
         dif = np.array([np.dot(self.C, np.array(self.X.get(k, None)).T).T
                         - self.Measurements[k] for k in self.Measurements.keys()])
         self.R = np.cov(dif.T)
@@ -367,34 +644,77 @@ class AdvancedKalmanFilter(KalmanFilter):
 
 
 class ParticleFilter(Filter):
+    """
+    This Class describes a particle-filter in the pengu-track package.
+    It calculates actual believed values from predictions and measurements.
+
+    Attributes
+    ----------
+    Model: PenguTrack.model object
+        A physical model to gain predictions from data.
+    N: int
+        The number of particles.
+    Particles: dict
+        The current particle state-vectors.
+    Weights: dict
+        Weights for every particle. Calculated from probability.
+    Measurement_Distribution: scipy.stats.distributions object
+        The distribution which describes measurement uncertainty.
+    State_Distribution: scipy.stats.distributions object
+        The distribution which describes state vector fluctuations.
+    X: dict
+        The time series of believes calculated for this filter. The keys equal the time stamp.
+    X_error: dict
+        The time series of errors on the corresponding believes. The keys equal the time stamp.
+    Predicted_X: dict
+        The time series of predictions made from the associated data. The keys equal the time stamp.
+    Predicted_X_error: dict
+        The time series of estimated prediction errors. The keys equal the time stamp.
+    Measurements: dict
+        The time series of measurements assigned to this filter. The keys equal the time stamp.
+    Controls: dict
+        The time series of control-vectors assigned to this filter. The keys equal the time stamp.
+    """
     def __init__(self, model, n=100, meas_dist=ss.uniform(), state_dist=ss.uniform()):
+        """
+        This Class describes a particle-filter in the pengu-track package.
+        It calculates actual believed values from predictions and measurements.
+
+        Parameters
+        ----------
+        model: PenguTrack.model object
+            A physical model to gain predictions from data.
+        n: int, optional
+            The number of particles.
+        meas_dist: scipy.stats.distributions object
+            The distribution which describes measurement uncertainty.
+        state_dist: scipy.stats.distributions object
+            The distribution which describes state vector fluctuations.
+        """
         super(ParticleFilter, self).__init__(model, state_dist=state_dist, meas_dist=meas_dist)
         self.N = n
-        # if x0 is None:
-        #     x0 = np.zeros(self.Model.State_dim)
-        # self.X0 = np.array([x0])
-
         self.Particles = {}
-        self.History = {}
         self.Weights = {}
 
-        # for n in range(self.N):
-        #     self.Particles.update({n: self.X0[np.random.randint(0, self.X0.shape[0])]})
-        #     self.Weights.update({n: 1./self.N})
-
-        # for n in range(self.N):
-        #     self.Particles.update({n: self.Model.evolute(self.State_Distribution.rvs())})
-        #     self.Weights.update({n: 1./self.N})
-
-        # self.X.update({0: np.mean(self.Particles.values(), axis=0)})
-        # self.Predicted_X.update({0: np.mean(self.Particles.values(), axis=0)})
-        # self.X_error.update({0: np.std(self.Particles.values(), axis=0)})
-        # self.Predicted_X_error.update({0: np.std(self.Particles.values(), axis=0)})
-
-        # self.Measurements.update({0: self.Model.measure(np.mean(self.X0, axis=0))})
 
     def predict(self, u=None, i=None):
-        '''Prediction part of the Particle Filtering process for one step'''
+        """
+        Function to get predictions from the corresponding model. Handles time-stamps and control-vectors.
+
+        Parameters
+        ----------
+        u: array_like, optional
+            Recent control-vector.
+        i: int
+            Recent/corresponding time-stamp
+
+        Returns
+        ----------
+        u: array_like
+            Recent control-vector.
+        i: int
+            Recent/corresponding time-stamp.
+        """
         u, i = super(ParticleFilter, self).predict(u=u, i=i)
 
         for j in self.Particles.keys():
@@ -403,12 +723,26 @@ class ParticleFilter(Filter):
 
         self.Predicted_X.update({i: np.mean(self.Particles.values(), axis=0)})
         self.Predicted_X_error.update({i: np.std(self.Particles.values(), axis=0)})
-        # self.X.update({i: np.mean(self.Particles.values(), axis=0)})
-        # self.X_error.update({i: np.std(self.Particles.values(), axis=0)})
         return u, i
 
     def update(self, z=None, i=None):
-        '''Updating part of the Kalman Filtering process for one step'''
+        """
+        Function to get updates to the corresponding model. Handles time-stamps and measurement-vectors.
+
+        Parameters
+        ----------
+        z: array_like, optional
+            Recent measurement-vector.
+        i: int
+            Recent/corresponding time-stamp
+
+        Returns
+        ----------
+        z: array_like
+            Recent measurement-vector.
+        i: int
+            Recent/corresponding time-stamp.
+        """
         z, i = super(ParticleFilter, self).update(z=z, i=i)
 
         for j in range(slef):
@@ -443,32 +777,91 @@ class ParticleFilter(Filter):
 
 
 class MultiFilter(Filter):
+    """
+    This Class describes a filter, which is capable of assigning measurements to tracks, which again are represented by
+    sub-filters. The type of these can be specified, as well as a physical model for predictions. With these objects it
+    is possible to assign possibilities to combinations of measurement and prediction.
+
+    Attributes
+    ----------
+    Model: PenguTrack.model object
+        A physical model to gain predictions from data.
+    Filter_Class: PenguTrack.Filter object
+        A Type of Filter from which all subfilters should be built.
+    Filters: dict
+        Dictionary containing all sub-filters as PenguTrack.Filter objects.
+    Active_Filters: dict
+        Dictionary containing all sub-filters, which are currently updated.
+    FilterThreshold: int
+        Number of time steps, before a filter is set inactive.
+    LogProbabilityThreshold: float
+        Threshold, under which log-probabilities are concerned negligible.
+    filter_args: list
+        Filter-Type specific arguments from the Multi-Filter initialisation can be stored here.
+    filter_kwargs: dict
+        Filter-Type specific keyword-arguments from the Multi-Filter initialisation can be stored here.
+    Measurement_Distribution: scipy.stats.distributions object
+        The distribution which describes measurement uncertainty.
+    State_Distribution: scipy.stats.distributions object
+        The distribution which describes state vector fluctuations.
+    X: dict
+        The time series of believes calculated for this filter. The keys equal the time stamp.
+    X_error: dict
+        The time series of errors on the corresponding believes. The keys equal the time stamp.
+    Predicted_X: dict
+        The time series of predictions made from the associated data. The keys equal the time stamp.
+    Predicted_X_error: dict
+        The time series of estimated prediction errors. The keys equal the time stamp.
+    Measurements: dict
+        The time series of measurements assigned to this filter. The keys equal the time stamp.
+    Controls: dict
+        The time series of control-vectors assigned to this filter. The keys equal the time stamp.
+
+    """
     def __init__(self, _filter, model, *args, **kwargs):
+        """
+        This Class describes a filter, which is capable of assigning measurements to tracks, which again are represented by
+        sub-filters. The type of these can be specified, as well as a physical model for predictions. With these objects it
+        is possible to assign possibilities to combinations of measurement and prediction.
+
+        Sub-filter specific arguments are handles by *args and **kwargs.
+
+        Parameters
+        ----------
+        model: PenguTrack.model object
+            A physical model to gain predictions from data.
+        meas_dist: scipy.stats.distributions object
+            The distribution which describes measurement uncertainty.
+        state_dist: scipy.stats.distributions object
+            The distribution which describes state vector fluctuations.
+        """
         super(MultiFilter, self).__init__(model)
         self.Filter_Class = _filter
         self.Filters = {}
         self.ActiveFilters = {}
         self.FilterThreshold = 3
-        self.LogProbabilityThreshold = -1000. #-1 * np.inf
+        self.LogProbabilityThreshold = -1000.
         self.filter_args = args
         self.filter_kwargs = kwargs
 
     def predict(self, u=None, i=None):
-        # if i is None:
-        #     i = max(self.Predicted_X.keys())+1
-        # if u is None:
-        #     try:
-        #         u = self.Controls[i-1]
-        #     except KeyError:
-        #         u = np.zeros(self.Model.Control_dim)
-        # else:
-        #     self.Controls.update({i-1: u})
-        # # try:
-        # #     x = self.X[i-1]
-        # # except KeyError:
-        # #     print('recursion, i=%s'%i)
-        # #     x = self.predict(u, i=i-1)
+        """
+        Function to get predictions from the corresponding sub-filter models. Handles time-stamps and control-vectors.
 
+        Parameters
+        ----------
+        u: array_like, optional
+            Recent control-vector.
+        i: int
+            Recent/corresponding time-stamp
+
+        Returns
+        ----------
+        u: array_like
+            Recent control-vector.
+        i: int
+            Recent/corresponding time-stamp.
+        """
         for j in self.ActiveFilters.keys():
             _filter = self.ActiveFilters[j]
             if np.array(_filter.Predicted_X.keys()[-1])-np.array(_filter.X.keys()[-1]) >= self.FilterThreshold:
@@ -484,8 +877,6 @@ class MultiFilter(Filter):
 
         self.Predicted_X.update({i: predicted_x})
         self.Predicted_X_error.update({i: predicted_x_error})
-        # self.X.update({i: predicted_x})
-        # self.X_error.update({i: predicted_x_error})
         return u, i
 
     def initial_update(self, z, i):
@@ -509,7 +900,24 @@ class MultiFilter(Filter):
             self.Filters.update({J: _filter})
 
     def update(self, z=None, i=None):
-        # z, i = super(MultiFilter, self).update(z=z, i=i)
+        """
+        Function to get updates to the corresponding model. Handles time-stamps and measurement-vectors.
+        This function also handles the assignment of all incoming measurements to the active sub-filters.
+
+        Parameters
+        ----------
+        z: array_like, optional
+            Recent measurement-vector.
+        i: int
+            Recent/corresponding time-stamp
+
+        Returns
+        ----------
+        z: array_like
+            Recent measurement-vector.
+        i: int
+            Recent/corresponding time-stamp.
+        """
         z = np.array(z, ndmin=2)
         M = z.shape[0]
         N = len(self.ActiveFilters.keys())
@@ -525,9 +933,6 @@ class MultiFilter(Filter):
             gain_dict.update({j: k})
             for m in range(M):
                 probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: z[m]})
-        with open("./LogProbFile.txt", 'a') as myfile:
-            np.savetxt(myfile,probability_gain,fmt='%.2e',delimiter=';',newline='\n',header='Evaluation of Frame: %s'%i, footer='%s'%gain_dict)
-        # print(probability_gain)
         x = {}
         x_err = {}
         for j in range(M):
@@ -556,36 +961,25 @@ class MultiFilter(Filter):
 
                 self.ActiveFilters.update({l: _filter})
                 self.Filters.update({l: _filter})
-                #
-                # if n > 1:
-                #     l = max(self.Filters.keys()) + 1
-                #     _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
-                #     _filter.Predicted_X.update({i: self.Model.infer_state(z[m])})
-                #     _filter.X.update({i: self.Model.infer_state(z[m])})
-                #     _filter.Measurements.update({i: z[m]})
-                #
-                #     self.ActiveFilters.update({l: _filter})
-                #     self.Filters.update({l: _filter})
-                #
-                # else:
-                #     self.ActiveFilters[gain_dict[k]].update(z=z[m], i=i)
-                #     x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
-                #     x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
 
             probability_gain[k, :] = np.nan
             probability_gain[:, m] = np.nan
-        # print(probability_gain)
 
         if len(self.ActiveFilters.keys()) < M:
             raise RuntimeError('Lost Filters on the way. This should never happen')
-
-        # self.X.update({i: x})
-        # self.X_error.update({i: x_err})
         return z, i
 
     def fit(self, u, z):
-        '''Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
-        It returns the believed values x, the corresponding probabilities p and the predictions x_tilde'''
+        """Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
+        It returns the believed values x, the corresponding probabilities p and the predictions x_tilde.
+
+        Parameters
+        ----------
+        u: array_like
+            List of control-vectors.
+        z: array_like
+            List of measurement-vectors.
+        """
         u = np.array(u)
         z = np.array(z)
         assert u.shape[0] == z.shape[0]
@@ -593,224 +987,61 @@ class MultiFilter(Filter):
         for i in range(z.shape[0]):
             self.predict(u=u[i], i=i+1)
             self.update(z=z[i], i=i+1)
-            # print(self.log_prob())
 
         return self.X, self.X_error, self.Predicted_X, self.Predicted_X_error
 
     def downfilter(self, t=None):
+        """
+        Function erases the timestep t from the class dictionaries (Measurement, X, Preditcion)
+
+        Parameters
+        ----------
+        t: int, optional
+            Time-steps for which filtering should be erased.
+        """
         for k in self.Filters.keys():
             self.Filters[k].downfilter(t=t)
 
     def downdate(self, t=None):
+        """
+        Function erases the time-step t from the Measurements and Believes.
+
+        Parameters
+        ----------
+        t: int, optional
+            Time-steps for which filtering should be erased.
+        """
         for k in self.Filters.keys():
             self.Filters[k].downdate(t=t)
 
     def unpredict(self, t=None):
+        """
+        Function erases the time-step t from the Believes, Predictions and Controls.
+
+        Parameters
+        ----------
+        t: int, optional
+            Time-steps for which filtering should be erased.
+        """
         for k in self.Filters.keys():
             self.Filters[k].downdate(t=t)
 
     def log_prob(self, keys=None):
+        """
+        Function to calculate the probability measure by predictions, measurements and corresponding distributions.
+
+        Parameters
+        ----------
+        keys: list of int, optional
+            Time-steps for which probability should be calculated.
+
+        Returns
+        ----------
+        prob : float
+            Probability of measurements at the given time-keys.
+        """
         prob = 0
         for j in self.Filters.keys():
             prob += self.Filters[j].log_prob(keys=keys)
         return prob
-
-
-# class MultiKalman(object):
-#     def __init__(self, a, b, c, g, q, r, x_0, p_0, **kwargs):
-#         super(MultiKalman, self).__init__()
-#         self.A = np.array(a)
-#         self.B = np.array(b)
-#         self.C = np.array(c)
-#         self.G = np.array(g)
-#         self.Q = np.array(q)
-#         self.Q_0 = np.array(q)
-#         self.R = np.array(r)
-#         self.R_0 = np.array(r)
-#         self.Filters = []
-#         self.ActiveFilters = []
-#         self.FilterThreshold = 2
-#
-#         self.P0 = np.array(p_0[0])
-#
-#         for i in range(np.array(x_0).shape[0]):
-#             Filter = Kalman(a, b, c, g, q, r, x_0[i], p_0[i])
-#             self.ActiveFilters.append(Filter)
-#             self.Filters.append(Filter)
-#
-#         self.x = range(len(self.Filters))
-#         self.p = range(len(self.Filters))
-#         self.predicted_x = range(len(self.Filters))
-#         self.predicted_p = range(len(self.Filters))
-#
-#         for i, kal in enumerate(self.Filters):
-#             self.x[i] = kal.x
-#             self.p[i] = kal.p
-#             self.predicted_x[i] = kal.predicted_x
-#             self.predicted_p[i] = kal.predicted_p
-#
-#     def predict(self, u):
-#         '''Prediction part of the Kalman Filtering process for one step'''
-#         for kal in self.ActiveFilters:
-#             if kal.Predict_Count > self.FilterThreshold:
-#                 self.ActiveFilters.remove(kal)
-#
-#         X = []
-#         P = []
-#         for i, kal in enumerate(self.Filters):
-#             if kal in self.ActiveFilters:
-#                 try:
-#                     x, p = kal.predict(u[i])
-#                 except IndexError:
-#                     'Default Controlparameter is zero'
-#                     x, p = kal.predict(np.zeros_like(u[0]))
-#             else:
-#                 x = kal.x[max(kal.x.keys())]*np.nan
-#                 p = kal.p[max(kal.x.keys())]*np.nan
-#             X.append(x)
-#             P.append(p)
-#         return np.array(X), np.array(P)
-#
-#     def update(self, z):
-#         '''Updating part of the Kalman Filtering process for one step'''
-#         z = np.array(z)
-#         for i in range(z.shape[0] - len(self.ActiveFilters)):
-#             Filter = Kalman(self.A, self.B, self.C, self.G, self.Q, self.R,
-#                         np.ones_like(self.Filters[0].x[0])*np.nan, self.P0)
-#             self.ActiveFilters.append(Filter)
-#             self.Filters.append(Filter)
-#
-#         probability_gain = []
-#         for zz in z:
-#             probability_gain_filter = []
-#             if np.all(zz == zz):
-#                 for i in range(len(self.ActiveFilters)):
-#                     pre_probability = self.ActiveFilters[i].log_probability()
-#                     self.ActiveFilters[i].update(zz, reset=False)
-#                     probability_gain_filter.append(self.ActiveFilters[i].log_probability() - pre_probability)
-#                     self.ActiveFilters[i].downdate()
-#                 probability_gain.append(probability_gain_filter)
-#             else:
-#                 probability_gain.append([np.nan for u in range(len(self.ActiveFilters))])
-#         probability_gain = np.array(probability_gain)
-#
-#         used = set()
-#         for i in range(len(self.ActiveFilters)):
-#             if np.all(probability_gain != probability_gain):
-#                 break
-#             maxi, maxj = np.unravel_index(np.nanargmax(probability_gain), probability_gain.shape)
-#             probability_gain[maxi, :] = np.nan
-#             used.add(maxi)
-#             probability_gain[:, maxj] = np.nan
-#             self.ActiveFilters[maxj].update(z[maxi])
-#
-#         x = []
-#         p = []
-#         for kal in self.Filters:
-#             x.append(kal.x[max(kal.x.keys())])
-#             p.append(kal.p[max(kal.x.keys())])
-#         return x, p
-#
-#     def fit(self, u, z):
-#         u = np.array(u)
-#         z = np.array(z)
-#         assert u.shape[0] == z.shape[0]
-#         for i in range(z.shape[0]):
-#
-#             print(len(self.ActiveFilters), len(self.Filters))
-#
-#             x, p = self.predict(u[i])
-#
-#             zz = z[i]
-#             if np.random.rand() > 0.8:
-#                 print('added some noise!')
-#                 zz = np.vstack((zz, [zz[0] + np.random.normal(0, 100, zz[0].shape)]))
-#
-#             x, p = self.update(zz)
-#
-#         return [np.array(x.values()) for x in self.x], \
-#                [np.array(p.values()) for p in self.p], \
-#                [np.array(x.values()) for x in self.predicted_x], \
-#                [np.array(p.values()) for p in self.predicted_p]
-
-
-# class Kalman_Mehra(Kalman):
-#     def __init__(self, *args, **kwargs):
-#         super(Kalman_Mehra, self).__init__(*args, **kwargs)
-#         self.Lag = int(kwargs.pop('lag', -1))
-#         self.LearnTime = int(kwargs.pop('learn_time', 1))
-#
-#     def v(self, i):
-#         if i == 0:
-#             return self.z[min(self.z.keys())]-np.dot(np.dot(self.C, self.A), self.x[max(self.x.keys())])
-#         else:
-#             return self.z[i]-np.dot(np.dot(self.C, self.A), self.x[i-1])
-#
-#     def c_hat(self, k):
-#         if k < 0:
-#             k = len(self.z.keys())-1
-#         n = len(self.z.keys())
-#         c = np.sum(np.array([
-#                             np.tensordot(self.v(i), self.v(i - k).T, axes=0)
-#                             for i in range(k, n)
-#                             ]), axis=0)
-#         return np.array(c/n)
-#
-#     @staticmethod
-#     def pseudo_inverse(m):
-#         m = np.dot(np.linalg.inv(np.dot(m.transpose(), m)), m.transpose())
-#         return m
-#
-#     def A_tilde(self):
-#         a = None
-#         a_ = None
-#         n = len(self.z.keys())
-#         k = max(0, n - self.Lag)
-#         for i in range(k, n):
-#             if a is not None:
-#                 a_ = np.dot(np.dot(self.A, (np.identity(self.A.shape[0]))-np.dot(self.k(), self.C)), a_)
-#                 a = np.vstack((a, np.dot(self.C, np.dot(a_, self.A))))
-#             else:
-#                 a = np.identity(self.A.shape[0])
-#                 a_ = np.array(a, copy=True)
-#                 a = np.dot(self.C, np.dot(a, self.A))
-#         return a
-#
-#     def c_tilde(self):
-#         c = None
-#         n = self.z.shape[0]
-#         k = max(0, n - self.Lag)
-#         for i in range(k, n):
-#             if c is not None:
-#                 c = np.vstack((c, self.c_hat(i)))
-#             else:
-#                 c = self.c_hat(i)
-#         return c
-#
-#     def r_hat(self):
-#         try:
-#             cc = self.c_tilde()
-#             a_cross = self.pseudo_inverse(self.A_tilde())
-#             mh_hat = np.dot(self.k(), self.c_hat(0)) + np.dot(a_cross, cc)
-#
-#             r = self.c_hat(0) - np.dot(self.C, mh_hat)
-#         except np.linalg.LinAlgError:
-#             r = self.R
-#             print("The starting conditions of the uncertainty matrices are to bad. (Inversion Error)")
-#         return r
-#
-#     def predict(self, u):
-#         print(self.c_hat(0))
-#         if len(self.z.keys()) > self.LearnTime:
-#             self.R = self.c_hat(0)
-#         return super(Kalman_Mehra, self).predict(u)
-#
-#     def update(self, meas, **kwargs):
-#         return super(Kalman_Mehra, self).update(meas, **kwargs)
-#
-#     def fit(self, u, z):
-#         z = np.array(z)
-#         u = np.array(u)
-#         ret = super(Kalman_Mehra, self).fit(u, z)
-#         return ret
 

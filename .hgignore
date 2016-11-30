@@ -5,6 +5,5 @@ analysis/auto-corrs/
 grid/
 grid_rescaled/
 movie/
-nk_test_resized/
-*.png
 *.pdf
+Developement/
