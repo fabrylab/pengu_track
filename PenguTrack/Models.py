@@ -1,18 +1,88 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""
-Created on Fri Sep 23 11:36:54 2016
+# Detectors.py
 
-@author: Alex
+# Copyright (c) 2016, Red Hulk Productions
+#
+# This file is part of PenguTrack
+#
+# PenguTrack is beer software: you can serve it and/or drink
+# it under the terms of the Book of Revelation as published by
+# the evangelist John, either version 3 of the Book, or
+# (at your option) any later version.
+#
+# PenguTrack is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. It may cause
+# penguins to explode. It may also cause further harm on coworkers,
+# advisors or even lab equipment. See the Book of Revelation for
+# more details.
+#
+# You should have received a copy of the Book of Revelation
+# along with PenguTrack. If not, see <http://trumpdonald.org/>
+
 """
+Module containing model classes to be used with pengu-track detectors and filters.
+"""
+
 
 from __future__ import print_function, division
 import numpy as np
-import scipy.stats as ss
-import scipy.optimize as opt
+#  import scipy.stats as ss
+#  import scipy.optimize as opt
 
 
 class Model(object):
+    """
+    This Class describes the abstract function of a physical model in the pengu-track package.
+    It is only meant for subclassing.
+
+    Attributes
+    ----------
+    State_dim: int
+        Number of entries in the state-vector.
+    Control_dim: int
+        Number of entries in the control-vector.
+    Meas_dim: int
+        Number of entries in the measurement-vector.
+    Evolution_dim: int
+        Number of entries in the evolution-vector.
+    Opt_Params: list of strings
+        Parameters of model, which can be optimized.
+    Opt_Params_Shape: dict
+        Keys are Opt_Params, entries are tuples containing shapes of the corresponding Parameters.
+    Opt_Params_Borders: dict
+        Keys are Opt_Params, entries are tuples containing borders of the corresponding Parameters.
+    Initial_Args: list
+        The arguments, which were given in the init function.
+    Initial_KWArgs: dict
+        The keyword-arguments, which were given in the init function.
+    State_Matrix: np.array
+        The evolution-matrix of the unperturbed system.
+    Control_Matrix: np.array
+        The evolution-matrix, which shows the influence of external control.
+    Measurement_Matrix: np.array
+        The matrix, which shows how the state vectors are projected into a measurement vector.
+    Evolution_Matrix: np.array
+        The matrix, which shows the influence of statistical fluctuations to the state.
+    """
     def __init__(self, *args, **kwargs):
+        """
+        This Class describes the abstract function of a physical model in the pengu-track package.
+        It is only meant for subclassing.
+
+        Parameters
+        ----------
+        state_dim: int, optional
+            Number of entries in the state-vector.
+        control_dim: int, optional
+            Number of entries in the control-vector.
+        meas_dim: int, optional
+            Number of entries in the measurement-vector.
+        evo_dim: int, optional
+            Number of entries in the evolution-vector.
+
+        """
         self.State_dim = int(kwargs.pop('state_dim', 1))
         self.Control_dim = int(kwargs.pop('control_dim', 1))
         self.Meas_dim = int(kwargs.pop('meas_dim', 1))
@@ -31,41 +101,151 @@ class Model(object):
         
         self.Measurement_Matrix = np.identity(max(self.State_dim, self.Meas_dim))[: self.Meas_dim, :self.State_dim]
         
-        self.Evolution_Matrix = np.identity(max(self.Evolution_dim, self.State_dim))[:self.State_dim, :self.Evolution_dim]
+        self.Evolution_Matrix = np.identity(max(self.Evolution_dim,
+                                                self.State_dim))[:self.State_dim, :self.Evolution_dim]
         
-    def predict(self, state_vector, controle_vector):
-        return self.state_function(state_vector) + self.control_function(controle_vector)
+    def predict(self, state_vector, control_vector):
+        """
+        Function to predict next state from current state and external control.
+
+        Parameters
+        ––––––––––
+        state_vector: array_like
+            Latest state vector.
+        control_vector: array_like
+            Latest control vector.
+        Returns
+        ––––––––––
+        prediction: np.array
+            New state vector.
+        """
+        return self.__state_function__(state_vector) + self.__control_function__(control_vector)
 
     def measure(self, state_vector):
-        return self.measurement_function(state_vector)
+        """
+        Function to predict next measurement from current state.
+
+        Parameters
+        ––––––––––
+        state_vector: array_like
+            Latest state vector.
+        Returns
+        ––––––––––
+        measurement: np.array
+            Expected measurement vector.
+        """
+        return self.__measurement_function__(state_vector)
         
     def evolute(self, random_vector,  state_vector=None):
+        """
+        Function to predict next measurement from current state.
+
+        Parameters
+        ––––––––––
+        random_vector: array_like
+            Vector containing the statistical fluctuations.
+        state_vector: array_like, optional
+            Latest state vector.
+        Returns
+        ––––––––––
+        state: np.array
+            Calculated state vector.
+        """
         if state_vector is None:
             state_vector = np.zeros(self.State_dim)
-        return state_vector + self.evolution_function(random_vector)
+        return state_vector + self.__evolution_function__(random_vector)
 
-    def state_function(self, state_vector):
+    def __state_function__(self, state_vector):
         return np.dot(self.State_Matrix, state_vector)
 
-    def control_function(self, controle_vector):
-        return np.dot(self.Control_Matrix, controle_vector)
+    def __control_function__(self, control_vector):
+        return np.dot(self.Control_Matrix, control_vector)
 
-    def measurement_function(self, state_vector):
+    def __measurement_function__(self, state_vector):
         return np.dot(self.Measurement_Matrix, state_vector)
 
-    def evolution_function(self, random_vector):
+    def __evolution_function__(self, random_vector):
         return np.dot(self.Evolution_Matrix, random_vector)
 
     def infer_state(self, meas_vector):
+        """
+        Tries to infer state from measurement.
+
+        Parameters
+        ––––––––––
+        meas_vector: array_like
+            Vector containing the measurement.
+        Returns
+        ––––––––––
+        state: np.array
+            Calculated state vector.
+        Raises
+        ------
+        LinAlgError
+            If the state can not be inferred do to singularity in a matrix-inversion.
+        """
         return np.dot(self.pseudo_inverse(self.Measurement_Matrix), meas_vector)
 
-    def pseudo_inverse(self, matrix):
+    @staticmethod
+    def pseudo_inverse(matrix):
+        """
+        Calculates an alternative inverse for non square (non invertible) matrices.
+
+        Parameters
+        ––––––––––
+        matrix: array_like
+            Non square Matrix to be inverted.
+        Returns
+        ––––––––––
+        pseudo-inverse: np.array
+            Calculated pseudo-inverse.
+        """
         matrix = np.asarray(matrix)
         return np.dot(matrix.T, np.linalg.inv(np.dot(matrix, matrix.T)))
 
 
 class RandomWalk(Model):
+    """
+    This Class describes an easy random walk model.
+
+    Attributes
+    ----------
+    State_dim: int
+        Number of entries in the state-vector.
+    Control_dim: int
+        Number of entries in the control-vector.
+    Meas_dim: int
+        Number of entries in the measurement-vector.
+    Evolution_dim: int
+        Number of entries in the evolution-vector.
+    Opt_Params: list of strings
+        Parameters of model, which can be optimized.
+    Opt_Params_Shape: dict
+        Keys are Opt_Params, entries are tuples containing shapes of the corresponding Parameters.
+    Opt_Params_Borders: dict
+        Keys are Opt_Params, entries are tuples containing borders of the corresponding Parameters.
+    Initial_Args: list
+        The arguments, which were given in the init function.
+    Initial_KWArgs: dict
+        The keyword-arguments, which were given in the init function.
+    State_Matrix: np.array
+        The evolution-matrix of the unperturbed system.
+    Control_Matrix: np.array
+        The evolution-matrix, which shows the influence of external control.
+    Measurement_Matrix: np.array
+        The matrix, which shows how the state vectors are projected into a measurement vector.
+    Evolution_Matrix: np.array
+        The matrix, which shows the influence of statistical fluctuations to the state.
+    """
     def __init__(self, *args, **kwargs):
+        """
+        This Class describes a physical model in the pengu-track package.
+
+        Parameters
+        ----------
+        dim: int, optional
+            Number of dimensions in which the random walk happens.
+        """
         dim = kwargs.get('dim', 1)
 
         kwargs.update({'state_dim': dim,
@@ -79,15 +259,69 @@ class RandomWalk(Model):
         self.Opt_Params_Shape = {}
         self.Opt_Params_Borders = {}
 
-class Balistic(Model):
+
+class Ballistic(Model):
+    """
+    This Class describes an easy ballistic model.
+
+    Attributes
+    ----------
+    Damping: np.array
+        Damping constant(s) for ballistic model.
+    Mass: float
+        Mass of Object.
+    Timeconst: float
+        Step-width of time-discretization.
+    State_dim: int
+        Number of entries in the state-vector.
+    Control_dim: int
+        Number of entries in the control-vector.
+    Meas_dim: int
+        Number of entries in the measurement-vector.
+    Evolution_dim: int
+        Number of entries in the evolution-vector.
+    Opt_Params: list of strings
+        Parameters of model, which can be optimized.
+    Opt_Params_Shape: dict
+        Keys are Opt_Params, entries are tuples containing shapes of the corresponding Parameters.
+    Opt_Params_Borders: dict
+        Keys are Opt_Params, entries are tuples containing borders of the corresponding Parameters.
+    Initial_Args: list
+        The arguments, which were given in the init function.
+    Initial_KWArgs: dict
+        The keyword-arguments, which were given in the init function.
+    State_Matrix: np.array
+        The evolution-matrix of the unperturbed system.
+    Control_Matrix: np.array
+        The evolution-matrix, which shows the influence of external control.
+    Measurement_Matrix: np.array
+        The matrix, which shows how the state vectors are projected into a measurement vector.
+    Evolution_Matrix: np.array
+        The matrix, which shows the influence of statistical fluctuations to the state.
+    """
     def __init__(self, *args, **kwargs):
+        """
+        This Class describes a physical model in the pengu-track package.
+
+        Parameters
+        ----------
+        dim: int, optional
+            Number of dimensions in which the random walk happens.
+        damping: array_like, optional
+            Damping constant(s) of different dimensions for the model.
+        mass: float, optional
+            Mass of the modelled object.
+        timeconst: float, optional
+            Step-width of time-discretization.
+
+        """
         dim = kwargs.get('dim', 1)
         kwargs.update({'state_dim': dim*3,
                        'control_dim': 0,
                        'meas_dim': dim,
                        'evo_dim': dim})
 
-        super(Balistic, self).__init__(*args, **kwargs)
+        super(Ballistic, self).__init__(*args, **kwargs)
 
         self.Damping = np.zeros(dim)
         self.Damping[:] = kwargs.get('damping', 0)
@@ -95,7 +329,7 @@ class Balistic(Model):
         self.Timeconst = float(kwargs.get('timeconst', 1))
 
         self.Opt_Params = ['damping', 'mass', 'timeconst']
-        self.Opt_Params_Shape = {'damping': (dim,), 'mass':(1,), 'timeconst':(1,)}
+        self.Opt_Params_Shape = {'damping': (dim,), 'mass': (1,), 'timeconst': (1,)}
         self.Opt_Params_Borders = {'damping': (0, np.inf), 'mass': (0, np.inf), 'timeconst': (0, np.inf)}
 
         n = dim
@@ -118,7 +352,58 @@ class Balistic(Model):
 
 
 class VariableSpeed(Model):
+    """
+    This Class describes a simple model, assuming slow changing speed-vectors.
+
+    Attributes
+    ----------
+    Damping: np.array
+        Damping constant(s) for ballistic model.
+    Timeconst: float
+        Step-width of time-discretization.
+    State_dim: int
+        Number of entries in the state-vector.
+    Control_dim: int
+        Number of entries in the control-vector.
+    Meas_dim: int
+        Number of entries in the measurement-vector.
+    Evolution_dim: int
+        Number of entries in the evolution-vector.
+    Opt_Params: list of strings
+        Parameters of model, which can be optimized.
+    Opt_Params_Shape: dict
+        Keys are Opt_Params, entries are tuples containing shapes of the corresponding Parameters.
+    Opt_Params_Borders: dict
+        Keys are Opt_Params, entries are tuples containing borders of the corresponding Parameters.
+    Initial_Args: list
+        The arguments, which were given in the init function.
+    Initial_KWArgs: dict
+        The keyword-arguments, which were given in the init function.
+    State_Matrix: np.array
+        The evolution-matrix of the unperturbed system.
+    Control_Matrix: np.array
+        The evolution-matrix, which shows the influence of external control.
+    Measurement_Matrix: np.array
+        The matrix, which shows how the state vectors are projected into a measurement vector.
+    Evolution_Matrix: np.array
+        The matrix, which shows the influence of statistical fluctuations to the state.
+    """
     def __init__(self, *args, **kwargs):
+        """
+        This Class describes the function of a physical model in the pengu-track package.
+
+        Parameters
+        ----------
+        dim: int, optional
+            Number of dimensions in which the random walk happens.
+        damping: array_like, optional
+            Damping constant(s) of different dimensions for the model.
+        mass: float, optional
+            Mass of the modelled object.
+        timeconst: float, optional
+            Step-width of time-discretization.
+
+        """
 
         dim = kwargs.get('dim', 1)
         kwargs.update({'state_dim': dim*2,
@@ -135,7 +420,7 @@ class VariableSpeed(Model):
         super(VariableSpeed, self).__init__(*args, **kwargs)
 
         self.Opt_Params = ['damping', 'timeconst']
-        self.Opt_Params_Shape = {'damping': (dim,), 'timeconst':(1,)}
+        self.Opt_Params_Shape = {'damping': (dim,), 'timeconst': (1,)}
         self.Opt_Params_Borders = {'damping': (0, np.inf), 'timeconst': (0, np.inf)}
         n = dim
         matrix = np.zeros((2*n, 2*n))
@@ -155,7 +440,56 @@ class VariableSpeed(Model):
 
 
 class AR(Model):
+    """
+    This Class describes an auto-regressive model.
+
+    Attributes
+    ----------
+    Order: int
+        Order of the AR-Process. Order = 1 equals an AR1-Process.
+    Coefficients: np.array
+        Coefficients of the AR-Process. These describe the time-dependent behaviour of the model.
+    State_dim: int
+        Number of entries in the state-vector.
+    Control_dim: int
+        Number of entries in the control-vector.
+    Meas_dim: int
+        Number of entries in the measurement-vector.
+    Evolution_dim: int
+        Number of entries in the evolution-vector.
+    Opt_Params: list of strings
+        Parameters of model, which can be optimized.
+    Opt_Params_Shape: dict
+        Keys are Opt_Params, entries are tuples containing shapes of the corresponding Parameters.
+    Opt_Params_Borders: dict
+        Keys are Opt_Params, entries are tuples containing borders of the corresponding Parameters.
+    Initial_Args: list
+        The arguments, which were given in the init function.
+    Initial_KWArgs: dict
+        The keyword-arguments, which were given in the init function.
+    State_Matrix: np.array
+        The evolution-matrix of the unperturbed system.
+    Control_Matrix: np.array
+        The evolution-matrix, which shows the influence of external control.
+    Measurement_Matrix: np.array
+        The matrix, which shows how the state vectors are projected into a measurement vector.
+    Evolution_Matrix: np.array
+        The matrix, which shows the influence of statistical fluctuations to the state.
+    """
     def __init__(self, *args, **kwargs):
+        """
+        This Class describes the function of a physical model in the pengu-track package.
+
+        Parameters
+        ----------
+        dim: int, optional
+            Number of dimensions in which the random walk happens.
+        order: int optional
+            Order of the AR-Process. Order = 1 equals an AR1-Process.
+        coefficients: array_like, optional
+            Coefficients describing the time evolution of the AR-Process.
+
+        """
 
         order = kwargs.get('order', 1)
         order += 1
@@ -194,7 +528,55 @@ class AR(Model):
 
  
 class MA(Model):
+    """
+    This Class describes an moving-average model.
+
+    Attributes
+    ----------
+    Order: int
+        Order of the MA-Process. Order = 1 equals an MA1-Process.
+    Coefficients: np.array
+        Coefficients of the AR-Process. These describe the time-dependent behaviour of the model.
+    State_dim: int
+        Number of entries in the state-vector.
+    Control_dim: int
+        Number of entries in the control-vector.
+    Meas_dim: int
+        Number of entries in the measurement-vector.
+    Evolution_dim: int
+        Number of entries in the evolution-vector.
+    Opt_Params: list of strings
+        Parameters of model, which can be optimized.
+    Opt_Params_Shape: dict
+        Keys are Opt_Params, entries are tuples containing shapes of the corresponding Parameters.
+    Opt_Params_Borders: dict
+        Keys are Opt_Params, entries are tuples containing borders of the corresponding Parameters.
+    Initial_Args: list
+        The arguments, which were given in the init function.
+    Initial_KWArgs: dict
+        The keyword-arguments, which were given in the init function.
+    State_Matrix: np.array
+        The evolution-matrix of the unperturbed system.
+    Control_Matrix: np.array
+        The evolution-matrix, which shows the influence of external control.
+    Measurement_Matrix: np.array
+        The matrix, which shows how the state vectors are projected into a measurement vector.
+    Evolution_Matrix: np.array
+        The matrix, which shows the influence of statistical fluctuations to the state.
+    """
     def __init__(self, *args, **kwargs):
+        """
+        This Class describes the function of a physical model in the pengu-track package.
+
+        Parameters
+        ----------
+        dim: int, optional
+            Number of dimensions in which the random walk happens.
+        order: int optional
+            Order of the MA-Process. Order = 1 equals an MA1-Process.
+        coefficients: array_like, optional
+            Coefficients describing the time evolution of the MA-Process.
+        """
 
         order = kwargs.get('order', 1)
         order += 1

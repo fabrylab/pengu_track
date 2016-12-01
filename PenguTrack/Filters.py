@@ -28,7 +28,9 @@ Module containing filter classes to be used with pengu-track detectors and model
 from __future__ import print_function, division
 import numpy as np
 import scipy.stats as ss
-import scipy.optimize as opt
+import sys
+#  import scipy.optimize as opt
+
 
 class Filter(object):
     """
@@ -123,7 +125,7 @@ class Filter(object):
             except KeyError:
                 # Try recursive prediction from previous timesteps
                 if np.any(self.Predicted_X.keys() < i):
-                    print('Recursive Prediction, i = %s'%i)
+                    print('Recursive Prediction, i = %s' % i)
                     u, i = self.predict(u, i=i-1)
                     x = self.Predicted_X[i-1]
                 else:
@@ -159,7 +161,7 @@ class Filter(object):
             try:
                 z = self.Measurements[i]
             except KeyError:
-                raise KeyError("No measurement for timepoint %s."%i)
+                raise KeyError("No measurement for timepoint %s." % i)
         else:
             self.Measurements.update({i: z})
         # simplest possible update
@@ -302,9 +304,9 @@ class Filter(object):
         self.Predicted_X.pop(t, None)
         self.Predicted_X_error.pop(t, None)
 
-
     def fit(self, u, z):
-        """Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
+        """
+        Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
         It returns the believed values x, the corresponding probabilities p and the predictions x_tilde.
 
         Parameters
@@ -394,7 +396,7 @@ class KalmanFilter(Filter):
         self.Model = model
 
         evolution_variance = np.array(evolution_variance, dtype=float)
-        if evolution_variance.shape != (long(self.Model.Evolution_dim),):
+        if evolution_variance.shape != (int(self.Model.Evolution_dim),):
             evolution_variance = np.ones(self.Model.Evolution_dim) * np.mean(evolution_variance)
 
         self.Evolution_Variance = evolution_variance
@@ -402,7 +404,7 @@ class KalmanFilter(Filter):
         self.Q_0 = np.diag(evolution_variance)
 
         measurement_variance = np.array(measurement_variance, dtype=float)
-        if measurement_variance.shape != (long(self.Model.Meas_dim),):
+        if measurement_variance.shape != (int(self.Model.Meas_dim),):
             measurement_variance = np.ones(self.Model.Meas_dim) * np.mean(measurement_variance)
 
         self.Measurement_Variance = measurement_variance
@@ -494,8 +496,10 @@ class KalmanFilter(Filter):
                 p = self.P_0
 
         try:
-            k = np.dot(np.dot(p, self.C.transpose()), np.linalg.inv(np.dot(np.dot(self.C, p), self.C.transpose()) + self.R))
-        except np.linalg.LinAlgError, e:
+            k = np.dot(np.dot(p, self.C.transpose()),
+                       np.linalg.inv(np.dot(np.dot(self.C, p), self.C.transpose()) + self.R))
+        except np.linalg.LinAlgError:
+            e = sys.exc_info()[1]
             print(p)
             raise np.linalg.LinAlgError(e)
 
@@ -745,13 +749,13 @@ class ParticleFilter(Filter):
         """
         z, i = super(ParticleFilter, self).update(z=z, i=i)
 
-        for j in range(slef):
+        for j in range(self.N):
             self.Weights.update({j: self.Measurement_Distribution.logpdf(z-self.Model.measure(self.Particles[j]))})
         weights = self.Weights.values()
-        min = np.amin(weights)
-        max = np.amax(weights)
-        if max > min:
-            weights = (weights - min)#/(max - min)
+        w_min = np.amin(weights)
+        w_max = np.amax(weights)
+        if w_max > w_min:
+            weights = (weights - w_min)
             weights = np.cumsum(np.exp(weights))
             weights = weights/weights[-1]
             print("Standard")
