@@ -40,6 +40,39 @@ from skimage.morphology import watershed
 from skimage.feature import peak_local_max
 
 
+class Measurement(object):
+    """
+    Base Class for detection results.
+    """
+    def __init__(self, log_probability, position, frame=None, track_id=None):
+        """
+        Base Class for detection results.
+
+        probability: float
+            Estimated logarithmic probability of measurement.
+        position: array_like
+            Position of measurement
+        frame: int, optional
+            Number of Frame, on which the measurement took place.
+        track_id: int, optional
+            Track, for which this measurement was searched.
+        """
+        super(Measurement, self).__init__()
+
+        self.Log_Probability = float(log_probability)
+        self.Position = np.asarray(position)
+
+        if track_id is not None:
+            self.Track_Id = int(track_id)
+        else:
+            self.Track_Id = None
+
+        if frame is not None:
+            self.Frame = int(frame)
+        else:
+            self.Frame = None
+
+
 class Detector(object):
     """
     This Class describes the abstract function of a detector in the pengu-track package.
@@ -116,7 +149,8 @@ class BlobDetector(Detector):
         if return_regions:
             return regions
         elif len(regions) > 0:
-            return np.array([[props.centroid[0], props.centroid[1], props.area] for props in regions], ndmin=2)
+            return [Measurement(1., [props.centroid[0], props.centroid[1]]) for props in regions]
+            # return np.array([[props.centroid[0], props.centroid[1], props.area] for props in regions], ndmin=2)
         else:
             return []
 
@@ -199,8 +233,10 @@ class AreaBlobDetector(Detector):
             for i, a in enumerate(areas):
                 if mask[i]:
                     for j in range(int(a//(areas[mask].mean()))+1):
-                        out.append(regions[i].centroid)
-            return np.array(out, ndmin=2)
+                        # out.append(regions[i].centroid)
+                        out.append(Measurement(1., regions[i].centroid))
+            # return np.array(out, ndmin=2)
+            return out
 
 
 class WatershedDetector(Detector):
@@ -262,7 +298,8 @@ class WatershedDetector(Detector):
         if return_regions:
             return regions
         elif len(regions) > 0:
-            return np.array([[props.centroid[0], props.centroid[1], props.area] for props in regions], ndmin=2)
+            return [Measurement(1., [props.centroid[0], props.centroid[1]]) for props in regions]
+            # return np.array([[props.centroid[0], props.centroid[1], props.area] for props in regions], ndmin=2)
         else:
             return []
 

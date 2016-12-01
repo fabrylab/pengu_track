@@ -29,6 +29,7 @@ from __future__ import print_function, division
 import numpy as np
 import scipy.stats as ss
 import sys
+import copy
 #  import scipy.optimize as opt
 
 
@@ -141,15 +142,15 @@ class Filter(object):
 
         Parameters
         ----------
-        z: array_like, optional
-            Recent measurement-vector.
+        z: PenguTrack.Measurement, optional
+            Recent measurement.
         i: int
             Recent/corresponding time-stamp
 
         Returns
         ----------
-        z: array_like
-            Recent measurement-vector.
+        z: PenguTrack.Measurement
+            Recent measurement.
         i: int
             Recent/corresponding time-stamp.
         """
@@ -165,7 +166,7 @@ class Filter(object):
         else:
             self.Measurements.update({i: z})
         # simplest possible update
-        self.X.update({i: z})
+        self.X.update({i: z.Position})
         return z, i
 
     def filter(self, u=None, z=None, i=None):
@@ -176,8 +177,8 @@ class Filter(object):
         ----------
         u: array_like, optional
             Recent control-vector.
-        z: array_like, optional
-            Recent measurement-vector.
+        z: PenguTrack.Measurement, optional
+            Recent measurement.
         i: int
             Recent/corresponding time-stamp
 
@@ -185,8 +186,8 @@ class Filter(object):
         ----------
         u: array_like, optional
             Recent control-vector.
-        z: array_like
-            Recent measurement-vector.
+        z: PenguTrack.Measurement
+            Recent measurement.
         i: int
             Recent/corresponding time-stamp.
         """
@@ -203,7 +204,7 @@ class Filter(object):
         keys: list of int, optional
             Time-steps for which probability should be calculated.
         measurements: dict, optional
-            Measurements for which probability should be calculated.
+            List of PenguTrack.Measurement objects for which probability should be calculated.
 
         Returns
         ----------
@@ -226,7 +227,7 @@ class Filter(object):
                         self.predict(i=i)
                         comparison = self.Predicted_X[i]
 
-                probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(self.Measurements[i]
+                probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(self.Measurements[i].Position
                                                                                  - self.Model.measure(comparison))))
         else:
             for i in keys:
@@ -240,7 +241,7 @@ class Filter(object):
                         self.predict(i=i)
                         comparison = self.Predicted_X[i]
 
-                probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(measurements[i]
+                probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(measurements[i].Position
                                                                                  - self.Model.measure(comparison))))
         return probs
 
@@ -467,19 +468,21 @@ class KalmanFilter(Filter):
 
         Parameters
         ----------
-        z: array_like, optional
-            Recent measurement-vector.
+        z: PenguTrack.Measurement, optional
+            Recent measurement.
         i: int
             Recent/corresponding time-stamp
 
         Returns
         ----------
-        z: array_like
-            Recent measurement-vector.
+        z: PenguTrack.Measurement
+            Recent measurement.
         i: int
             Recent/corresponding time-stamp.
         """
         z, i = super(KalmanFilter, self).update(z=z, i=i)
+        measurement = copy.copy(z)
+        z = z.Position
         try:
             x = self.Predicted_X[i]
         except KeyError:
@@ -626,20 +629,20 @@ class AdvancedKalmanFilter(KalmanFilter):
 
         Parameters
         ----------
-        z: array_like, optional
-            Recent measurement-vector.
+        z: PenguTrack.Measurement, optional
+            Recent measurement.
         i: int
             Recent/corresponding time-stamp
 
         Returns
         ----------
-        z: array_like
-            Recent measurement-vector.
+        z: PenguTrack.Measurement
+            Recent measurement.
         i: int
             Recent/corresponding time-stamp.
         """
         dif = np.array([np.dot(self.C, np.array(self.X.get(k, None)).T).T
-                        - self.Measurements[k] for k in self.Measurements.keys()])
+                        - self.Measurements[k].Position for k in self.Measurements.keys()])
         self.R = np.cov(dif.T)
         if np.any(np.isnan(self.R)) or np.any(np.linalg.eigvals(self.R) < np.diag(self.R_0)):
             self.R = self.R_0
@@ -735,20 +738,21 @@ class ParticleFilter(Filter):
 
         Parameters
         ----------
-        z: array_like, optional
-            Recent measurement-vector.
+        z: PenguTrack.Measurement, optional
+            Recent measurement.
         i: int
             Recent/corresponding time-stamp
 
         Returns
         ----------
-        z: array_like
-            Recent measurement-vector.
+        z: PenguTrack.Measurement
+            Recent measurement.
         i: int
             Recent/corresponding time-stamp.
         """
         z, i = super(ParticleFilter, self).update(z=z, i=i)
-
+        measurement = copy.copy(z)
+        z = z.Position
         for j in range(self.N):
             self.Weights.update({j: self.Measurement_Distribution.logpdf(z-self.Model.measure(self.Particles[j]))})
         weights = self.Weights.values()
@@ -777,7 +781,7 @@ class ParticleFilter(Filter):
         self.X.update({i: np.mean(self.Particles.values(), axis=0)})
         self.X_error.update({i: np.std(self.Particles.values(), axis=0)})
 
-        return z, i
+        return measurement, i
 
 
 class MultiFilter(Filter):
@@ -886,7 +890,8 @@ class MultiFilter(Filter):
     def initial_update(self, z, i):
         print("Initial Filter Update")
 
-        z = np.array(z, ndmin=2)
+        measurements = list(z)
+        z = np.array([m.Position for m in z], ndmin=2)
         M = z.shape[0]
 
         for j in range(M):
@@ -894,7 +899,7 @@ class MultiFilter(Filter):
 
             _filter.Predicted_X.update({i: _filter.Model.infer_state(z[j])})
             _filter.X.update({i: _filter.Model.infer_state(z[j])})
-            _filter.Measurements.update({i: z[j]})
+            _filter.Measurements.update({i: measurements[j]})
 
             try:
                 J = max(self.Filters.keys()) + 1
@@ -910,25 +915,26 @@ class MultiFilter(Filter):
 
         Parameters
         ----------
-        z: array_like, optional
-            Recent measurement-vector.
+        z: list of PenguTrack.Measurement objects
+            Recent measurements.
         i: int
-            Recent/corresponding time-stamp
+            Recent/corresponding time-stamp.
 
         Returns
         ----------
-        z: array_like
-            Recent measurement-vector.
+        z: list of PenguTrack.Measurement objects
+            Recent measurements.
         i: int
             Recent/corresponding time-stamp.
         """
-        z = np.array(z, ndmin=2)
+        measurements = list(z)
+        z = np.array([m.Position for m in z], ndmin=2)
         M = z.shape[0]
         N = len(self.ActiveFilters.keys())
 
         if N == 0 and M > 0:
-            self.initial_update(z, i)
-            return z, i
+            self.initial_update(measurements, i)
+            return measurements, i
 
         gain_dict = {}
         probability_gain = -1./np.zeros((max(M,N),M))
@@ -936,7 +942,7 @@ class MultiFilter(Filter):
         for j, k in enumerate(self.ActiveFilters.keys()):
             gain_dict.update({j: k})
             for m in range(M):
-                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: z[m]})
+                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: measurements[m]})
         x = {}
         x_err = {}
         for j in range(M):
@@ -947,7 +953,7 @@ class MultiFilter(Filter):
                 k, m = np.unravel_index(np.nanargmin(probability_gain), probability_gain.shape)
 
             if probability_gain[k, m] > self.LogProbabilityThreshold:
-                self.ActiveFilters[gain_dict[k]].update(z=z[m], i=i)
+                self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
 
@@ -961,7 +967,7 @@ class MultiFilter(Filter):
                 _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
                 _filter.Predicted_X.update({i: self.Model.infer_state(z[m])})
                 _filter.X.update({i: self.Model.infer_state(z[m])})
-                _filter.Measurements.update({i: z[m]})
+                _filter.Measurements.update({i: measurements[m]})
 
                 self.ActiveFilters.update({l: _filter})
                 self.Filters.update({l: _filter})
@@ -971,7 +977,7 @@ class MultiFilter(Filter):
 
         if len(self.ActiveFilters.keys()) < M:
             raise RuntimeError('Lost Filters on the way. This should never happen')
-        return z, i
+        return measurements, i
 
     def fit(self, u, z):
         """Function to auto-evaluate all measurements z with control-vectors u and starting probability p.
@@ -981,8 +987,8 @@ class MultiFilter(Filter):
         ----------
         u: array_like
             List of control-vectors.
-        z: array_like
-            List of measurement-vectors.
+        z: list of PenguTrack.Measurement objects
+            Recent measurements.
         """
         u = np.array(u)
         z = np.array(z)

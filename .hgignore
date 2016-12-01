@@ -7,3 +7,5 @@ grid_rescaled/
 movie/
 *.pdf
 Developement/
+cell_data.cdb-shm
+cell_data.cdb-wal

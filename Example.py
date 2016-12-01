@@ -65,7 +65,6 @@ if __name__ == '__main__':
         # Detection step
         SegMap = VB.detect(image.data)
         Positions = BD.detect(SegMap)
-        Positions = np.array(Positions, ndmin=2)
 
         # Setting Mask in ClickPoints
         db.setMask(image=image, data=(~SegMap).astype(np.uint8))
@@ -75,13 +74,13 @@ if __name__ == '__main__':
         if Positions != np.array([]):
 
             # Update Filter with new Detections
-            MultiKal.update(z=np.array([Positions.T[1]*n, Positions.T[0]*n]).T, i=i)
+            MultiKal.update(z=Positions, i=i)
 
             # Get Tracks from Filter (a little dirty)
             for k in MultiKal.Filters.keys():
                 x = y = np.nan
                 if i in MultiKal.Filters[k].Measurements.keys():
-                    x, y = MultiKal.Filters[k].Measurements[i]
+                    x, y = MultiKal.Filters[k].Measurements[i].Position[::-1]
                     prob = MultiKal.Filters[k].log_prob(keys=[i])
                 elif i in MultiKal.Filters[k].X.keys():
                     x, y = MultiKal.Model.measure(MultiKal.Filters[k].X[i])
