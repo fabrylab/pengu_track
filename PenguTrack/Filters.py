@@ -195,7 +195,7 @@ class Filter(object):
         x = self.update(z=z, i=i)
         return x
     
-    def log_prob(self, keys=None, measurements=None):
+    def log_prob(self, keys=None, measurements=None, compare_bel=True):
         """
         Function to calculate the probability measure by predictions, measurements and corresponding distributions.
 
@@ -205,6 +205,9 @@ class Filter(object):
             Time-steps for which probability should be calculated.
         measurements: dict, optional
             List of PenguTrack.Measurement objects for which probability should be calculated.
+        compare_bel: bool, optional
+            If True, it will be tried to compare the believed state with the measurement. If False or
+            there is no believe-value, the prediction will be taken.
 
         Returns
         ----------
@@ -219,7 +222,10 @@ class Filter(object):
             for i in keys:
                 # Generate Value for comparison with measurement
                 try:
-                    comparison = self.X[i]
+                    if compare_bel:
+                        comparison = self.X[i]
+                    else:
+                        raise KeyError
                 except KeyError:
                     try:
                         comparison = self.Predicted_X[i]
@@ -233,7 +239,10 @@ class Filter(object):
             for i in keys:
                 # Generate Value for comparison with measurement
                 try:
-                    comparison = self.X[i]
+                    if compare_bel:
+                        comparison = self.X[i]
+                    else:
+                        raise  KeyError
                 except KeyError:
                     try:
                         comparison = self.Predicted_X[i]
@@ -848,9 +857,11 @@ class MultiFilter(Filter):
         self.Filters = {}
         self.ActiveFilters = {}
         self.FilterThreshold = 3
-        self.LogProbabilityThreshold = -1000.
+        self.LogProbabilityThreshold = -18.
         self.filter_args = args
         self.filter_kwargs = kwargs
+        self.CriticalIndex = None
+        self.Probability_Gain = {}
 
     def predict(self, u=None, i=None):
         """
@@ -937,12 +948,15 @@ class MultiFilter(Filter):
             return measurements, i
 
         gain_dict = {}
-        probability_gain = -1./np.zeros((max(M,N),M))
+        probability_gain = np.ones((max(M, N), M))*self.LogProbabilityThreshold
 
         for j, k in enumerate(self.ActiveFilters.keys()):
             gain_dict.update({j: k})
             for m in range(M):
                 probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: measurements[m]})
+
+        # self.Probability_Gain.update({i: np.array(probability_gain)})
+        # self.CriticalIndex = gain_dict[np.nanargmax([np.sort(a)[-2]/np.sort(a)[-1] for a in probability_gain[:N]])]
         x = {}
         x_err = {}
         for j in range(M):
@@ -958,6 +972,7 @@ class MultiFilter(Filter):
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
 
             else:
+                print("DEPRECATED TRACK WITH PROB %s IN FRAME %s" % (probability_gain[k, m], i))
                 try:
                     n = len(self.ActiveFilters[gain_dict[k]].X.keys())
                 except KeyError:
