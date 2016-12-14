@@ -86,7 +86,8 @@ if __name__ == '__main__':
             for k in MultiKal.Filters.keys():
                 x = y = np.nan
                 if i in MultiKal.Filters[k].Measurements.keys():
-                    x, y = MultiKal.Filters[k].Measurements[i].Position[::-1]
+                    x = MultiKal.Filters[k].Measurements[i].PositionX
+                    y = MultiKal.Filters[k].Measurements[i].PositionY
                     prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
                 elif i in MultiKal.Filters[k].X.keys():
                     x, y = MultiKal.Model.measure(MultiKal.Filters[k].X[i])

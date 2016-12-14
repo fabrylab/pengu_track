@@ -60,8 +60,14 @@ class Measurement(object):
         super(Measurement, self).__init__()
 
         self.Log_Probability = float(log_probability)
+        try:
+            self.PositionX, self.PositionY, self.PositionZ = np.asarray(position)
+        except ValueError:
+            try:
+                self.PositionX, self.PositionY = np.asarray(position)
+            except ValueError:
+                self.PositionX = float(position)
         self.Position = np.asarray(position)
-
         if track_id is not None:
             self.Track_Id = int(track_id)
         else:
