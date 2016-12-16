@@ -8,10 +8,8 @@ import sys
 import clickpoints
 
 # Connect to database
-# start_frame, database, port = clickpoints.GetCommandLineArgs()
 db = clickpoints.DataFile("penguin_data.cdb")
-start_frame=0
-# com = clickpoints.Commands(port, catch_terminate_signal=True)
+start_frame = 0
 
 #Initialise PenguTrack
 from PenguTrack.Filters import KalmanFilter
@@ -73,6 +71,17 @@ db.deleteMarkers(type=marker_type3)
 
 db.deleteTracks(type=marker_type3)
 
+# append Database if necessary
+import peewee
+
+
+class Measurement(db.base_model):
+    pass
+
+if "measurement" not in db.db.get_tables():
+    db.db.connect()
+    db.db.create_table(Measurement)
+
 # Start Iteration over Images
 print('Starting Iteration')
 images = db.getImageIterator(start_frame=start_frame)
@@ -105,6 +114,7 @@ for image in images:
                 y = meas.PositionY
                 prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
             elif i in MultiKal.Filters[k].X.keys():
+                meas = None
                 x, y = MultiKal.Model.measure(MultiKal.Filters[k].X[i])
                 prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
 
@@ -112,36 +122,11 @@ for image in images:
                 pred_x, pred_y = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])
                 prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
 
-        # append Database if necessary
-        if not "measurement" in db.db.get_tables():
-            import peewee
-            class Measurement(db.db.base_class):
-                track_id = ForeignKeyField(db.table_track, related_name='tracks_id')
-                marker_id = ForeignKeyField(db.table_marker, related_name='marker_id')
-            db.db.connect()
-            db.db.create_table(Measurement)
-        for attr in meas.__dict__.keys():
-            if not attr in [col.name for col in db.db.get_columns("measurement")]:
-                import playhouse.migrate
-                import peewee
-                migrator = playhouse.migrate.SqliteMigrator(db.db)
-
-                if type(meas.__dict__[attr]) in [float, np.float, np.float16, np.float32, np.float64]:
-                    col = peewee.FloatField(default=0.)
-                elif type(meas.__dict__[attr]) in [int, np.int, np.uint8, np.int8, np.uint16, np.int16, np.uint32, np.int32, np.uint64, np.int64]:
-                    col = peewee.IntegerField(default=0)
-                elif type(meas.__dict__[attr]) == type(None):
-                    col = peewee.IntegerField(default=0)
-                else:
-                    print(attr, type(meas.__dict__[attr]))
-                    raise TypeError("Not a database type!")
-                playhouse.migrate.migrate(migrator.add_column("measurement", attr, col),)
-
             # Write assigned tracks to ClickPoints DataBase
             if np.isnan(x) or np.isnan(y):
                 pass
             else:
-                db.setMarker(image=image, x=pred_x, y=pred_y, text="Track %s" % k, type=marker_type3)
+                marker = db.setMarker(image=image, x=pred_x, y=pred_y, text="Track %s" % k, type=marker_type3)
                 try:
                     # db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
                     if k == MultiKal.CriticalIndex:
@@ -159,6 +144,38 @@ for image in images:
                     db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y,
                                  text='Track %s, Prob %.2f' % (k, prob))
                     print('Set new Track %s and Track-Marker at %s, %s' % (k, x, y))
+
+
+            # add all measurement entries to measurements table
+            # iterate over all attributes of measurement
+            for attr in meas.__dict__.keys():
+                # test if collumn exists
+                if not attr in [col.name for col in db.db.get_columns("measurement")]:
+                    #if not use mirgration tool
+                    import playhouse.migrate
+                    import peewee
+                    migrator = playhouse.migrate.SqliteMigrator(db.db)
+
+                    # add column with adequate dtype
+                    if type(meas.__dict__[attr]) in [float, np.float, np.float16, np.float32, np.float64]:
+                        col = peewee.FloatField(default=0.)
+                    elif type(meas.__dict__[attr]) in [int, np.int, np.uint8, np.int8, np.uint16, np.int16, np.uint32, np.int32, np.uint64, np.int64]:
+                        col = peewee.IntegerField(default=0)
+                    elif type(meas.__dict__[attr]) == type(None):
+                        col = peewee.IntegerField(default=0)
+                    else:
+                        print(attr, type(meas.__dict__[attr]))
+                        raise TypeError("Not a database type!")
+
+                    #do migration
+                    playhouse.migrate.migrate(migrator.add_column("measurement", attr, col),)
+            # i wanted to do this, it failed
+            # meas_entry = Measurement(meas.__dict__)
+            # i tried to fall back to hard coding o spot the error, but it did also not work out
+            meas_entry = Measurement(Log_Probability=1.,PositionX=1.,PositionY=1.,Frame=10,Track_Id=1)
+            # save the entry
+            meas_entry.save()
+
 
     print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
 

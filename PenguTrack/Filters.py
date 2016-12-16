@@ -166,7 +166,7 @@ class Filter(object):
         else:
             self.Measurements.update({i: z})
         # simplest possible update
-        self.X.update({i: z.Position})
+        self.X.update({i: np.asarray([z.PositionX, z.PositionY])})
         return z, i
 
     def filter(self, u=None, z=None, i=None):
@@ -232,8 +232,8 @@ class Filter(object):
                     except KeyError:
                         self.predict(i=i)
                         comparison = self.Predicted_X[i]
-
-                probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(self.Measurements[i].Position
+                position = np.asarray([self.Measurements[i].PositionX, self.Measurements[i].PositionY])
+                probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
                                                                                  - self.Model.measure(comparison))))
         else:
             for i in keys:
@@ -250,7 +250,8 @@ class Filter(object):
                         self.predict(i=i)
                         comparison = self.Predicted_X[i]
 
-                probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(measurements[i].Position
+                position = np.asarray([measurements[i].PositionX, measurements[i].PositionY])
+                probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
                                                                                  - self.Model.measure(comparison))))
         return probs
 
@@ -491,7 +492,7 @@ class KalmanFilter(Filter):
         """
         z, i = super(KalmanFilter, self).update(z=z, i=i)
         measurement = copy.copy(z)
-        z = z.Position
+        z = np.asarray([z.PositionX, z.PositionY])
         try:
             x = self.Predicted_X[i]
         except KeyError:
@@ -651,7 +652,8 @@ class AdvancedKalmanFilter(KalmanFilter):
             Recent/corresponding time-stamp.
         """
         dif = np.array([np.dot(self.C, np.array(self.X.get(k, None)).T).T
-                        - self.Measurements[k].Position for k in self.Measurements.keys()])
+                        - np.asarray([self.Measurements[k].PositionX,
+                                      self.Measurements[k].PositionY]) for k in self.Measurements.keys()])
         self.R = np.cov(dif.T)
         if np.any(np.isnan(self.R)) or np.any(np.linalg.eigvals(self.R) < np.diag(self.R_0)):
             self.R = self.R_0
@@ -761,7 +763,7 @@ class ParticleFilter(Filter):
         """
         z, i = super(ParticleFilter, self).update(z=z, i=i)
         measurement = copy.copy(z)
-        z = z.Position
+        z = np.asarray([z.PositionX, z.PositionY])
         for j in range(self.N):
             self.Weights.update({j: self.Measurement_Distribution.logpdf(z-self.Model.measure(self.Particles[j]))})
         weights = self.Weights.values()
@@ -902,7 +904,7 @@ class MultiFilter(Filter):
         print("Initial Filter Update")
 
         measurements = list(z)
-        z = np.array([m.Position for m in z], ndmin=2)
+        z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
         M = z.shape[0]
 
         for j in range(M):
@@ -939,7 +941,7 @@ class MultiFilter(Filter):
             Recent/corresponding time-stamp.
         """
         measurements = list(z)
-        z = np.array([m.Position for m in z], ndmin=2)
+        z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
         M = z.shape[0]
         N = len(self.ActiveFilters.keys())
 
