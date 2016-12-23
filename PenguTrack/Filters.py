@@ -30,6 +30,7 @@ import numpy as np
 import scipy.stats as ss
 import sys
 import copy
+import scipy.integrate as integrate
 #  import scipy.optimize as opt
 
 
@@ -233,6 +234,15 @@ class Filter(object):
                         self.predict(i=i)
                         comparison = self.Predicted_X[i]
                 position = np.asarray([self.Measurements[i].PositionX, self.Measurements[i].PositionY])
+
+                def integrand(*args):
+                    x = np.array(args)
+                    return self.State_Distribution.pdf(x-comparison)*self.Measurement_Distribution.pdf(self.Model.measure(x)-position)
+
+                integral = integrate.nquad(integrand,
+                                           np.array([-1*np.ones_like(self.Model.State_dim)*100,
+                                                     np.ones(self.Model.State_dim)*100]).T)
+                print(integral)
                 probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
                                                                                  - self.Model.measure(comparison))))
         else:
@@ -242,7 +252,7 @@ class Filter(object):
                     if compare_bel:
                         comparison = self.X[i]
                     else:
-                        raise  KeyError
+                        raise KeyError
                 except KeyError:
                     try:
                         comparison = self.Predicted_X[i]
@@ -1072,3 +1082,9 @@ class MultiFilter(Filter):
             prob += self.Filters[j].log_prob(keys=keys)
         return prob
 
+# class AdvancedMultiFilter(MultiFilter):
+#     def __init__(self, *args, **kwargs):
+#         super(AdvancedMultiFilter, self).__init__(*args,**kwargs)
+#     def _critical_(self, ProbMat):
+#         critical_i =[]
+#         for i,n in enumerate(ProbMat):

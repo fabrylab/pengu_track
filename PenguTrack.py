@@ -84,7 +84,7 @@ if "measurement" not in db.db.get_tables():
 
 # Start Iteration over Images
 print('Starting Iteration')
-images = db.getImageIterator(start_frame=start_frame)
+images = db.getImageIterator(start_frame=start_frame, end_frame=3)
 for image in images:
 
     i = image.get_id()
@@ -100,7 +100,7 @@ for image in images:
     print("Mask save")
     n = 1
 
-    if Positions != np.array([]):
+    if np.all(Positions != np.array([])):
 
         # Update Filter with new Detections
         MultiKal.update(z=Positions, i=i)
@@ -158,24 +158,28 @@ for image in images:
 
                     # add column with adequate dtype
                     if type(meas.__dict__[attr]) in [float, np.float, np.float16, np.float32, np.float64]:
-                        col = peewee.FloatField(default=0.)
+                        col = peewee.FloatField(default=0., null=True)
                     elif type(meas.__dict__[attr]) in [int, np.int, np.uint8, np.int8, np.uint16, np.int16, np.uint32, np.int32, np.uint64, np.int64]:
-                        col = peewee.IntegerField(default=0)
+                        col = peewee.IntegerField(default=0, null=True)
                     elif type(meas.__dict__[attr]) == type(None):
-                        col = peewee.IntegerField(default=0)
+                        col = peewee.IntegerField(default=0, null=True)
                     else:
                         print(attr, type(meas.__dict__[attr]))
                         raise TypeError("Not a database type!")
 
                     #do migration
                     playhouse.migrate.migrate(migrator.add_column("measurement", attr, col),)
+
             # i wanted to do this, it failed
-            # meas_entry = Measurement(meas.__dict__)
+            db.db.connect()
+            meas_entry = Measurement()
+            for key in meas.__dict__.keys():
+                setattr(meas_entry, key, meas.__dict__[key])
+                print(getattr(meas_entry, key), meas.__dict__[key])
             # i tried to fall back to hard coding o spot the error, but it did also not work out
-            meas_entry = Measurement(Log_Probability=1.,PositionX=1.,PositionY=1.,Frame=10,Track_Id=1)
+            # meas_entry = Measurement.create(Log_Probability=1., PositionX=1., PositionY=1., Frame=10, Track_Id=1)
             # save the entry
             meas_entry.save()
-
 
     print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
 

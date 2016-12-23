@@ -35,9 +35,10 @@ def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=
     x_h = X - x_h
     y_h = Y - y_h
     # Rotate other markers
-    markers = np.array(markers)
-    markers.T[0] = X - markers.T[0]
-    markers.T[1] = Y - markers.T[1]
+    if np.any(markers):
+        markers = np.array(markers)
+        markers.T[0] = X - markers.T[0]
+        markers.T[1] = Y - markers.T[1]
 
     # linear fit and rotation to compensate incorrect camera alignment
     m, t = np.polyfit(x_h, y_h, 1)  # linear fit
@@ -92,7 +93,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     # Load database
-    db = clickpoints.DataFile("Horizon.cdb")
+    db = clickpoints.DataFile("horizon2.cdb")
 
     #Camera parameters
     f = 14e-3  # Focal length
@@ -101,17 +102,18 @@ if __name__ == "__main__":
     Y, X = start_image.shape[:2] # get image size
 
     # Load horizon-markers, rotate them
-    horizont_type = db.getMarkerType(name="Horizon")
-    x, y = np.array([[X-m.x, Y-m.y] for m in db.getMarkers(type=horizont_type)]).T
+    horizont_type = db.getMarkerType(name="horizon")
+    # x, y = np.array([[X-m.x, Y-m.y] for m in db.getMarkers(type=horizont_type)]).T
+    x, y = np.array([[m.x, m.y] for m in db.getMarkers(type=horizont_type)]).T
 
     # Load Position markers, rotate them
     position_type = db.getMarkerType(name="Position")
-    markers = np.array([[X-m.x, Y-m.y] for m in db.getMarkers(type=position_type)]).astype(int)
-
+    # markers = np.array([[X-m.x, Y-m.y] for m in db.getMarkers(type=position_type)]).astype(int)
+    markers = np.array([[m.x, m.y] for m in db.getMarkers(type=position_type)]).astype(int)
     # do correction
-    image, new_markers = horizontal_equalisation(start_image, [x, y], f, SensorSize, h=1, markers=markers)
+    image, new_markers = horizontal_equalisation(start_image, [x, y], f, SensorSize, h=1,  markers=markers)
 
     # plot this shit
     plt.imshow(image)
-    plt.scatter(new_markers.T[0], new_markers.T[1])
+    # plt.scatter(new_markers.T[0], new_markers.T[1])
     plt.show()
