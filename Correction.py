@@ -79,6 +79,39 @@ def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=
         # warp_xx = (xx - X / 2.) * (pp / warp_yy) + X / 2.
         return np.asarray([warp_xx.T, warp_yy.T]).T
 
+    def true_y3(xy):
+        xx, yy = np.asarray(xy).T
+        yy = yy * (max_dist/Y)
+        xx = (xx-X/2.) * (max_dist/Y)
+        phi_ = np.pi/2 - Phi
+        # alpha = np.arccos((pp*np.tan(phi_)*h+h**2)/(pp**2+h**2)/((1+np.tan(phi_)**2)*h**2))
+        # alpha = np.arccos((pp*np.sin(phi_)+h*np.cos(phi_))/(pp**2+h**2)**0.5) *-1* np.sign(pp-np.tan(phi_)*h)
+        x_s = np.asarray([0, np.tan(phi_)*h, -h])
+        x_s_norm = np.linalg.norm(x_s)
+        y_max = np.asarray([0, max_dist, -h])
+        y_max_norm = np.linalg.norm(y_max)
+        alpha_y = np.arccos(np.dot(y_max.T, x_s).T/(y_max_norm*x_s_norm)) * -1
+        coord = np.asarray([xx, yy, -h*np.ones_like(xx)])
+        coord_norm = np.linalg.norm(coord, axis=0)
+        # coord_y = np.asarray([np.zeros_like(xx),yy,-h*np.ones_like(xx)])
+        # coord_y_norm = np.linalg.norm(coord_y, axis=0)
+        alpha = np.arccos(np.dot(coord.T, x_s).T/(coord_norm*np.linalg.norm(x_s))) * np.sign(np.tan(phi_)*h-yy)
+        print(alpha[:, 0]*180/np.pi)
+        theta = np.arccos(np.sum((np.cross(coord.T, x_s) * np.cross(y_max, x_s)).T
+                       , axis=0)/(coord_norm*x_s_norm*np.sin(alpha) *
+                                  y_max_norm*x_s_norm*np.sin(alpha_y))) * np.sign(xx) * np.sign(np.tan(phi_)*h-yy)
+        print(theta[:,0]*180/np.pi)
+        r = np.tan(alpha)*f
+        warp_xx = np.sin(theta)*r*X/X_s + X/2.
+        warp_yy = np.cos(theta)*r*Y/Y_s + Y/2.
+
+        print(warp_yy[:,0])
+        print(warp_xx[0])
+
+        return np.asarray([warp_xx.T, warp_yy.T]).T
+
+
+
     def true_y(xy):
         d = (np.tan(-np.arctan(max_dist/h)+np.pi/2-Phi)/(Y_s / 2. / f)+1.)/(2./Y)
         # print(d)
@@ -114,7 +147,7 @@ def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=
         new_markers = np.array([true_y(m) for m in markers])
         new_markers.T[0] = X - new_markers.T[0]
         new_markers.T[1] = Y - new_markers.T[1]
-        grid = true_y2(np.asarray(np.meshgrid(np.arange(X), np.arange(Y))).T)
+        grid = true_y3(np.asarray(np.meshgrid(np.arange(X), np.arange(Y))).T)
         grid = grid.T.reshape((2, X*Y))
         return np.asarray([map_coordinates(i, grid[:,::-1]).reshape((X, Y))[::-1] for i in image.T]).T, new_markers
         # return transform.warp(image, true_y2, clip=False, preserve_range=False), new_markers
@@ -147,7 +180,7 @@ if __name__ == "__main__":
     image, new_markers = horizontal_equalisation(start_image, [x, y], f, SensorSize,
                                                  h=25,
                                                  markers=np.array([mx, my]).T,
-                                                 max_dist=5e2)
+                                                 max_dist=2e2)
 
     # plot this shit
     plt.imshow(image)
