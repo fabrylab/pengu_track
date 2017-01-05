@@ -36,10 +36,7 @@ def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=
     image = np.asarray(image)#[::-1, ::-1]
 
     Y, X = image.shape[:2]
-    px_per_m = Y/max_dist
-    # Rotate horizon markers
-    # x_h = X - x_h
-    # y_h = Y - y_h
+
     # Rotate other markers
     if np.any(markers):
         markers = np.array(markers)
@@ -61,96 +58,80 @@ def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=
     Phi = np.arctan((t * (2 / Y) - 1.) * (Y_s / 2. / f))*-1
     print("Phi at %s" % (Phi * 180 / np.pi))
 
-    # define function for the skimage-warp-correction
-    def true_y2(xy):
-        xx, pp = np.asarray(xy).T
-        pp = pp * (max_dist/Y)
-        # print(pp[:,0])
-        alpha = np.pi/2 - Phi - np.arctan(pp/h)
-        # print(alpha[:,0]*180/np.pi)
-        warp_yy = np.tan(alpha)*f*(Y/Y_s) + Y/2
-        # print(warp_yy[:,0])
-        # x-transformation to regain aspect ratio (and tilt penguins to the side...)
-        # phi_ = np.pi/2 - Phi*np.pi/180
-        # xx = (xx-X/2.)*(X_s/X)
-        # lam = (1./h)*(np.sin(phi_)*xx-f*np.cos(phi_))
-        # X = lam * (np.cos(phi_)*xx + f * np.sin(phi_))
-        warp_xx = xx
-        # warp_xx = (xx - X / 2.) * (pp / warp_yy) + X / 2.
-        return np.asarray([warp_xx.T, warp_yy.T]).T
+    # Initialize grid
+    xx, yy = np.meshgrid(np.arange(X), np.arange(Y))
+    # Grid has same aspect ratio as picture, but width max_dist
+    yy = yy * (max_dist/Y)
+    xx = (xx-X/2.) * (max_dist/Y)
+    # counter-angle to phi is used in further calculation
+    phi_ = np.pi/2 - Phi
+    # x_s is the crossing-Point of camera mid-beam and grid plane
+    x_s = np.asarray([0, np.tan(phi_)*h, -h])
+    x_s_norm = np.linalg.norm(x_s)
+    # vector of maximal distance to camera (in y)
+    y_max = np.asarray([0, max_dist, -h])
+    y_max_norm = np.linalg.norm(y_max)
+    alpha_y = np.arccos(np.dot(y_max.T, x_s).T/(y_max_norm*x_s_norm)) * -1
 
-    def true_y3(xy):
-        xx, yy = np.asarray(xy).T
-        yy = yy * (max_dist/Y)
-        xx = (xx-X/2.) * (max_dist/Y)
-        phi_ = np.pi/2 - Phi
-        # alpha = np.arccos((pp*np.tan(phi_)*h+h**2)/(pp**2+h**2)/((1+np.tan(phi_)**2)*h**2))
-        # alpha = np.arccos((pp*np.sin(phi_)+h*np.cos(phi_))/(pp**2+h**2)**0.5) *-1* np.sign(pp-np.tan(phi_)*h)
-        x_s = np.asarray([0, np.tan(phi_)*h, -h])
-        x_s_norm = np.linalg.norm(x_s)
-        y_max = np.asarray([0, max_dist, -h])
-        y_max_norm = np.linalg.norm(y_max)
-        alpha_y = np.arccos(np.dot(y_max.T, x_s).T/(y_max_norm*x_s_norm)) * -1
-        coord = np.asarray([xx, yy, -h*np.ones_like(xx)])
+    # Define Warp Function
+    def warp(xy):
+        xx_, yy_ = xy
+        # vectors of every grid point in the plane (-h)
+        coord = np.asarray([xx_, yy_, -h*np.ones_like(xx_)])
         coord_norm = np.linalg.norm(coord, axis=0)
-        # coord_y = np.asarray([np.zeros_like(xx),yy,-h*np.ones_like(xx)])
-        # coord_y_norm = np.linalg.norm(coord_y, axis=0)
-        alpha = np.arccos(np.dot(coord.T, x_s).T/(coord_norm*np.linalg.norm(x_s))) * np.sign(np.tan(phi_)*h-yy)
-        print(alpha[:, 0]*180/np.pi)
+        # calculate the angle between camera mid-beam-vector and grid-point-vector
+        alpha = np.arccos(np.dot(coord.T, x_s).T/(coord_norm*x_s_norm)) #* np.sign(np.tan(phi_)*h-yy_)
+        # calculate the angle between y_max-vector and grid-point-vector in the plane (projected to the plane)
         theta = np.arccos(np.sum((np.cross(coord.T, x_s) * np.cross(y_max, x_s)).T
-                       , axis=0)/(coord_norm*x_s_norm*np.sin(alpha) *
-                                  y_max_norm*x_s_norm*np.sin(alpha_y))) * np.sign(xx) * np.sign(np.tan(phi_)*h-yy)
-        print(theta[:,0]*180/np.pi)
+                       ,axis=0)/(coord_norm*x_s_norm*np.sin(alpha) *
+                                  y_max_norm*x_s_norm*np.sin(alpha_y))) * np.sign(xx) #* np.sign(np.tan(phi_)*h-yy_)
+        # from the angles it is possible to calculate the position of the focused beam on the camera-sensor
         r = np.tan(alpha)*f
         warp_xx = np.sin(theta)*r*X/X_s + X/2.
         warp_yy = np.cos(theta)*r*Y/Y_s + Y/2.
+        return warp_xx, warp_yy
 
-        print(warp_yy[:,0])
-        print(warp_xx[0])
+    def back_warp(xy):
+        warp_xx, warp_yy = np.asarray(xy)
+        # calculate angles in the coordinate system of the sensor
+        r = np.sqrt(((warp_xx - X/2.) * (X_s/X))**2 + ((warp_yy - Y/2.) * (Y_s/Y))**2)
+        alpha = np.arctan2(r, f)
+        theta = np.pi+np.pi/2-np.arctan2(((warp_yy - Y/2.) * (Y_s/Y)), ((warp_xx - X/2.) * (X_s/X)))
+        # plt.scatter(theta*180/np.pi, alpha*180/np.pi)
+        # plt.show()
+        e_1 = np.cross(y_max, x_s)*(1/(y_max_norm*x_s_norm*np.sin(alpha_y)))
+        e_2 = np.cross(e_1, x_s)*(1/x_s_norm)
+        e_s = x_s*(1/x_s_norm)
 
-        return np.asarray([warp_xx.T, warp_yy.T]).T
+        lam_s = (y_max_norm*x_s_norm)/(x_s_norm*np.cos(theta)*np.tan(alpha)
+                                       - y_max_norm*np.cos(alpha_y)*np.cos(theta)*np.tan(alpha)
+                                       + y_max_norm)
+        # lam_s = x_s_norm * np.ones_like(lam_s)
+        lam_1 = np.sin(theta)*np.tan(alpha)*lam_s
+        lam_2 = np.cos(theta)*np.tan(alpha)*lam_s
+        print (lam_s,lam_1,lam_2)
+        x = np.tensordot(lam_1, e_1, axes=0) + np.tensordot(lam_2,e_2, axes=0) + np.tensordot(lam_s,e_s, axes=0)
+        xx, yy, zz = np.asarray(x).T
+        return xx*Y/max_dist+X/2, yy*Y/max_dist+Y/2
 
+    # warp the grid
+    warped_xx, warped_yy = warp([xx,yy])
+    # reshape grid points for image interpolation
+    grid = np.asarray([warped_xx.T, warped_yy.T]).T
+    grid = grid.T.reshape((2, X * Y))
 
+    # warp the markers
 
-    def true_y(xy):
-        d = (np.tan(-np.arctan(max_dist/h)+np.pi/2-Phi)/(Y_s / 2. / f)+1.)/(2./Y)
-        # print(d)
-        xx, yy = np.asarray(xy).T
-        # remove points beyond t (horizon)
-        # yy = (yy/np.amax(yy))*(Y-d)+d
-        yy = (yy/np.amax(yy))*(Y-d)+d
-        # print(yy[0],yy[-1])
-        # Calculate y-angle for each pixel
-        warp_yy = np.arctan((yy * (2. / Y) - 1.) * (Y_s / 2. / f))*-1
-        # print((np.pi / 2 - Phi + warp_yy)[0]*180/np.pi,(np.pi / 2 - Phi + warp_yy)[-1]*180/np.pi)
-        # Compensate for tilt and equalise picture (this is where the magic happens)
-        warp_yy = h * np.tan(np.pi / 2 - Phi + warp_yy) * px_per_m + d
-        # print(warp_yy.min(), warp_yy.max())
-        # Rescale data to fit to grid (i do not know, why i need this, but it works)
-        # warp_min = h*np.tan(np.pi / 2 - Phi - np.arctan(Y_s / 2. / f))
-        # warp_max = h*np.tan(np.pi / 2 - Phi - np.arctan((t/(Y+t)*2-1) * Y_s / 2. / f)) - warp_min
-        #
-        # warp_yy -= warp_min
-        # warp_yy /= warp_max
-        # warp_yy = (1 - warp_yy) * t
-
-        # x-transformation to regain aspect ratio (and tilt penguins to the side...)
-        # warp_xx = (xx - X / 2.) / (yy / warp_yy) + X / 2.
-        warp_xx = xx
-        return np.asarray([warp_xx.T, warp_yy.T]).T
-
-        # do the correction with transform.warp
     if len(markers) == 0:
-        return transform.warp(image, true_y, clip=False, preserve_range=False)
+        # split the image in colors and perform interpolation
+        return np.asarray([map_coordinates(i, grid[:, ::-1]).reshape((X, Y))[::-1] for i in image.T]).T
     else:
         # if markers are given, also equalise them, with the same function
-        new_markers = np.array([true_y(m) for m in markers])
-        new_markers.T[0] = X - new_markers.T[0]
-        new_markers.T[1] = Y - new_markers.T[1]
-        grid = true_y3(np.asarray(np.meshgrid(np.arange(X), np.arange(Y))).T)
-        grid = grid.T.reshape((2, X*Y))
-        return np.asarray([map_coordinates(i, grid[:,::-1]).reshape((X, Y))[::-1] for i in image.T]).T, new_markers
-        # return transform.warp(image, true_y2, clip=False, preserve_range=False), new_markers
+        # new_markers = np.array([back_warp(m) for m in markers])
+        new_markers = back_warp(markers.T)
+        # split the image in colors and perform interpolation
+        return np.asarray([map_coordinates(i, grid[:,::-1]).reshape((X, Y))[::-1] for i in image.T]).T,\
+               np.asarray(new_markers).T
 
 
 if __name__ == "__main__":
@@ -167,22 +148,21 @@ if __name__ == "__main__":
     Y, X = start_image.shape[:2]  # get image size
 
     # Load horizon-markers, rotate them
-    horizont_type = db.getMarkerType(name="horizon")
+    horizont_type = db.getMarkerType(name="Horizon")
     x, y = np.array([[X-m.x, Y-m.y] for m in db.getMarkers(type=horizont_type)]).T
     # x, y = np.array([[m.x, m.y] for m in db.getMarkers(type=horizont_type)]).T
 
     # Load Position markers, rotate them
     position_type = db.getMarkerType(name="Position")
-    # markers = np.array([[X-m.x, Y-m.y] for m in db.getMarkers(type=position_type)]).astype(int)
-    markers = np.array([[m.x, m.y] for m in db.getMarkers(type=position_type)]).astype(int)
+    markers = np.array([[X-m.x, Y-m.y] for m in db.getMarkers(type=position_type)]).astype(int)
+    # markers = np.array([[m.x, m.y] for m in db.getMarkers(type=position_type)]).astype(int)
     # do correction
-    mx, my = np.meshgrid(np.arange(1), np.arange(425, Y))
-    image, new_markers = horizontal_equalisation(start_image, [x, y], f, SensorSize,
-                                                 h=25,
-                                                 markers=np.array([mx, my]).T,
-                                                 max_dist=2e2)
+    image, markers2 = horizontal_equalisation(start_image, [x, y], f, SensorSize,
+                                    h=25,
+                                    markers=markers,
+                                    max_dist=Y/10)
 
     # plot this shit
     plt.imshow(image)
-    # plt.scatter(new_markers.T[0], new_markers.T[1])
+    plt.scatter(markers2.T[0], markers2.T[1])
     plt.show()
