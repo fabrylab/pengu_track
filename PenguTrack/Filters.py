@@ -235,14 +235,14 @@ class Filter(object):
                         comparison = self.Predicted_X[i]
                 position = np.asarray([self.Measurements[i].PositionX, self.Measurements[i].PositionY])
 
-                def integrand(*args):
-                    x = np.array(args)
-                    return self.State_Distribution.pdf(x-comparison)*self.Measurement_Distribution.pdf(self.Model.measure(x)-position)
-
-                integral = integrate.nquad(integrand,
-                                           np.array([-1*np.ones_like(self.Model.State_dim)*100,
-                                                     np.ones(self.Model.State_dim)*100]).T)
-                print(integral)
+                # def integrand(*args):
+                #     x = np.array(args)
+                #     return self.State_Distribution.pdf(x-comparison)*self.Measurement_Distribution.pdf(self.Model.measure(x)-position)
+                #
+                # integral = integrate.nquad(integrand,
+                #                            np.array([-1*np.ones_like(self.Model.State_dim)*100,
+                #                                      np.ones(self.Model.State_dim)*100]).T)
+                # print(integral)
                 probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
                                                                                  - self.Model.measure(comparison))))
         else:
