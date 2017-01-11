@@ -76,10 +76,10 @@ import peewee
 
 class Measurement(db.base_model):
     # full definition here - no need to use migrate
-     marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name="measurement", on_delete='CASCADE') # reference to frame and track via marker!
-     log = peewee.FloatField(default=0)
-     x = peewee.FloatField()
-     y = peewee.FloatField()
+    marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name="measurement", on_delete='CASCADE') # reference to frame and track via marker!
+    log = peewee.FloatField(default=0)
+    x = peewee.FloatField()
+    y = peewee.FloatField()
 
 if "measurement" not in db.db.get_tables():
     db.db.connect()

@@ -242,7 +242,7 @@ class Filter(object):
                 # integral = integrate.nquad(integrand,
                 #                            np.array([-1*np.ones_like(self.Model.State_dim)*100,
                 #                                      np.ones(self.Model.State_dim)*100]).T)
-                # print(integral)
+                # print(integral)l
                 probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
                                                                                  - self.Model.measure(comparison))))
         else:

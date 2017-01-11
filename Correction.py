@@ -2,6 +2,9 @@ from __future__ import division, print_function
 import numpy as np
 from skimage import transform
 from scipy.ndimage.interpolation import map_coordinates
+from skimage.measure import regionprops, label
+import sys
+from skimage import img_as_uint
 
 def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=[], max_dist=None):
     """
@@ -95,24 +98,43 @@ def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=
         warp_xx, warp_yy = np.asarray(xy)
         # calculate angles in the coordinate system of the sensor
         r = np.sqrt(((warp_xx - X/2.) * (X_s/X))**2 + ((warp_yy - Y/2.) * (Y_s/Y))**2)
+        a1 = np.arctan2((warp_xx - X/2.) * (X_s/X), f)
+        a2 = np.arctan2((warp_yy - Y/2.) * (Y_s/Y), f)
+        print(np.array([a1,a2]).T*180/np.pi)
+        x = np.tan(a1)*x_s_norm
+        yy = (np.sin(phi_)*x_s_norm+x_s_norm*np.sin(a2)/np.sin(np.pi/2-a2-phi_))
+        xx = yy*x/(x_s_norm*np.sin(phi_))
+        print(np.array([xx,yy]).T)
+
         alpha = np.arctan2(r, f)
-        theta = np.pi+np.pi/2-np.arctan2(((warp_yy - Y/2.) * (Y_s/Y)), ((warp_xx - X/2.) * (X_s/X)))
-        # plt.scatter(theta*180/np.pi, alpha*180/np.pi)
-        # plt.show()
+        theta = np.arctan2(((warp_xx - X/2.) * (X_s/X)), ((warp_yy - Y/2.) * (Y_s/Y)))
+
+        # # plt.scatter(theta*180/np.pi, alpha*180/np.pi)
+        # # plt.show()
         e_1 = np.cross(y_max, x_s)*(1/(y_max_norm*x_s_norm*np.sin(alpha_y)))
         e_2 = np.cross(e_1, x_s)*(1/x_s_norm)
         e_s = x_s*(1/x_s_norm)
 
-        lam_s = (y_max_norm*x_s_norm)/(x_s_norm*np.cos(theta)*np.tan(alpha)
-                                       - y_max_norm*np.cos(alpha_y)*np.cos(theta)*np.tan(alpha)
-                                       + y_max_norm)
-        # lam_s = x_s_norm * np.ones_like(lam_s)
-        lam_1 = np.sin(theta)*np.tan(alpha)*lam_s
-        lam_2 = np.cos(theta)*np.tan(alpha)*lam_s
-        print (lam_s,lam_1,lam_2)
-        x = np.tensordot(lam_1, e_1, axes=0) + np.tensordot(lam_2,e_2, axes=0) + np.tensordot(lam_s,e_s, axes=0)
-        xx, yy, zz = np.asarray(x).T
-        return xx*Y/max_dist+X/2, yy*Y/max_dist+Y/2
+        x = x_s + (np.tan(alpha)*x_s_norm * (np.tensordot(np.cos(theta), e_2, axes=0)+np.tensordot(np.sin(theta), e_1, axes=0)).T).T
+        e_x= x.T/np.linalg.norm(x.T, axis=0)
+        print(e_x)
+        print(np.linalg.norm(e_x, axis=0))
+        lam = h/e_x[2]
+        print(lam)
+        xx, yy, zz = lam*e_x
+        return xx*Y/max_dist+X/2, yy*Y/max_dist+Y
+        # print(e_1,e_2,e_s)
+        #
+        # lam_s = (y_max_norm*x_s_norm)/(x_s_norm*np.cos(theta)*np.tan(alpha)
+        #                                - y_max_norm*np.cos(alpha_y)*np.cos(theta)*np.tan(alpha)
+        #                                + y_max_norm)
+        # # lam_s = x_s_norm * np.ones_like(lam_s)
+        # lam_1 = np.sin(theta)*np.tan(alpha)*lam_s
+        # lam_2 = np.cos(theta)*np.tan(alpha)*lam_s
+        # # print (lam_s,lam_1,lam_2)
+        # x = np.tensordot(lam_1, e_1, axes=0) + np.tensordot(lam_2,e_2, axes=0) + np.tensordot(lam_s,e_s, axes=0)
+        # xx, yy, zz = np.asarray(x).T
+        # return X/2-xx*Y/max_dist, Y-yy*Y/max_dist
 
     # warp the grid
     warped_xx, warped_yy = warp([xx,yy])
@@ -123,46 +145,125 @@ def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=
     # warp the markers
 
     if len(markers) == 0:
-        # split the image in colors and perform interpolation
-        return np.asarray([map_coordinates(i, grid[:, ::-1]).reshape((X, Y))[::-1] for i in image.T]).T
+        if len(image.shape) == 3:
+            # split the image in colors and perform interpolation
+            return np.asarray([img_as_uint(map_coordinates(i, grid[:, ::-1])).reshape((X, Y))[::-1] for i in image.T]).T
+        elif len(image.shape) == 2:
+            return np.asarray(img_as_uint(map_coordinates(image.T, grid[:, ::-1])).reshape((X, Y))[::-1]).T
+        else:
+            raise ValueError("The given image is whether RGB nor greyscale!")
     else:
         # if markers are given, also equalise them, with the same function
         # new_markers = np.array([back_warp(m) for m in markers])
         new_markers = back_warp(markers.T)
-        # split the image in colors and perform interpolation
-        return np.asarray([map_coordinates(i, grid[:,::-1]).reshape((X, Y))[::-1] for i in image.T]).T,\
+        # split the image in colors and perform interpolation#
+        if len(image.shape) == 3:
+            # split the image in colors and perform interpolation
+            return np.asarray([img_as_uint(map_coordinates(i, grid[:, ::-1])).reshape((X, Y))[::-1] for i in image.T]).T,\
                np.asarray(new_markers).T
+        elif len(image.shape) == 2:
+            return np.asarray(img_as_uint(map_coordinates(image.T, grid[:, ::-1])).reshape((X, Y))[::-1]).T,\
+               np.asarray(new_markers).T
+        else:
+            raise ValueError("The given image is whether RGB nor greyscale!")
+
+import clickpoints
+# Connect to database
+frame, database, port = clickpoints.GetCommandLineArgs()
+db = clickpoints.DataFile(database)
+com = clickpoints.Commands(port, catch_terminate_signal=True)
+
+# get the images
+image = db.getImage(frame=frame)
+
+# Load horizon-markers, rotate them
+horizont_type = db.getMarkerType(name="Horizon")
+x, y = np.array([[m.x, m.y] for m in db.getMarkers(type=horizont_type)]).T
+h = float(input("Please enter Height above projected plane in m: \n"))
+f = float(input("Please enter Focal length in mm: \n")) * 1e-3
+sizex, sizey = input("Please enter Sensor Size (X,Y) in mm: \n")
+SensorSize = np.asarray([sizex, sizey], dtype=float) * 1e-3
+max_dist = input("Please enter maximal analysed distance to camera in m: \n")
+Y, X = image.getShape()
+marker_type = db.setMarkerType(name="Projection-Correction Area marker", color="#FFFFFF")
+
+for mask in db.getMasks(frame=frame):
+    data = mask.data
+    img = mask.image
+    labeled_org = label(data)
+    region_pos = {}
+    for props in regionprops(labeled_org):
+        region_pos.update({props.label: props.centroid})
+    n_regions = np.amax(region_pos.keys())
+
+    eq = horizontal_equalisation(labeled_org, [x, y], f, SensorSize,
+                                              h=h,
+                                              max_dist=max_dist)
 
 
-if __name__ == "__main__":
-    import clickpoints
-    import matplotlib.pyplot as plt
+    # eq2 = horizontal_equalisation(image.data, [x, y], f, SensorSize,
+    #                                           h=h,
+    #                                           max_dist=max_dist)
+    #
+    # # if input("Show image? (Y/N) \n").count("Y"):
+    # import matplotlib.pyplot as plt
+    # plt.imshow(labeled_org)
+    # plt.figure()
+    # plt.imshow(image.data)
+    # mi = eq.min()
+    # ma = eq.max()
+    # eq = ((eq - mi)*n_regions/(ma-mi)+0.5).astype(int)-1 #haha mami
+    # eq = img_as_uint(eq)
+    # plt.figure()
+    # plt.imshow(eq)
+    # plt.figure()
+    # plt.imshow(eq2)
+    # plt.show()
 
-    # Load database
-    db = clickpoints.DataFile("Horizon.cdb")
+    # eq = eq.astype(int)
+    for prop in regionprops(eq):
+        i = prop.label
+        try:
+            db.setMarker(frame=frame, x=region_pos[i][1], y=region_pos[i][0], text="area %s"%prop.area, type=marker_type)
+        except KeyError:
+            pass
 
-    #Camera parameters
-    f = 14e-3  # Focal length
-    SensorSize = (17.3e-3, 13.e-3)
-    start_image = db.getImage(frame=0).data[::-1, ::-1]  # raw image is rotated
-    Y, X = start_image.shape[:2]  # get image size
+    com.ReloadMarker(image.sort_index)
+    # check if we should terminate
+    if com.HasTerminateSignal():
+        print("Cancelled Correction")
+        sys.exit(0)
 
-    # Load horizon-markers, rotate them
-    horizont_type = db.getMarkerType(name="Horizon")
-    x, y = np.array([[X-m.x, Y-m.y] for m in db.getMarkers(type=horizont_type)]).T
-    # x, y = np.array([[m.x, m.y] for m in db.getMarkers(type=horizont_type)]).T
-
-    # Load Position markers, rotate them
-    position_type = db.getMarkerType(name="Position")
-    markers = np.array([[X-m.x, Y-m.y] for m in db.getMarkers(type=position_type)]).astype(int)
-    # markers = np.array([[m.x, m.y] for m in db.getMarkers(type=position_type)]).astype(int)
-    # do correction
-    image, markers2 = horizontal_equalisation(start_image, [x, y], f, SensorSize,
-                                    h=25,
-                                    markers=markers,
-                                    max_dist=Y/10)
-
-    # plot this shit
-    plt.imshow(image)
-    plt.scatter(markers2.T[0], markers2.T[1])
-    plt.show()
+#
+# if __name__ == "__main__":
+#     import clickpoints
+#     import matplotlib.pyplot as plt
+#
+#     # Load database
+#     db = clickpoints.DataFile("Horizon.cdb")
+#
+#     #Camera parameters
+#     f = 14e-3  # Focal length
+#     SensorSize = (17.3e-3, 13.e-3)
+#     start_image = db.getImage(frame=0).data[::-1, ::-1]  # raw image is rotated
+#     Y, X = start_image.shape[:2]  # get image size
+#
+#     # Load horizon-markers, rotate them
+#     horizont_type = db.getMarkerType(name="Horizon")
+#     x, y = np.array([[X-m.x, Y-m.y] for m in db.getMarkers(type=horizont_type)]).T
+#     # x, y = np.array([[m.x, m.y] for m in db.getMarkers(type=horizont_type)]).T
+#
+#     # Load Position markers, rotate them
+#     position_type = db.getMarkerType(name="Position_old")
+#     markers = np.array([[X-m.x, Y-m.y] for m in db.getMarkers(type=position_type)]).astype(int)
+#     # markers = np.array([[m.x, m.y] for m in db.getMarkers(type=position_type)]).astype(int)
+#     # do correction
+#     image, markers2 = horizontal_equalisation(start_image, [x, y], f, SensorSize,
+#                                               h=25,
+#                                               markers=markers,
+#                                               max_dist=Y/10)
+#
+#     # plot this shit
+#     plt.imshow(image)
+#     plt.scatter(markers2.T[0], markers2.T[1])
+#     plt.show()
