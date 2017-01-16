@@ -74,6 +74,9 @@ def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=
     # vector of maximal distance to camera (in y)
     y_max = np.asarray([0, max_dist, -h])
     y_max_norm = np.linalg.norm(y_max)
+    y_min = np.asarray([0, h*np.tan(phi_-np.arctan(Y_s/f)),-h])
+    print(y_min)
+    print(np.arctan(Y_s/f))
     alpha_y = np.arccos(np.dot(y_max.T, x_s).T/(y_max_norm*x_s_norm)) * -1
 
     # Define Warp Function
@@ -94,17 +97,57 @@ def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=
         warp_yy = np.cos(theta)*r*Y/Y_s + Y/2.
         return warp_xx, warp_yy
 
+    # Define Warp Function
+    def warp2(xy):
+        xx_, yy_ = xy
+        old = np.array(yy_)
+        # vectors of every grid point in the plane (-h)
+        # print(max_dist/Y)
+        h_p = 0.6
+        c = 1./(h/h_p-1.)
+        yy_ /= max_dist # 0 bis 1
+        yy_ *= np.log(max_dist/y_min[1])
+        # print(np.amin(yy_), np.amax(yy_))
+        # 1 - > Y*c
+        # yy_ = (yy_) * ((Y*c-1)/max_dist) + 1 # 1 -> Y*c
+        # yy_ = np.cumsum(1./(yy_+1), axis=0) # 1 -> 1/(Y*c)
+
+        yy_ = y_min[1]*np.exp(yy_)
+        p_s = np.log(1+c)/(np.log(max_dist/y_min[1])/Y)
+        # print("Penguin size is %s pixels!"%p_s)
+        # mmm = np.amax(yy_)
+        # yy_ *= (max_dist/mmm)
+        # print(np.amin(yy_), np.amax(yy_))
+        # import matplotlib.pyplot as plt
+        # plt.scatter(old[:, 0], yy_[:, 0])
+        # plt.show()
+        print(xx_.shape, yy_.shape)
+        coord = np.asarray([xx_, yy_, -h*np.ones_like(xx_)])
+        coord_norm = np.linalg.norm(coord, axis=0)
+        # calculate the angle between camera mid-beam-vector and grid-point-vector
+        alpha = np.arccos(np.dot(coord.T, x_s).T/(coord_norm*x_s_norm)) #* np.sign(np.tan(phi_)*h-yy_)
+        # calculate the angle between y_max-vector and grid-point-vector in the plane (projected to the plane)
+        print(coord.shape, x_s.shape, y_max.shape)
+        theta = np.arccos(np.sum((np.cross(coord.T, x_s) * np.cross(y_max, x_s)).T
+                       ,axis=0)/(coord_norm*x_s_norm*np.sin(alpha) *
+                                  y_max_norm*x_s_norm*np.sin(alpha_y))) * np.sign(xx_) #* np.sign(np.tan(phi_)*h-yy_)
+        # from the angles it is possible to calculate the position of the focused beam on the camera-sensor
+        r = np.tan(alpha)*f
+        warp_xx = np.sin(theta)*r*X/X_s + X/2.
+        warp_yy = np.cos(theta)*r*Y/Y_s + Y/2.
+        return warp_xx, warp_yy
+
     def back_warp(xy):
         warp_xx, warp_yy = np.asarray(xy)
         # calculate angles in the coordinate system of the sensor
         r = np.sqrt(((warp_xx - X/2.) * (X_s/X))**2 + ((warp_yy - Y/2.) * (Y_s/Y))**2)
         a1 = np.arctan2((warp_xx - X/2.) * (X_s/X), f)
         a2 = np.arctan2((warp_yy - Y/2.) * (Y_s/Y), f)
-        print(np.array([a1,a2]).T*180/np.pi)
+        # print(np.array([a1,a2]).T*180/np.pi)
         x = np.tan(a1)*x_s_norm
         yy = (np.sin(phi_)*x_s_norm+x_s_norm*np.sin(a2)/np.sin(np.pi/2-a2-phi_))
         xx = yy*x/(x_s_norm*np.sin(phi_))
-        print(np.array([xx,yy]).T)
+        # print(np.array([xx,yy]).T)
 
         alpha = np.arctan2(r, f)
         theta = np.arctan2(((warp_xx - X/2.) * (X_s/X)), ((warp_yy - Y/2.) * (Y_s/Y)))
@@ -117,10 +160,10 @@ def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=
 
         x = x_s + (np.tan(alpha)*x_s_norm * (np.tensordot(np.cos(theta), e_2, axes=0)+np.tensordot(np.sin(theta), e_1, axes=0)).T).T
         e_x= x.T/np.linalg.norm(x.T, axis=0)
-        print(e_x)
-        print(np.linalg.norm(e_x, axis=0))
+        # print(e_x)
+        # print(np.linalg.norm(e_x, axis=0))
         lam = h/e_x[2]
-        print(lam)
+        # print(lam)
         xx, yy, zz = lam*e_x
         return xx*Y/max_dist+X/2, yy*Y/max_dist+Y
         # print(e_1,e_2,e_s)
@@ -137,17 +180,19 @@ def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=
         # return X/2-xx*Y/max_dist, Y-yy*Y/max_dist
 
     # warp the grid
-    warped_xx, warped_yy = warp([xx,yy])
+    print("Position!!!!")
+    print(warp2([np.asarray([2279.93,2279.93]), np.asarray([1001.72, 1001.72])]))
+    print("Position!!!!")
+    warped_xx, warped_yy = warp2([xx, yy])
     # reshape grid points for image interpolation
     grid = np.asarray([warped_xx.T, warped_yy.T]).T
     grid = grid.T.reshape((2, X * Y))
-
     # warp the markers
 
     if len(markers) == 0:
         if len(image.shape) == 3:
             # split the image in colors and perform interpolation
-            return np.asarray([img_as_uint(map_coordinates(i, grid[:, ::-1])).reshape((X, Y))[::-1] for i in image.T]).T
+            return np.asarray([map_coordinates(i, grid[:, ::-1]).reshape((X, Y))[::-1] for i in image.T]).T
         elif len(image.shape) == 2:
             return np.asarray(img_as_uint(map_coordinates(image.T, grid[:, ::-1])).reshape((X, Y))[::-1]).T
         else:
@@ -179,13 +224,17 @@ image = db.getImage(frame=frame)
 # Load horizon-markers, rotate them
 horizont_type = db.getMarkerType(name="Horizon")
 x, y = np.array([[m.x, m.y] for m in db.getMarkers(type=horizont_type)]).T
+
+Y, X = image.getShape()
 h = float(input("Please enter Height above projected plane in m: \n"))
 f = float(input("Please enter Focal length in mm: \n")) * 1e-3
 sizex, sizey = input("Please enter Sensor Size (X,Y) in mm: \n")
 SensorSize = np.asarray([sizex, sizey], dtype=float) * 1e-3
+print(Y)
 max_dist = input("Please enter maximal analysed distance to camera in m: \n")
-Y, X = image.getShape()
+res = max_dist/Y
 marker_type = db.setMarkerType(name="Projection-Correction Area marker", color="#FFFFFF")
+com.ReloadTypes()
 
 for mask in db.getMasks(frame=frame):
     data = mask.data
@@ -195,18 +244,18 @@ for mask in db.getMasks(frame=frame):
     for props in regionprops(labeled_org):
         region_pos.update({props.label: props.centroid})
     n_regions = np.amax(region_pos.keys())
-
-    eq = horizontal_equalisation(labeled_org, [x, y], f, SensorSize,
-                                              h=h,
-                                              max_dist=max_dist)
-
-
-    # eq2 = horizontal_equalisation(image.data, [x, y], f, SensorSize,
+    #
+    # eq = horizontal_equalisation(labeled_org, [x, y], f, SensorSize,
     #                                           h=h,
     #                                           max_dist=max_dist)
+
+
+    eq2 = horizontal_equalisation(image.data, [x, y], f, SensorSize,
+                                              h=h,
+                                              max_dist=max_dist)
     #
     # # if input("Show image? (Y/N) \n").count("Y"):
-    # import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt
     # plt.imshow(labeled_org)
     # plt.figure()
     # plt.imshow(image.data)
@@ -217,14 +266,14 @@ for mask in db.getMasks(frame=frame):
     # plt.figure()
     # plt.imshow(eq)
     # plt.figure()
-    # plt.imshow(eq2)
-    # plt.show()
+    plt.imshow(eq2)
+    plt.show()
 
     # eq = eq.astype(int)
     for prop in regionprops(eq):
         i = prop.label
         try:
-            db.setMarker(frame=frame, x=region_pos[i][1], y=region_pos[i][0], text="area %s"%prop.area, type=marker_type)
+            db.setMarker(frame=frame, x=region_pos[i][1], y=region_pos[i][0], text="area %s"%(float(prop.area)*res**2), type=marker_type)
         except KeyError:
             pass
 
