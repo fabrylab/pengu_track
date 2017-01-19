@@ -25,6 +25,8 @@
 Module containing detector classes to be used with pengu-track filters and models.
 """
 
+from __future__ import division, print_function
+
 import numpy as np
 import skimage.feature
 import skimage.transform
@@ -622,6 +624,9 @@ class SiAdViBeSegmentation(Segmentation):
 
         if init_image is not None:
             data = np.array(init_image, ndmin=2)
+            data = self.horizontal_equalisation(data, self.Horizonmarkers, self.F, self.Sensor_Size, self.H, self.h_p,
+                                                max_dist=self.Max_Dist)
+
             if len(data.shape) == 3:
                 self.Samples = np.tile(data, self.N).reshape(data.shape+(self.N,)).transpose((3, 0, 1, 2))
             elif len(data.shape) == 2:
@@ -676,9 +681,9 @@ class SiAdViBeSegmentation(Segmentation):
 
         data = (data.astype(float)*(self.Skale/this_skale)).astype(np.int32)
 
-        data = self.horizontal_equalisation(data, self.Horizonmarkers, self.F, self.Sensor_Size,
-                                            h=self.H,
+        data = self.horizontal_equalisation(data, self.Horizonmarkers, self.F, self.Sensor_Size, self.H, self.h_p,
                                             max_dist=self.Max_Dist)
+
         if self.Samples is None:
             self.Samples = np.tile(data, self.N).reshape((self.N,)+data.shape)
         if self.SegMap is None:
@@ -772,13 +777,13 @@ class SiAdViBeSegmentation(Segmentation):
         image = transform.rotate(image, np.arctan(m) * 180 / np.pi)
 
         X_s, Y_s = sensor_size
-
         # correction of the Y-axis section (after image rotation)
         t += m * X / 2
         print(t)
 
         # Calculate Camera tilt
-        Phi = np.arctan((t * (2 / Y) - 1.) * (Y_s / 2. / f))*-1
+        print(Y, Y_s, X, X_s, f, t)
+        Phi = np.arctan((t * (2. / Y) - 1.) * (Y_s / 2. / f))*-1
         print("Phi at %s" % (Phi * 180 / np.pi))
 
         # Initialize grid
@@ -795,8 +800,6 @@ class SiAdViBeSegmentation(Segmentation):
         y_max = np.asarray([0, max_dist, -h])
         y_max_norm = np.linalg.norm(y_max)
         y_min = np.asarray([0, h*np.tan(phi_-np.arctan(Y_s/f)),-h])
-        print(y_min)
-        print(np.arctan(Y_s/f))
         alpha_y = np.arccos(np.dot(y_max.T, x_s).T/(y_max_norm*x_s_norm)) * -1
 
         # Define Warp Function
@@ -807,7 +810,7 @@ class SiAdViBeSegmentation(Segmentation):
             print(max_dist/Y)
             c = 1./(h/h_p-1.)
             yy_ /= max_dist # 0 bis 1
-            yy_ *= np.log(max_dist/y_min[1])
+            yy_ = yy * np.log(max_dist/y_min[1])
             print(np.amin(yy_), np.amax(yy_))
 
             yy_ = y_min[1]*np.exp(yy_)
@@ -821,8 +824,8 @@ class SiAdViBeSegmentation(Segmentation):
             alpha = np.arccos(np.dot(coord.T, x_s).T/(coord_norm*x_s_norm)) #* np.sign(np.tan(phi_)*h-yy_)
             # calculate the angle between y_max-vector and grid-point-vector in the plane (projected to the plane)
             theta = np.arccos(np.sum((np.cross(coord.T, x_s) * np.cross(y_max, x_s)).T
-                           ,axis=0)/(coord_norm*x_s_norm*np.sin(alpha) *
-                                      y_max_norm*x_s_norm*np.sin(alpha_y))) * np.sign(xx) #* np.sign(np.tan(phi_)*h-yy_)
+                              , axis=0)/(coord_norm*x_s_norm*np.sin(alpha) *
+                                         y_max_norm*x_s_norm*np.sin(alpha_y))) * np.sign(xx) #* np.sign(np.tan(phi_)*h-yy_)
             # from the angles it is possible to calculate the position of the focused beam on the camera-sensor
             r = np.tan(alpha)*f
             warp_xx = np.sin(theta)*r*X/X_s + X/2.
@@ -830,12 +833,10 @@ class SiAdViBeSegmentation(Segmentation):
             return warp_xx, warp_yy
 
         # warp the grid
-        warped_xx, warped_yy = warp2([xx,yy])
+        warped_xx, warped_yy = warp2([xx, yy])
         # reshape grid points for image interpolation
         grid = np.asarray([warped_xx.T, warped_yy.T]).T
         grid = grid.T.reshape((2, X * Y))
-
-        # warp the markers
 
         if len(image.shape) == 3:
             # split the image in colors and perform interpolation

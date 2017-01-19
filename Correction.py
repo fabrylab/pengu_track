@@ -6,6 +6,7 @@ from skimage.measure import regionprops, label
 import sys
 from skimage import img_as_uint
 
+
 def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=[], max_dist=None):
     """
     Parameters:
@@ -53,11 +54,13 @@ def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=
 
     X_s, Y_s = sensor_size
 
+
     # correction of the Y-axis section (after image rotation)
     t += m * X / 2
     print(t)
 
     # Calculate Camera tilt
+    print(Y, Y_s, X, X_s, f, t)
     Phi = np.arctan((t * (2 / Y) - 1.) * (Y_s / 2. / f))*-1
     print("Phi at %s" % (Phi * 180 / np.pi))
 
@@ -180,10 +183,10 @@ def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=
         # return X/2-xx*Y/max_dist, Y-yy*Y/max_dist
 
     # warp the grid
-    print("Position!!!!")
-    print(warp2([np.asarray([2279.93,2279.93]), np.asarray([1001.72, 1001.72])]))
-    print("Position!!!!")
-    warped_xx, warped_yy = warp2([xx, yy])
+    # print("Position!!!!")
+    # print(warp2([np.asarray([2279.93,2279.93]), np.asarray([1001.72, 1001.72])]))
+    # print("Position!!!!")
+    warped_xx, warped_yy = warp([xx, yy])
     # reshape grid points for image interpolation
     grid = np.asarray([warped_xx.T, warped_yy.T]).T
     grid = grid.T.reshape((2, X * Y))
@@ -212,6 +215,50 @@ def horizontal_equalisation(image, horizonmarkers, f, sensor_size, h=1, markers=
         else:
             raise ValueError("The given image is whether RGB nor greyscale!")
 
+
+def phi(horizonmarkers, sensor_size, image_size, f):
+    x_h, y_h = np.asarray(horizonmarkers)
+
+    y, x = image_size
+
+    # linear fit and rotation to compensate incorrect camera alignment
+    m, t = np.polyfit(x_h, y_h, 1)  # linear fit
+
+    x_s, y_s = sensor_size
+
+    # correction of the Y-axis section (after image rotation)
+    t += m * x / 2
+
+    # Calculate Camera tilt
+    return np.arctan((t * (2 / y) - 1.) * (y_s / 2. / f))*-1
+
+
+def theta(theta_markers, sensor_size, image_size, f):
+    x_t1, y_t1 = theta_markers
+    y, x = image_size
+    x_s, y_s = sensor_size
+    # y_t1 = (y_t1-y/2.)*y_s/y
+    # r =  (((x_t1-x/2.)*(x_s/x))**2+((y_t1-y/2.)*(y_s/y))**2)**0.5
+    return np.arctan2(y_t1, f)
+
+
+def gamma(markers1, markers2, sensor_size, image_size, f):
+    x1, y1 = markers1
+    x2, y2 = markers2
+    y, x = image_size
+    x_s, y_s = sensor_size
+    x1 = (x1-x/2.)*(x_s/x)
+    y1 = (y1-y/2.)*(y_s/y)
+    x2 = (x2-x/2.)*(x_s/x)
+    y2 = (y2-y/2.)*(y_s/y)
+    return np.arccos((x1*x2+y1*y2+f**2)/((x1**2+y1**2+f**2)*(x2**2+y2**2+f**2))**0.5)
+
+
+def height(the, gam, p, h_t):
+    alpha = np.pi/2.-p-the
+    return h_t*np.abs(np.cos(alpha)*np.sin(np.pi-alpha-gam)/np.sin(gam))
+
+
 import clickpoints
 # Connect to database
 frame, database, port = clickpoints.GetCommandLineArgs()
@@ -226,7 +273,7 @@ horizont_type = db.getMarkerType(name="Horizon")
 x, y = np.array([[m.x, m.y] for m in db.getMarkers(type=horizont_type)]).T
 
 Y, X = image.getShape()
-h = float(input("Please enter Height above projected plane in m: \n"))
+# h = float(input("Please enter Height above projected plane in m: \n"))
 f = float(input("Please enter Focal length in mm: \n")) * 1e-3
 sizex, sizey = input("Please enter Sensor Size (X,Y) in mm: \n")
 SensorSize = np.asarray([sizex, sizey], dtype=float) * 1e-3
@@ -236,6 +283,29 @@ res = max_dist/Y
 marker_type = db.setMarkerType(name="Projection-Correction Area marker", color="#FFFFFF")
 com.ReloadTypes()
 
+
+# Load penguin-markers, rotate them
+penguin_type = db.getMarkerType(name="Penguin_Size")
+x_p1, y_p1, x_p2, y_p2 = np.array([[m.x1, m.y1, m.x2, m.y2] for m in db.getLines(type="Penguin_Size")]).T
+
+m, t = np.polyfit(x, y, 1)  # linear fit
+angle_m = np.arctan(m)
+x_p1 = x_p1 * np.cos(angle_m) - y_p1 * np.sin(angle_m)
+y_p1 = x_p1 * np.sin(angle_m) + y_p1 * np.cos(angle_m)
+x_p2 = x_p2 * np.cos(angle_m) - y_p2 * np.sin(angle_m)
+y_p2 = x_p2 * np.sin(angle_m) + y_p2 * np.cos(angle_m)
+
+pp = phi([x, y], SensorSize, [Y, X], f)
+args = np.argmax([y_p1, y_p2], axis=0)
+y11 = np.asarray([[y_p1[i], y_p2[i]][a] for i, a in enumerate(args)])
+x11 = np.asarray([[x_p1[i], x_p2[i]][a] for i, a in enumerate(args)])
+
+tt = theta([x11, y11], SensorSize, [Y, X], f)
+gg = gamma([x_p1, y_p1], [x_p2, y_p2], SensorSize, [Y, X], f)
+h_p = 0.6
+hh = height(tt, gg, pp, h_p)
+print("Height", np.mean(hh), np.std(hh)/len(hh)**0.5)
+h = np.mean(hh)
 for mask in db.getMasks(frame=frame):
     data = mask.data
     img = mask.image
@@ -244,10 +314,10 @@ for mask in db.getMasks(frame=frame):
     for props in regionprops(labeled_org):
         region_pos.update({props.label: props.centroid})
     n_regions = np.amax(region_pos.keys())
-    #
-    # eq = horizontal_equalisation(labeled_org, [x, y], f, SensorSize,
-    #                                           h=h,
-    #                                           max_dist=max_dist)
+
+    eq = horizontal_equalisation(labeled_org, [x, y], f, SensorSize,
+                                              h=h,
+                                              max_dist=max_dist)
 
 
     eq2 = horizontal_equalisation(image.data, [x, y], f, SensorSize,
@@ -264,8 +334,8 @@ for mask in db.getMasks(frame=frame):
     # eq = ((eq - mi)*n_regions/(ma-mi)+0.5).astype(int)-1 #haha mami
     # eq = img_as_uint(eq)
     # plt.figure()
-    # plt.imshow(eq)
-    # plt.figure()
+    plt.imshow(eq)
+    plt.figure()
     plt.imshow(eq2)
     plt.show()
 
@@ -273,7 +343,7 @@ for mask in db.getMasks(frame=frame):
     for prop in regionprops(eq):
         i = prop.label
         try:
-            db.setMarker(frame=frame, x=region_pos[i][1], y=region_pos[i][0], text="area %s"%(float(prop.area)*res**2), type=marker_type)
+            db.setMarker(frame=frame, x=region_pos[i][1], y=region_pos[i][0], text="label %s area %s"%(i, float(prop.area)*res**2), type=marker_type)
         except KeyError:
             pass
 

@@ -8,7 +8,7 @@ import sys
 import clickpoints
 
 # Connect to database
-db = clickpoints.DataFile("penguin_data.cdb")
+db = clickpoints.DataFile("/home/alex/Masterarbeit/master_project/master_project/adelie_data/770_PANA/Neuer Ordner/gsfd.cdb")
 start_frame = 0
 
 #Initialise PenguTrack
@@ -16,12 +16,13 @@ from PenguTrack.Filters import KalmanFilter
 from PenguTrack.Filters import MultiFilter
 from PenguTrack.Models import VariableSpeed
 from PenguTrack.Detectors import ViBeSegmentation
+from PenguTrack.Detectors import SiAdViBeSegmentation
 from PenguTrack.Detectors import BlobDetector
 
 import scipy.stats as ss
 
-object_size = 11  # Object diameter (smallest)
-object_number = 2  # Number of Objects in First Track
+object_size = 22  # Object diameter (smallest)
+object_number = 50  # Number of Objects in First Track
 
 # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
 model = VariableSpeed(1, 1, dim=2, timeconst=0.5)
@@ -44,7 +45,19 @@ init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
                            for j in np.random.randint(0, N, 20)], axis=0), dtype=np.int)
 
 # Init Segmentation Module with Init_Image
-VB = ViBeSegmentation(init_image=init, n_min=18, r=20, phi=1)
+# VB = ViBeSegmentation(init_image=init, n_min=18, r=20, phi=1)
+
+# Load horizon-markers, rotate them
+horizont_type = db.getMarkerType(name="Horizon")
+try:
+    x, y = np.array([[m.x, m.y] for m in db.getMarkers(type=horizont_type)]).T
+except ValueError:
+    raise ValueError("No markers with name 'Horizon'!")
+VB = SiAdViBeSegmentation([x,y], 14e-3, [17e-3,13e-3], 40, 0.6, 500, n=2, init_image=init, n_min=18, r=20, phi=1)
+imgdata = VB.horizontal_equalisation(db.getImage(frame=0).data, VB.Horizonmarkers, VB.F, VB.Sensor_Size, VB.H, VB.h_p, max_dist=VB.Max_Dist)
+import matplotlib.pyplot as plt
+plt.imshow(imgdata)
+plt.show()
 # Init Detection Module
 BD = BlobDetector(object_size, object_number)
 print('Initialized')
