@@ -239,7 +239,7 @@ def theta(theta_markers, sensor_size, image_size, f):
     x_s, y_s = sensor_size
     # y_t1 = (y_t1-y/2.)*y_s/y
     # r =  (((x_t1-x/2.)*(x_s/x))**2+((y_t1-y/2.)*(y_s/y))**2)**0.5
-    return np.arctan2(y_t1, f)
+    return np.arctan2((y_t1-y/2.)*(y_s/y), f)
 
 
 def gamma(markers1, markers2, sensor_size, image_size, f):
@@ -302,10 +302,11 @@ x11 = np.asarray([[x_p1[i], x_p2[i]][a] for i, a in enumerate(args)])
 
 tt = theta([x11, y11], SensorSize, [Y, X], f)
 gg = gamma([x_p1, y_p1], [x_p2, y_p2], SensorSize, [Y, X], f)
-h_p = 0.6
+h_p = 1.
 hh = height(tt, gg, pp, h_p)
 print("Height", np.mean(hh), np.std(hh)/len(hh)**0.5)
 h = np.mean(hh)
+h = 25
 for mask in db.getMasks(frame=frame):
     data = mask.data
     img = mask.image
