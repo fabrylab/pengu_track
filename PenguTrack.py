@@ -1,4 +1,7 @@
 from __future__ import division, print_function
+import resource
+resource.setrlimit(resource.RLIMIT_AS, (12000 * 1048576L, -1L))
+
 import cv2
 import numpy as np
 from scipy.ndimage.measurements import center_of_mass
@@ -42,7 +45,7 @@ MultiKal = MultiFilter(KalmanFilter, model, np.array([uncertainty, uncertainty])
 # Init_Background from Image_Median
 N = db.getImages().count()
 init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
-                           for j in np.random.randint(0, N, 20)], axis=0), dtype=np.int)
+                           for j in np.random.randint(0, N, 10)], axis=0), dtype=np.int)
 
 # Init Segmentation Module with Init_Image
 # VB = ViBeSegmentation(init_image=init, n_min=18, r=20, phi=1)
@@ -55,9 +58,9 @@ except ValueError:
     raise ValueError("No markers with name 'Horizon'!")
 VB = SiAdViBeSegmentation([x,y], 14e-3, [17e-3,13e-3], 40, 0.6, 500, n=2, init_image=init, n_min=18, r=20, phi=1)
 imgdata = VB.horizontal_equalisation(db.getImage(frame=0).data, VB.Horizonmarkers, VB.F, VB.Sensor_Size, VB.H, VB.h_p, max_dist=VB.Max_Dist)
-import matplotlib.pyplot as plt
-plt.imshow(imgdata)
-plt.show()
+# import matplotlib.pyplot as plt
+# plt.imshow(imgdata)
+# plt.show()
 # Init Detection Module
 BD = BlobDetector(object_size, object_number)
 print('Initialized')
@@ -93,6 +96,7 @@ class Measurement(db.base_model):
     log = peewee.FloatField(default=0)
     x = peewee.FloatField()
     y = peewee.FloatField()
+
 
 if "measurement" not in db.db.get_tables():
     db.db.connect()
