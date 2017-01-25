@@ -50,17 +50,23 @@ init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
 # Init Segmentation Module with Init_Image
 # VB = ViBeSegmentation(init_image=init, n_min=18, r=20, phi=1)
 
-# Load horizon-markers, rotate them
+# Load horizon-markers
 horizont_type = db.getMarkerType(name="Horizon")
 try:
-    x, y = np.array([[m.x, m.y] for m in db.getMarkers(type=horizont_type)]).T
+    horizon_markers = np.array([[m.x, m.y] for m in db.getMarkers(type=horizont_type)]).T
 except ValueError:
     raise ValueError("No markers with name 'Horizon'!")
-VB = SiAdViBeSegmentation([x,y], 14e-3, [17e-3,13e-3], 40, 0.6, 500, n=2, init_image=init, n_min=18, r=20, phi=1)
-imgdata = VB.horizontal_equalisation(db.getImage(frame=0).data, VB.Horizonmarkers, VB.F, VB.Sensor_Size, VB.H, VB.h_p, max_dist=VB.Max_Dist)
-# import matplotlib.pyplot as plt
-# plt.imshow(imgdata)
-# plt.show()
+# Load penguin-markers
+penguin_type = db.getMarkerType(name="Penguin_Size")
+try:
+    penguin_markers = np.array([[m.x1, m.y1, m.x2, m.y2] for m in db.getLines(type="Penguin_Size")]).T
+except ValueError:
+    raise ValueError("No markers with name 'Horizon'!")
+VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3,9e-3], penguin_markers, 0.6, 1000, n=2, init_image=init, n_min=18, r=20, phi=1)
+imgdata = VB.horizontal_equalisation(db.getImage(frame=0).data)
+import matplotlib.pyplot as plt
+plt.imshow(imgdata)
+plt.show()
 # Init Detection Module
 BD = BlobDetector(object_size, object_number)
 print('Initialized')
