@@ -5,13 +5,14 @@ resource.setrlimit(resource.RLIMIT_AS, (12000 * 1048576L, -1L))
 import cv2
 import numpy as np
 from scipy.ndimage.measurements import center_of_mass
+from skimage.morphology import binary_dilation
 import peewee
 import sys
 
 import clickpoints
 
 # Connect to database
-db = clickpoints.DataFile("/home/alex/Masterarbeit/master_project/master_project/adelie_data/770_PANA/Neuer Ordner/gsfd.cdb")
+db = clickpoints.DataFile("/home/alex/Masterarbeit/master_project/master_project/adelie_data/770_PANA/Neuer Ordner/new.cdb")
 start_frame = 0
 
 #Initialise PenguTrack
@@ -24,8 +25,8 @@ from PenguTrack.Detectors import BlobDetector
 
 import scipy.stats as ss
 
-object_size = 22  # Object diameter (smallest)
-object_number = 50  # Number of Objects in First Track
+object_size = 2  # Object diameter (smallest)
+object_number = 100  # Number of Objects in First Track
 
 # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
 model = VariableSpeed(1, 1, dim=2, timeconst=0.5)
@@ -62,11 +63,11 @@ try:
     penguin_markers = np.array([[m.x1, m.y1, m.x2, m.y2] for m in db.getLines(type="Penguin_Size")]).T
 except ValueError:
     raise ValueError("No markers with name 'Horizon'!")
-VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3,9e-3], penguin_markers, 0.6, 1000, n=2, init_image=init, n_min=18, r=20, phi=1)
+VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3,9e-3], penguin_markers, 0.6, 1000, n=2, init_image=init, n_min=2, r=20, phi=1)
 imgdata = VB.horizontal_equalisation(db.getImage(frame=0).data)
-import matplotlib.pyplot as plt
-plt.imshow(imgdata)
-plt.show()
+# import matplotlib.pyplot as plt
+# plt.imshow(imgdata)
+# plt.show()
 # Init Detection Module
 BD = BlobDetector(object_size, object_number)
 print('Initialized')
@@ -113,7 +114,7 @@ db.table_measurement = Measurement   # for consistency
 
 # Start Iteration over Images
 print('Starting Iteration')
-images = db.getImageIterator(start_frame=start_frame, end_frame=3)
+images = db.getImageIterator()#start_frame=start_frame, end_frame=3)
 for image in images:
 
     i = image.get_id()
@@ -122,7 +123,22 @@ for image in images:
 
     # Detection step
     SegMap = VB.detect(image.data, do_neighbours=False)
+    # plt.imshow(SegMap)
+    # plt.figure()
+    # plt.imshow(VB.Samples[0])
+    # plt.show()
+    # import matplotlib.pyplot as plt
+    # plt.imshow(SegMap)
+    # plt.figure()
+    SegMap = binary_dilation(SegMap)
+    # plt.imshow(SegMap)
+    # plt.show()
+
     Positions = BD.detect(SegMap)
+
+    # x_p, y_p = Positions
+    # x_p = x_p-
+    # Positions = VB.warp2(Positions)
 
     # Setting Mask in ClickPoints
     db.setMask(image=image, data=(~SegMap).astype(np.uint8))
@@ -148,15 +164,18 @@ for image in images:
                 prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
 
             if i in MultiKal.Filters[k].Measurements.keys():
-                pred_x, pred_y = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])
+                pred_y, pred_x = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])
                 prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
+
+            x, y = VB.warp2([VB.Res*(y-VB.width/2.), VB.Res*(VB.height-x)])
+
 
             # Write assigned tracks to ClickPoints DataBase
             if np.isnan(x) or np.isnan(y):
                 pass
             else:
                 pred_marker = db.setMarker(image=image, x=pred_x, y=pred_y, text="Track %s" % k, type=marker_type3)
-                try:
+                if db.getTrack(k):
                     # db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
                     if k == MultiKal.CriticalIndex:
                         db.setMarker(image=image, type=marker_type, x=x, y=y,
@@ -164,7 +183,7 @@ for image in images:
                     track_marker = db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y,
                                  text='Track %s, Prob %.2f' % (k, prob))
                     print('Set Track(%s)-Marker at %s, %s' % (k, x, y))
-                except:
+                else:
                     db.setTrack(marker_type2, id=k)
                     # db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
                     if k == MultiKal.CriticalIndex:

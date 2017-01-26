@@ -669,6 +669,7 @@ class SiAdViBeSegmentation(Segmentation):
         # Initialize grid
         xx, yy = np.meshgrid(np.arange(self.width), np.arange(self.height))
         # Grid has same aspect ratio as picture, but width max_dist
+        self.Res = max_dist/self.height
         yy = yy * (max_dist/self.height)
         xx = (xx-self.width/2.) * (max_dist/self.height)
         # counter-angle to phi is used in further calculation
@@ -687,7 +688,7 @@ class SiAdViBeSegmentation(Segmentation):
         self.grid = grid.T.reshape((2, self.width * self.height))
 
         # Initialize with warped image
-        data = self.horizontal_equalisation(data)
+        # data = self.horizontal_equalisation(data)
 
         if len(data.shape) == 3:
             self.Samples = np.tile(data, self.N).reshape(data.shape+(self.N,)).transpose((3, 0, 1, 2))
@@ -731,7 +732,7 @@ class SiAdViBeSegmentation(Segmentation):
 
         data = (data.astype(float)*(self.Skale/this_skale)).astype(np.int32)
 
-        data = self.horizontal_equalisation(data)
+        # data = self.horizontal_equalisation(data)
 
         if self.Samples is None:
             self.Samples = np.tile(data, self.N).reshape((self.N,)+data.shape)
@@ -776,7 +777,8 @@ class SiAdViBeSegmentation(Segmentation):
                 print(np.sum(neighbours), np.sum(image_mask), x.shape, y.shape)
                 raise
         print("Updated %s pixels" % n)
-        return self.SegMap
+
+        return self.horizontal_equalisation(self.SegMap)
 
     # def horizontal_equalisation(self, image, horizonmarkers, f, sensor_size, h, h_p, markers=[], max_dist=None):
     #     """
@@ -953,18 +955,26 @@ class SiAdViBeSegmentation(Segmentation):
         # import matplotlib.pyplot as plt
         # plt.scatter(old[:, 0], yy_[:, 0])
         # plt.show()
-        print(xx_.shape, yy_.shape)
+        # print(xx_.shape, yy_.shape)
         coord = np.asarray([xx_, yy_, -self.camera_h * np.ones_like(xx_)])
         coord_norm = np.linalg.norm(coord, axis=0)
         # calculate the angle between camera mid-beam-vector and grid-point-vector
         alpha = np.arccos(np.dot(coord.T, self.x_s).T / (coord_norm * self.x_s_norm))  # * np.sign(np.tan(phi_)*h-yy_)
         # calculate the angle between y_max-vector and grid-point-vector in the plane (projected to the plane)
-        print(coord.shape, self.x_s.shape, self.y_max.shape)
+        # print(coord.shape, self.x_s.shape, self.y_max.shape)
         theta = np.sum((np.cross(coord.T, self.x_s) * np.cross(self.y_max, self.x_s)).T
                                  , axis=0) / (coord_norm * self.x_s_norm * np.sin(alpha) *
                                               self.y_max_norm * self.x_s_norm * np.sin(self.alpha_y))
-        theta[theta>1.] = 1.
-        theta[theta<-1.] = -1.
+        try:
+            theta[theta>1.] = 1.
+            theta[theta<-1.] = -1.
+        except TypeError:
+            if theta > 1.:
+                theta = 1.
+            elif theta < -1:
+                theta = -1.
+            else:
+                pass
         theta = np.arccos(theta) * np.sign(xx_)
         # from the angles it is possible to calculate the position of the focused beam on the camera-sensor
         r = np.tan(alpha) * self.F
