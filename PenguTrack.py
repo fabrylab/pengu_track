@@ -22,10 +22,11 @@ from PenguTrack.Models import VariableSpeed
 from PenguTrack.Detectors import ViBeSegmentation
 from PenguTrack.Detectors import SiAdViBeSegmentation
 from PenguTrack.Detectors import BlobDetector
+from PenguTrack.Detectors import AreaDetector
 
 import scipy.stats as ss
 
-object_size = 2  # Object diameter (smallest)
+object_size = 4  # Object diameter (smallest)
 object_number = 100  # Number of Objects in First Track
 
 # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
@@ -70,6 +71,7 @@ imgdata = VB.horizontal_equalisation(db.getImage(frame=0).data)
 # plt.show()
 # Init Detection Module
 BD = BlobDetector(object_size, object_number)
+AD = AreaDetector(VB.Penguin_Size*3)
 print('Initialized')
 
 # Define ClickPoints Marker
@@ -123,18 +125,20 @@ for image in images:
 
     # Detection step
     SegMap = VB.detect(image.data, do_neighbours=False)
+    import matplotlib.pyplot as plt
     # plt.imshow(SegMap)
     # plt.figure()
-    # plt.imshow(VB.Samples[0])
-    # plt.show()
-    # import matplotlib.pyplot as plt
+    # from scipy import ndimage
+    # k = np.zeros((object_size+2, VB.Penguin_Size+2))
+    # k[1:-1, 1:-1] = 1.
+    # SegMap = ndimage.convolve(SegMap, k.astype(bool).T, mode="constant", cval=0.)
     # plt.imshow(SegMap)
     # plt.figure()
     SegMap = binary_dilation(SegMap)
     # plt.imshow(SegMap)
     # plt.show()
 
-    Positions = BD.detect(SegMap)
+    Positions = AD.detect(SegMap)
 
     # x_p, y_p = Positions
     # x_p = x_p-
@@ -158,6 +162,7 @@ for image in images:
                 x = meas.PositionX
                 y = meas.PositionY
                 prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
+                MultiKal.FIlters[k]
             elif i in MultiKal.Filters[k].X.keys():
                 meas = None
                 x, y = MultiKal.Model.measure(MultiKal.Filters[k].X[i])

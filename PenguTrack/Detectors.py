@@ -166,6 +166,104 @@ class BlobDetector(Detector):
             return []
 
 
+class AreaDetector(Detector):
+    """
+    Detector classifying objects by area and number to be used with pengu-track modules.
+    """
+    def __init__(self, object_area, threshold=None):
+        """
+        Detector classifying objects by number and size, taking area-separation into account.
+
+        Parameters
+        ----------
+        object_size: non-zero int
+            Smallest diameter of an object to be detected.
+        object_number: non-zero int
+            If threshold in None, this number specifies the number of objects to track
+            in the first picture and sets the threshold accordingly.
+        threshold: float, optional
+            Threshold for binning the image.
+        """
+        super(AreaDetector, self).__init__()
+        self.ObjectArea = int(object_area)
+        self.Threshold = threshold
+        self.Areas = []
+
+    def detect(self, image, return_regions=False):
+        """
+        Detection function. Parts the image into blob-regions with size according to their area.
+        Returns information about the regions.
+
+        Parameters
+        ----------
+        image: array_like
+            Image will be converted to uint8 Greyscale and then binnearized.
+        return_regions: bool, optional
+            If True, function will return skimage.measure.regionprops object,
+            else a list of the blob centroids and areas.
+
+        Returns
+        -------
+        regions: array_like
+            List of information about each blob of adequate size.
+        """
+        while len(image.shape) > 2:
+            image = np.linalg.norm(image, axis=-1)
+        image = np.array(image, dtype=bool)
+        regions = skimage.measure.regionprops(skimage.measure.label(image))
+        if len(regions) <= 0:
+            return np.array([])
+
+        import matplotlib.pyplot as plt
+        print(self.ObjectArea, len(self.Areas))
+        self.Areas.extend([prop.area for prop in regions])
+        if len(self.Areas)>1e4:
+            plt.hist(self.Areas, bins=100)
+            plt.show()
+
+        out = []
+        for prop in regions:
+            if 0.6 * self.ObjectArea < prop.area < 1.4 * self.ObjectArea:
+                if return_regions:
+                    out.append(prop)
+                else:
+                    out.append(Measurement(1., prop.centroid))
+            elif 1.4 * self.ObjectArea <= prop.area < 2.4 * self.ObjectArea:
+                distance = ndi.distance_transform_edt(prop.image)
+                local_maxi = peak_local_max(distance, indices=False, footprint=np.ones((3, 3)),
+                                            labels=prop.image, num_peaks=2)
+                markers = ndi.label(local_maxi)[0]
+                labels = watershed(-distance, markers, mask=prop.image)
+                new_reg = skimage.measure.regionprops(labels)
+                if return_regions:
+                    out.extend(new_reg)
+                else:
+                    out.extend([Measurement(1., new.centroid) for new in new_reg])
+            elif 2.4 * self.ObjectArea <= prop.area < 3.4 * self.ObjectArea:
+                distance = ndi.distance_transform_edt(prop.image)
+                local_maxi = peak_local_max(distance, indices=False, footprint=np.ones((3, 3)),
+                                            labels=prop.image, num_peaks=3)
+                markers = ndi.label(local_maxi)[0]
+                labels = watershed(-distance, markers, mask=prop.image)
+                new_reg = skimage.measure.regionprops(labels)
+                if return_regions:
+                    out.extend(new_reg)
+                else:
+                    out.extend([Measurement(1., new.centroid) for new in new_reg])
+            elif 3.4 * self.ObjectArea <= prop.area < 4.4 * self.ObjectArea:
+                distance = ndi.distance_transform_edt(prop.image)
+                local_maxi = peak_local_max(distance, indices=False, footprint=np.ones((3, 3)),
+                                            labels=prop.image, num_peaks=4)
+                markers = ndi.label(local_maxi)[0]
+                labels = watershed(-distance, markers, mask=prop.image)
+                new_reg = skimage.measure.regionprops(labels)
+                if return_regions:
+                    out.extend(new_reg)
+                else:
+                    out.extend([Measurement(1., new.centroid) for new in new_reg])
+        return out
+
+
 class AreaBlobDetector(Detector):
     """
     Detector classifying objects by area and number to be used with pengu-track modules.
@@ -666,6 +764,7 @@ class SiAdViBeSegmentation(Segmentation):
         print("Height", np.mean(hh), np.std(hh) / len(hh) ** 0.5)
         self.camera_h = np.mean(hh)
 
+
         # Initialize grid
         xx, yy = np.meshgrid(np.arange(self.width), np.arange(self.height))
         # Grid has same aspect ratio as picture, but width max_dist
@@ -686,6 +785,10 @@ class SiAdViBeSegmentation(Segmentation):
         # reshape grid points for image interpolation
         grid = np.asarray([warped_xx.T, warped_yy.T]).T
         self.grid = grid.T.reshape((2, self.width * self.height))
+
+        # calculate Penguin-Projection Size
+        self.c = 1. / (self.camera_h / self.h_p - 1.)
+        self.Penguin_Size = np.log(1 + self.c) * self.height / np.log(self.Max_Dist / self.y_min[1])
 
         # Initialize with warped image
         # data = self.horizontal_equalisation(data)
@@ -935,33 +1038,17 @@ class SiAdViBeSegmentation(Segmentation):
     # Define Warp Function
     def warp2(self, xy):
         xx_, yy_ = xy
-        old = np.array(yy_)
         # vectors of every grid point in the plane (-h)
-        # print(max_dist/Y)
-        c = 1. / (self.camera_h / self.h_p - 1.)
-        yy_ /= self.Max_Dist  # 0 bis 1
-        yy_ *= np.log(self.Max_Dist / self.y_min[1])
-        # print(np.amin(yy_), np.amax(yy_))
-        # 1 - > Y*c
-        # yy_ = (yy_) * ((Y*c-1)/max_dist) + 1 # 1 -> Y*c
-        # yy_ = np.cumsum(1./(yy_+1), axis=0) # 1 -> 1/(Y*c)
+        yy_ /= self.Max_Dist  # linear 0 to 1
+        yy_ *= np.log(self.Max_Dist / self.y_min[1])  # linear 0 to log(max/min)
+        yy_ = self.y_min[1] * np.exp(yy_)  # exponential from y_min to y_max
 
-        yy_ = self.y_min[1] * np.exp(yy_)
-        p_s = np.log(1 + c) / (np.log(self.Max_Dist / self.y_min[1]) / self.height)
-        # print("Penguin size is %s pixels!"%p_s)
-        # mmm = np.amax(yy_)
-        # yy_ *= (max_dist/mmm)
-        # print(np.amin(yy_), np.amax(yy_))
-        # import matplotlib.pyplot as plt
-        # plt.scatter(old[:, 0], yy_[:, 0])
-        # plt.show()
-        # print(xx_.shape, yy_.shape)
+        # initialize 3d positions
         coord = np.asarray([xx_, yy_, -self.camera_h * np.ones_like(xx_)])
         coord_norm = np.linalg.norm(coord, axis=0)
         # calculate the angle between camera mid-beam-vector and grid-point-vector
         alpha = np.arccos(np.dot(coord.T, self.x_s).T / (coord_norm * self.x_s_norm))  # * np.sign(np.tan(phi_)*h-yy_)
         # calculate the angle between y_max-vector and grid-point-vector in the plane (projected to the plane)
-        # print(coord.shape, self.x_s.shape, self.y_max.shape)
         theta = np.sum((np.cross(coord.T, self.x_s) * np.cross(self.y_max, self.x_s)).T
                                  , axis=0) / (coord_norm * self.x_s_norm * np.sin(alpha) *
                                               self.y_max_norm * self.x_s_norm * np.sin(self.alpha_y))
