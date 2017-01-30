@@ -781,7 +781,7 @@ class SiAdViBeSegmentation(Segmentation):
         self.y_max_norm = np.linalg.norm(self.y_max)
         self.y_min = np.asarray([0, self.camera_h*np.tan(phi_-np.arctan(self.Sensor_Size[1]/f)), -self.camera_h])
         self.alpha_y = np.arccos(np.dot(self.y_max.T, self.x_s).T/(self.y_max_norm*self.x_s_norm)) * -1
-        warped_xx, warped_yy = self.warp2([xx, yy])
+        warped_xx, warped_yy = self.warp_log([xx, yy])
         # reshape grid points for image interpolation
         grid = np.asarray([warped_xx.T, warped_yy.T]).T
         self.grid = grid.T.reshape((2, self.width * self.height))
@@ -1036,7 +1036,7 @@ class SiAdViBeSegmentation(Segmentation):
             raise ValueError("The given image is whether RGB nor greyscale!")
 
     # Define Warp Function
-    def warp2(self, xy):
+    def warp_log(self, xy):
         xx_, yy_ = xy
         # vectors of every grid point in the plane (-h)
         yy_ /= self.Max_Dist  # linear 0 to 1
@@ -1068,6 +1068,52 @@ class SiAdViBeSegmentation(Segmentation):
         warp_xx = np.sin(theta) * r * self.width / self.Sensor_Size[0] + self.width / 2.
         warp_yy = np.cos(theta) * r * self.height / self.Sensor_Size[1] + self.height / 2.
         return warp_xx, warp_yy
+
+    # Define Warp Function
+    def warp_orth(self, xy):
+        xx_, yy_ = xy
+        # vectors of every grid point in the plane (-h)
+        coord = np.asarray([xx_, yy_, -self.camera_h*np.ones_like(xx_)])
+        coord_norm = np.linalg.norm(coord, axis=0)
+        # calculate the angle between camera mid-beam-vector and grid-point-vector
+        alpha = np.arccos(np.dot(coord.T, self.x_s).T/(coord_norm*self.x_s_norm))
+        # calculate the angle between y_max-vector and grid-point-vector in the plane (projected to the plane)
+        theta = np.sum((np.cross(coord.T, self.x_s) * np.cross(self.y_max, self.x_s)).T
+                                 , axis=0) / (coord_norm * self.x_s_norm * np.sin(alpha) *
+                                              self.y_max_norm * self.x_s_norm * np.sin(self.alpha_y))
+        try:
+            theta[theta>1.] = 1.
+            theta[theta<-1.] = -1.
+        except TypeError:
+            if theta > 1.:
+                theta = 1.
+            elif theta < -1:
+                theta = -1.
+            else:
+                pass
+        theta = np.arccos(theta) * np.sign(xx_)
+        # print(np.nanmin(theta), np.nanmax(theta))
+        # from the angles it is possible to calculate the position of the focused beam on the camera-sensor
+        r = np.tan(alpha)*self.F
+        warp_xx = np.sin(theta)*r*self.height/self.Sensor_Size[1] + self.width/2.
+        warp_yy = np.cos(theta)*r*self.height/self.Sensor_Size[1] + self.height/2.
+        return warp_xx, warp_yy
+
+    def back_warp_orth(self, xy):
+        warp_xx, warp_yy = xy
+        # Calculate angles in Camera-Coordinates
+        theta = np.arctan2((warp_yy-self.height/2.)*self.Sensor_Size[1]/self.height,
+                           (warp_xx-self.width/2.)*self.Sensor_Size[0]/self.width)
+        theta = np.pi/2.-theta
+        r = (((warp_xx-self.width/2.)*self.Sensor_Size[0]/self.width)**2+((warp_yy-self.height/2.)*self.Sensor_Size[1]/self.height)**2)**0.5
+
+        print(np.amin(r), np.amax(r))
+        alpha = np.arctan(r/self.F)
+        lam = -self.camera_h/(np.cos(theta)*np.sin(np.pi/2.-self.Phi)*np.tan(alpha)-np.cos(np.pi/2.-self.Phi))
+        print(np.amin(lam), np.amax(lam))
+        xx_ = lam * (np.tan(alpha)*np.sin(np.pi/2.-self.Phi)*np.cos(theta)+np.sin(np.pi/2.-self.Phi))
+        yy_ = lam*np.tan(alpha)*np.sin(theta)
+        return yy_, xx_
 
     def calc_phi(self, horizonmarkers, sensor_size, image_size, f):
         x_h, y_h = np.asarray(horizonmarkers)

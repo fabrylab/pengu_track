@@ -23,10 +23,11 @@ from PenguTrack.Detectors import ViBeSegmentation
 from PenguTrack.Detectors import SiAdViBeSegmentation
 from PenguTrack.Detectors import BlobDetector
 from PenguTrack.Detectors import AreaDetector
+from PenguTrack.Detectors import Measurement as Pengu_Meas
 
 import scipy.stats as ss
 
-object_size = 4  # Object diameter (smallest)
+object_size = 12  # Object diameter (smallest)
 object_number = 100  # Number of Objects in First Track
 
 # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
@@ -140,6 +141,13 @@ for image in images:
 
     Positions = AD.detect(SegMap)
 
+    def dummy(x):
+        return x
+    # Positions = [Pengu_Meas(1., VB.back_warp_orth(VB.warp_log([VB.Res * (pos.PositionY - VB.width / 2.),
+    #                                                            VB.Res * (VB.height - pos.PositionX)]))) for pos in Positions]
+    # xxyy = np.array([[pos.PositionX, pos.PositionY] for pos in Positions])
+    # plt.scatter(xxyy.T[0], xxyy.T[1])
+    # plt.show()
     # x_p, y_p = Positions
     # x_p = x_p-
     # Positions = VB.warp2(Positions)
@@ -162,7 +170,6 @@ for image in images:
                 x = meas.PositionX
                 y = meas.PositionY
                 prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
-                MultiKal.FIlters[k]
             elif i in MultiKal.Filters[k].X.keys():
                 meas = None
                 x, y = MultiKal.Model.measure(MultiKal.Filters[k].X[i])
@@ -172,8 +179,10 @@ for image in images:
                 pred_y, pred_x = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])
                 prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
 
-            x, y = VB.warp2([VB.Res*(y-VB.width/2.), VB.Res*(VB.height-x)])
-
+            # x, y = VB.warp_log([x, y])
+            x, y = VB.warp_log([VB.Res * (y - VB.width / 2.), VB.Res * (VB.height - x)])
+            # x = VB.Res*(x - VB.width / 2.)
+            # y = VB.Res*(VB.height - y)
 
             # Write assigned tracks to ClickPoints DataBase
             if np.isnan(x) or np.isnan(y):
