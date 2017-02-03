@@ -1,0 +1,144 @@
+
+P-Faktor 10
+N-Total: 176 GT, 132 Auto
+Correct Detections: 101 absolute, 57.3863636364 relative %
+False Positives: 31 absolute, 23.4848484848 relative %
+False Negative: 75 absolute, 42.6136363636 relative %
+Total RMS-Error: 4.67078702064 absolute, 34.0860071171 relative %
+
+P-Faktor 15
+N-Total: 176 GT, 91 Auto
+Correct Detections: 96 absolute, 54.5454545455 relative %
+False Positives: -5 absolute, -5.49450549451 relative %
+False Negative: 80 absolute, 45.4545454545 relative %
+Total RMS-Error: 4.71914432754 absolute, 34.4389042841 relative %
+
+P-Faktor 20
+N-Total: 176 GT, 71 Auto
+Correct Detections: 77 absolute, 43.75 relative %
+False Positives: -6 absolute, -8.45070422535 relative %
+False Negative: 99 absolute, 56.25 relative %
+Total RMS-Error: 5.32493114067 absolute, 38.8597553168 relative %
+
+P-Faktor 5
+N-Total: 176 GT, 1149 Auto
+Correct Detections: 115 absolute, 65.3409090909 relative %
+False Positives: 1034 absolute, 89.9912967798 relative %
+False Negative: 61 absolute, 34.6590909091 relative %
+Total RMS-Error: 5.29002762535 absolute, 38.6050398981 relative %
+
+P-Faktor 8
+N-Total: 176 GT, 197 Auto
+Correct Detections: 104 absolute, 59.0909090909 relative %
+False Positives: 93 absolute, 47.2081218274 relative %
+False Negative: 72 absolute, 40.9090909091 relative %
+Total RMS-Error: 4.51919161609 absolute, 32.9797091815 relative %
+
+P-Faktor 7
+N-Total: 176 GT, 285 Auto
+Correct Detections: 98 absolute, 55.6818181818 relative %
+False Positives: 187 absolute, 65.6140350877 relative %
+False Negative: 78 absolute, 44.3181818182 relative %
+Total RMS-Error: 5.36736786816 absolute, 39.1694458655 relative %
+
+P-Faktor 9
+N-Total: 176 GT, 152 Auto
+Correct Detections: 113 absolute, 64.2045454545 relative %
+False Positives: 39 absolute, 25.6578947368 relative %
+False Negative: 63 absolute, 35.7954545455 relative %
+Total RMS-Error: 5.05340471128 absolute, 36.8782366211 relative %
+
+P-Faktor 6
+N-Total: 176 GT, 450 Auto
+Correct Detections: 115 absolute, 65.3409090909 relative %
+False Positives: 335 absolute, 74.4444444444 relative %
+False Negative: 61 absolute, 34.6590909091 relative %
+Total RMS-Error: 4.94968257274 absolute, 36.1213034669 relative %
+
+-----------------------------------------------
+
+
+
+P-Faktor 20
+N-Total: 123 GT, 66 Auto
+Correct Detections: 64 absolute, 52.0325203252 relative %
+False Positives: 2 absolute, 3.0303030303 relative %
+False Negative: 59 absolute, 47.9674796748 relative %
+Total RMS-Error: 4.17104700028 absolute, 30.4390538701 relative %
+
+P-Faktor 15
+N-Total: 123 GT, 87 Auto
+Correct Detections: 81 absolute, 65.8536585366 relative %
+False Positives: 6 absolute, 6.89655172414 relative %
+False Negative: 42 absolute, 34.1463414634 relative %
+Total RMS-Error: 3.67114505327 absolute, 26.7909189309 relative %
+
+P-Faktor 10
+N-Total: 123 GT, 118 Auto
+Correct Detections: 92 absolute, 74.7967479675 relative %
+False Positives: 26 absolute, 22.0338983051 relative %
+False Negative: 31 absolute, 25.2032520325 relative %
+Total RMS-Error: 3.86287054306 absolute, 28.1900742297 relative %
+
+P-Faktor 5
+N-Total: 123 GT, 1108 Auto
+Correct Detections: 79 absolute, 64.2276422764 relative %
+False Positives: 1029 absolute, 92.8700361011 relative %
+False Negative: 44 absolute, 35.7723577236 relative %
+Total RMS-Error: 5.02332710727 absolute, 36.6587392602 relative %
+
+P-Faktor 8
+N-Total: 123 GT, 208 Auto
+Correct Detections: 85 absolute, 69.1056910569 relative %
+False Positives: 123 absolute, 59.1346153846 relative %
+False Negative: 38 absolute, 30.8943089431 relative %
+Total RMS-Error: 3.78908965068 absolute, 27.6516433375 relative %
+
+P-Faktor 6
+N-Total: 123 GT, 533 Auto
+Correct Detections: 87 absolute, 70.7317073171 relative %
+False Positives: 446 absolute, 83.6772983114 relative %
+False Negative: 36 absolute, 29.2682926829 relative %
+Total RMS-Error: 4.52844670749 absolute, 33.0472500713 relative %
+
+P-Faktor 12
+N-Total: 123 GT, 97 Auto
+Correct Detections: 80 absolute, 65.0406504065 relative %
+False Positives: 17 absolute, 17.5257731959 relative %
+False Negative: 43 absolute, 34.9593495935 relative %
+Total RMS-Error: 3.75380044266 absolute, 27.3941132488 relative %
+
+P-Faktor 14
+N-Total: 123 GT, 85 Auto
+Correct Detections: 79 absolute, 64.2276422764 relative %
+False Positives: 6 absolute, 7.05882352941 relative %
+False Negative: 44 absolute, 35.7723577236 relative %
+Total RMS-Error: 3.73944847937 absolute, 27.2893769119 relative %
+
+P-Faktor 4
+N-Total: 123 GT, 4664 Auto
+Correct Detections: 83 absolute, 67.4796747967 relative %
+False Positives: 4581 absolute, 98.2204116638 relative %
+False Negative: 40 absolute, 32.5203252033 relative %
+Total RMS-Error: 5.68622245814 absolute, 41.496351326 relative %
+
+P-Faktor 25
+N-Total: 123 GT, 50 Auto
+Correct Detections: 49 absolute, 39.837398374 relative %
+False Positives: 1 absolute, 2.0 relative %
+False Negative: 74 absolute, 60.162601626 relative %
+Total RMS-Error: 3.97565332252 absolute, 29.0131292323 relative %
+
+P-Faktor 18
+N-Total: 123 GT, 69 Auto
+Correct Detections: 69 absolute, 56.0975609756 relative %
+False Positives: 0 absolute, 0.0 relative %
+False Negative: 54 absolute, 43.9024390244 relative %
+Total RMS-Error: 4.17637058472 absolute, 30.4779037976 relative %
+
+P-Faktor 16
+N-Total: 123 GT, 75 Auto
+Correct Detections: 76 absolute, 61.7886178862 relative %
+False Positives: -1 absolute, -1.33333333333 relative %
+False Negative: 47 absolute, 38.2113821138 relative %
+Total RMS-Error: 4.05794679115 absolute, 29.6136823607 relative %
