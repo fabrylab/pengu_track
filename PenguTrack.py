@@ -27,7 +27,7 @@ from PenguTrack.Detectors import Measurement as Pengu_Meas
 
 import scipy.stats as ss
 
-object_size = 12  # Object diameter (smallest)
+object_size = 2  # Object diameter (smallest)
 object_number = 100  # Number of Objects in First Track
 
 # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
@@ -65,14 +65,19 @@ try:
     penguin_markers = np.array([[m.x1, m.y1, m.x2, m.y2] for m in db.getLines(type="Penguin_Size")]).T
 except ValueError:
     raise ValueError("No markers with name 'Horizon'!")
-VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3,9e-3], penguin_markers, 0.6, 1000, n=2, init_image=init, n_min=2, r=20, phi=1)
+
+# Initialize detector and start backwards.
+VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3,9e-3], penguin_markers, 0.6, 1000, n=2, init_image=init, n_min=2, r=10, phi=1)
+for i in range(1,10)[::-1]:
+    VB.detect(db.getImage(frame=i).data, do_neighbours=False)
+
 imgdata = VB.horizontal_equalisation(db.getImage(frame=0).data)
 # import matplotlib.pyplot as plt
 # plt.imshow(imgdata)
 # plt.show()
 # Init Detection Module
 BD = BlobDetector(object_size, object_number)
-AD = AreaDetector(VB.Penguin_Size*3)
+AD = AreaDetector(VB.Penguin_Size)
 print('Initialized')
 
 # Define ClickPoints Marker
@@ -80,7 +85,7 @@ print('Initialized')
 if db.getMarkerType(name="PT_Detection_Marker"):
     marker_type = db.getMarkerType(name="PT_Detection_Marker")
 else:
-    marker_type = db.setMarkerType(name="PT_Detection_Marker", color="#FF0000", style='{"scale":1.2}')
+    marker_type = db.setMarkerType(name="PT_Detection_Marker", color="#FFFF00", style='{"scale":0.8}')
 if db.getMarkerType(name="PT_Track_Marker"):
     marker_type2 = db.getMarkerType(name="PT_Track_Marker")
 else:
@@ -107,13 +112,28 @@ class Measurement(db.base_model):
     x = peewee.FloatField()
     y = peewee.FloatField()
 
-
 if "measurement" not in db.db.get_tables():
     db.db.connect()
     Measurement.create_table()#  important to respect unique constraint
 
 db.table_measurement = Measurement   # for consistency
 
+
+def setMeasurement(marker=None, log=None, x=None, y=None):
+    assert not (marker is None), "Measurement must refer to a marker."
+    try:
+        item = db.table_measurement.get(marker=marker)
+    except peewee.DoesNotExist:
+        item = db.table_measurement()
+
+    dictionary = dict(marker=marker, x=x, y=y)
+    for key in dictionary:
+        if dictionary[key] is not None:
+            setattr(item, key, dictionary[key])
+    item.save()
+    return item
+
+db.setMeasurement = setMeasurement
 
 # Start Iteration over Images
 print('Starting Iteration')
@@ -135,23 +155,29 @@ for image in images:
     # SegMap = ndimage.convolve(SegMap, k.astype(bool).T, mode="constant", cval=0.)
     # plt.imshow(SegMap)
     # plt.figure()
-    SegMap = binary_dilation(SegMap)
+    # SegMap = binary_dilation(SegMap)
+    SegMap = np.asarray(SegMap).astype(bool)
     # plt.imshow(SegMap)
     # plt.show()
 
     Positions = AD.detect(SegMap)
 
-    def dummy(x):
-        return x
-    # Positions = [Pengu_Meas(1., VB.back_warp_orth(VB.warp_log([VB.Res * (pos.PositionY - VB.width / 2.),
-    #                                                            VB.Res * (VB.height - pos.PositionX)]))) for pos in Positions]
+    for pos in Positions:
+        pos.PositionY, pos.PositionX = VB.log_to_orth([pos.PositionY, pos.PositionX])
+
+    # Positions = [VB.back_warp_orth(VB.warp_log([VB.Res * (pos.PositionY - VB.width / 2.),
+    #                                             VB.Res * (VB.height - pos.PositionX)])) for pos in Positions]
+    # Positions = [Pengu_Meas(1., [pos[0], pos[1]]) for pos in Positions]
     # xxyy = np.array([[pos.PositionX, pos.PositionY] for pos in Positions])
     # plt.scatter(xxyy.T[0], xxyy.T[1])
     # plt.show()
     # x_p, y_p = Positions
     # x_p = x_p-
     # Positions = VB.warp2(Positions)
-
+    # xy = np.array(VB.grid)
+    # xx, yy = VB.warp_orth(VB.back_warp_orth(xy))
+    # plt.scatter(xx, yy)
+    # plt.show()
     # Setting Mask in ClickPoints
     db.setMask(image=image, data=(~SegMap).astype(np.uint8))
     print("Mask save")
@@ -176,13 +202,19 @@ for image in images:
                 prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
 
             if i in MultiKal.Filters[k].Measurements.keys():
-                pred_y, pred_x = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])
+                pred_x, pred_y = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])
                 prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
 
-            # x, y = VB.warp_log([x, y])
-            x, y = VB.warp_log([VB.Res * (y - VB.width / 2.), VB.Res * (VB.height - x)])
-            # x = VB.Res*(x - VB.width / 2.)
-            # y = VB.Res*(VB.height - y)
+            # x, y = VB.warp_orth([x, y])
+            # x = VB.Res*(x-VB.width/2.)
+            # y = VB.height-y
+            try:
+                db.setMarker(image=image, x=y, y=x, text="Detection %s"%k, type=marker_type)
+            except:
+                pass
+            x, y = VB.warp_orth([VB.Res * (y - VB.width / 2.), VB.Res * (VB.height - x)])
+            pred_x, pred_y = VB.warp_orth([VB.Res * (pred_y - VB.width / 2.), VB.Res * (VB.height - pred_x)])
+
 
             # Write assigned tracks to ClickPoints DataBase
             if np.isnan(x) or np.isnan(y):
@@ -207,9 +239,10 @@ for image in images:
                                  text='Track %s, Prob %.2f' % (k, prob))
                     print('Set new Track %s and Track-Marker at %s, %s' % (k, x, y))
 
-                db.db.connect()
-                meas_entry = Measurement(marker=track_marker, log=prob, x=x, y=y)
-                meas_entry.save()
+                # db.db.connect()
+                # meas_entry = Measurement(marker=track_marker, log=prob, x=x, y=y)
+                # meas_entry.save()
+                db.setMeasurement(marker=track_marker, log=prob, x=x, y=y)
 
     print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
 

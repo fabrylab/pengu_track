@@ -210,57 +210,87 @@ class AreaDetector(Detector):
         while len(image.shape) > 2:
             image = np.linalg.norm(image, axis=-1)
         image = np.array(image, dtype=bool)
-        regions = skimage.measure.regionprops(skimage.measure.label(image))
+        regions = skimage.measure.regionprops(skimage.measure.label(image, connectivity=2))
         if len(regions) <= 0:
             return np.array([])
 
-        import matplotlib.pyplot as plt
-        print(self.ObjectArea, len(self.Areas))
-        self.Areas.extend([prop.area for prop in regions])
-        if len(self.Areas)>1e4:
-            plt.hist(self.Areas, bins=100)
-            plt.show()
+        # import matplotlib.pyplot as plt
+        # print(self.ObjectArea, len(self.Areas))
+        # self.Areas.extend([prop.area for prop in regions])
+        # if len(self.Areas)>1e4:
+        #     plt.hist(self.Areas, bins=100)
+        #     plt.show()
 
         out = []
         for prop in regions:
-            if 0.6 * self.ObjectArea < prop.area < 1.4 * self.ObjectArea:
+            if 0.5 * self.ObjectArea < prop.area < 1.6 * self.ObjectArea:
                 if return_regions:
                     out.append(prop)
                 else:
                     out.append(Measurement(1., prop.centroid))
-            elif 1.4 * self.ObjectArea <= prop.area < 2.4 * self.ObjectArea:
-                distance = ndi.distance_transform_edt(prop.image)
-                local_maxi = peak_local_max(distance, indices=False, footprint=np.ones((3, 3)),
-                                            labels=prop.image, num_peaks=2)
-                markers = ndi.label(local_maxi)[0]
-                labels = watershed(-distance, markers, mask=prop.image)
-                new_reg = skimage.measure.regionprops(labels)
-                if return_regions:
-                    out.extend(new_reg)
+            elif 1.6 * self.ObjectArea <= prop.area < 2.4 * self.ObjectArea:
+                if min(prop.image.shape)<2:
+                    # if return_regions:
+                    #     out.extend([prop, prop])
+                    # else:
+                    #     bb = np.asarray(prop.bbox)
+                    #     out.extend([Measurement(1., bb[:2]+i/3.*(bb[2:]-bb[:2])) for i in range(2)])
+                    pass
                 else:
-                    out.extend([Measurement(1., new.centroid) for new in new_reg])
+                    distance = ndi.distance_transform_edt(prop.image)
+                    local_maxi = peak_local_max(distance, indices=False,
+                                                labels=prop.image, num_peaks=2)
+                    markers = ndi.label(local_maxi)[0]
+                    labels = watershed(-distance, markers, mask=prop.image)
+                    new_reg = skimage.measure.regionprops(labels)
+                    new_reg = [new for new in new_reg if new.label <= 2]
+                    # print("Found double-penguin at:\n")
+                    # for new in new_reg[:2]:
+                    #     print(np.asarray(prop.bbox)[:2]+new.centroid)
+                    if return_regions:
+                        out.extend(new_reg)
+                    else:
+                        out.extend([Measurement(1., np.asarray(prop.bbox)[:2]+new.centroid) for new in new_reg])
             elif 2.4 * self.ObjectArea <= prop.area < 3.4 * self.ObjectArea:
-                distance = ndi.distance_transform_edt(prop.image)
-                local_maxi = peak_local_max(distance, indices=False, footprint=np.ones((3, 3)),
-                                            labels=prop.image, num_peaks=3)
-                markers = ndi.label(local_maxi)[0]
-                labels = watershed(-distance, markers, mask=prop.image)
-                new_reg = skimage.measure.regionprops(labels)
-                if return_regions:
-                    out.extend(new_reg)
+                if min(prop.image.shape)<2:
+                    pass
+                    # if return_regions:
+                    #     out.extend([prop, prop])
+                    # else:
+                    #     bb = np.asarray(prop.bbox)
+                    #     out.extend([Measurement(1., bb[:2]+i/4.*(bb[2:]-bb[:2])) for i in range(3)])
                 else:
-                    out.extend([Measurement(1., new.centroid) for new in new_reg])
+                    distance = ndi.distance_transform_edt(prop.image)
+                    local_maxi = peak_local_max(distance, indices=False,
+                                                labels=prop.image, num_peaks=3)
+                    markers = ndi.label(local_maxi)[0]
+                    labels = watershed(-distance, markers, mask=prop.image)
+                    new_reg = skimage.measure.regionprops(labels)
+                    new_reg = [new for new in new_reg if new.label <= 3]
+                    if return_regions:
+                        out.extend(new_reg)
+                    else:
+                        out.extend([Measurement(1., np.asarray(prop.bbox)[:2]+new.centroid) for new in new_reg])
             elif 3.4 * self.ObjectArea <= prop.area < 4.4 * self.ObjectArea:
-                distance = ndi.distance_transform_edt(prop.image)
-                local_maxi = peak_local_max(distance, indices=False, footprint=np.ones((3, 3)),
-                                            labels=prop.image, num_peaks=4)
-                markers = ndi.label(local_maxi)[0]
-                labels = watershed(-distance, markers, mask=prop.image)
-                new_reg = skimage.measure.regionprops(labels)
-                if return_regions:
-                    out.extend(new_reg)
+                if min(prop.image.shape)<2:
+                    pass
+                    # if return_regions:
+                    #     out.extend([prop, prop])
+                    # else:
+                    #     bb = np.asarray(prop.bbox)
+                    #     out.extend([Measurement(1., bb[:2]+i/5.*(bb[2:]-bb[:2])) for i in range(4)])
                 else:
-                    out.extend([Measurement(1., new.centroid) for new in new_reg])
+                    distance = ndi.distance_transform_edt(prop.image)
+                    local_maxi = peak_local_max(distance, indices=False,
+                                                labels=prop.image, num_peaks=4)
+                    markers = ndi.label(local_maxi)[0]
+                    labels = watershed(-distance, markers, mask=prop.image)
+                    new_reg = skimage.measure.regionprops(labels)
+                    new_reg = [new for new in new_reg if new.label <= 4]
+                    if return_regions:
+                        out.extend(new_reg)
+                    else:
+                        out.extend([Measurement(1., np.asarray(prop.bbox)[:2]+new.centroid) for new in new_reg])
         return out
 
 
@@ -779,7 +809,7 @@ class SiAdViBeSegmentation(Segmentation):
         # vector of maximal distance to camera (in y)
         self.y_max = np.asarray([0, max_dist, -self.camera_h])
         self.y_max_norm = np.linalg.norm(self.y_max)
-        self.y_min = np.asarray([0, self.camera_h*np.tan(phi_-np.arctan(self.Sensor_Size[1]/f)), -self.camera_h])
+        self.y_min = np.asarray([0, self.camera_h*np.tan(phi_-np.arctan(self.Sensor_Size[1]/2./f)), -self.camera_h])
         self.alpha_y = np.arccos(np.dot(self.y_max.T, self.x_s).T/(self.y_max_norm*self.x_s_norm)) * -1
         warped_xx, warped_yy = self.warp_log([xx, yy])
         # reshape grid points for image interpolation
@@ -1071,6 +1101,8 @@ class SiAdViBeSegmentation(Segmentation):
 
     # Define Warp Function
     def warp_orth(self, xy):
+        # if True:
+        #     return xy
         xx_, yy_ = xy
         # vectors of every grid point in the plane (-h)
         coord = np.asarray([xx_, yy_, -self.camera_h*np.ones_like(xx_)])
@@ -1095,25 +1127,33 @@ class SiAdViBeSegmentation(Segmentation):
         # print(np.nanmin(theta), np.nanmax(theta))
         # from the angles it is possible to calculate the position of the focused beam on the camera-sensor
         r = np.tan(alpha)*self.F
-        warp_xx = np.sin(theta)*r*self.height/self.Sensor_Size[1] + self.width/2.
+        warp_xx = np.sin(theta)*r*self.width/self.Sensor_Size[0] + self.width/2.
         warp_yy = np.cos(theta)*r*self.height/self.Sensor_Size[1] + self.height/2.
         return warp_xx, warp_yy
 
     def back_warp_orth(self, xy):
+        if True:
+            return xy
         warp_xx, warp_yy = xy
+        warp_xx = (warp_xx-self.width/2.)*self.Sensor_Size[0]/self.width
+        warp_yy = (warp_yy-self.height/2.)*self.Sensor_Size[1]/self.height
         # Calculate angles in Camera-Coordinates
-        theta = np.arctan2((warp_yy-self.height/2.)*self.Sensor_Size[1]/self.height,
-                           (warp_xx-self.width/2.)*self.Sensor_Size[0]/self.width)
-        theta = np.pi/2.-theta
-        r = (((warp_xx-self.width/2.)*self.Sensor_Size[0]/self.width)**2+((warp_yy-self.height/2.)*self.Sensor_Size[1]/self.height)**2)**0.5
+        theta = np.arctan2(warp_yy,
+                           warp_xx)
+        # theta = np.pi/2.-theta
+        r = (warp_xx**2+warp_yy**2)**0.5
 
-        print(np.amin(r), np.amax(r))
+        # theta = np.arccos((-1) * (warp_xx-self.width/2.)*self.Sensor_Size[0]/self.width/r)
+
+        # print(np.amin(r), np.amax(r))
         alpha = np.arctan(r/self.F)
-        lam = -self.camera_h/(np.cos(theta)*np.sin(np.pi/2.-self.Phi)*np.tan(alpha)-np.cos(np.pi/2.-self.Phi))
-        print(np.amin(lam), np.amax(lam))
-        xx_ = lam * (np.tan(alpha)*np.sin(np.pi/2.-self.Phi)*np.cos(theta)+np.sin(np.pi/2.-self.Phi))
-        yy_ = lam*np.tan(alpha)*np.sin(theta)
-        return yy_, xx_
+        lam = -self.camera_h/(np.sin(theta)*np.sin(np.pi/2.-self.Phi)*np.tan(alpha)-np.cos(np.pi/2.-self.Phi))
+        # print(np.amin(lam), np.amax(lam))
+        # xx_ = -lam * (np.tan(alpha)*np.sin(np.pi/2.-self.Phi)*np.cos(theta)-np.sin(np.pi/2.-self.Phi))
+        # yy_ = lam*np.tan(alpha)*np.sin(theta)
+        xx_ = - np.tan(alpha) * lam * np.cos(theta)
+        yy_ = lam * np.cos(np.pi/2. - self.Phi) * np.tan(alpha) * np.sin(theta) - lam * np.sin(np.pi/2 - self.Phi)
+        return xx_, -yy_
 
     def calc_phi(self, horizonmarkers, sensor_size, image_size, f):
         x_h, y_h = np.asarray(horizonmarkers)
@@ -1133,7 +1173,6 @@ class SiAdViBeSegmentation(Segmentation):
         # Calculate Camera tilt
         return np.arctan((t / y - 1/2.) * (y_s / f))*-1
 
-
     def calc_theta(self, theta_markers, sensor_size, image_size, f):
         x_t1, y_t1 = theta_markers
         y, x = image_size
@@ -1141,7 +1180,6 @@ class SiAdViBeSegmentation(Segmentation):
         # y_t1 = (y_t1-y/2.)*y_s/y
         # r =  (((x_t1-x/2.)*(x_s/x))**2+((y_t1-y/2.)*(y_s/y))**2)**0.5
         return np.arctan2((y_t1-y/2.)*(y_s/y), f)
-
 
     def calc_gamma(self, markers1, markers2, sensor_size, image_size, f):
         x1, y1 = markers1
@@ -1154,7 +1192,18 @@ class SiAdViBeSegmentation(Segmentation):
         y2 = (y2-y/2.)*(y_s/y)
         return np.arccos((x1*x2+y1*y2+f**2)/((x1**2+y1**2+f**2)*(x2**2+y2**2+f**2))**0.5)
 
-
     def calc_height(self, the, gam, p, h_t):
         alpha = np.pi/2.-p-the
         return h_t*np.abs(np.cos(alpha)*np.sin(np.pi-alpha-gam)/np.sin(gam))
+
+    def log_to_orth(self, xy):
+        # self.height / self.Sensor_Size[1] + self.height / 2.
+        xx_, yy_ = xy
+        yy_ = self.height - self.y_min[1]*np.exp((self.height-yy_)/self.height*np.log(self.Max_Dist/self.y_min[1]))/self.Res
+        return xx_, yy_
+
+    def orth_to_log(self, xy):
+        # self.height / self.Sensor_Size[1] + self.height / 2.
+        xx_, yy_ = xy
+        yy_ = self.height - np.log((self.height - yy_)*(self.Res/self.y_min[1]))*(self.height/np.log(self.Max_Dist/self.y_min[1]))
+        return xx_, yy_
