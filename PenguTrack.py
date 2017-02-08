@@ -2,7 +2,7 @@ from __future__ import division, print_function
 import resource
 resource.setrlimit(resource.RLIMIT_AS, (12000 * 1048576L, -1L))
 
-import cv2
+# import cv2
 import numpy as np
 from scipy.ndimage.measurements import center_of_mass
 from skimage.morphology import binary_dilation
