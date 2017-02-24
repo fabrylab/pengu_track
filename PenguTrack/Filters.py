@@ -895,7 +895,7 @@ class MultiFilter(Filter):
         """
         for j in self.ActiveFilters.keys():
             _filter = self.ActiveFilters[j]
-            if np.array(_filter.Predicted_X.keys()[-1])-np.array(_filter.X.keys()[-1]) >= self.FilterThreshold:
+            if np.amax(_filter.Predicted_X.keys())-np.amax(_filter.X.keys()) >= self.FilterThreshold:
                 self.ActiveFilters.pop(j)
 
         predicted_x = {}

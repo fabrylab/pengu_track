@@ -9,15 +9,11 @@ if __name__ == '__main__':
     import scipy.stats as ss
     import numpy as np
 
-    object_size = 18  # Object diameter (smallest)
-    object_number = 15  # Number of Objects in First Track
-    object_size = 11  # Object diameter (smallest)
-    object_number = 2  # Number of Objects in First Track
     object_size = 200  # Object diameter (smallest)
     object_number = 2  # Number of Objects in First Track
 
     # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
-    model = VariableSpeed(1, 1, dim=2, timeconst=0.5)
+    model = VariableSpeed(1, 1, dim=2, timeconst=1)
 
     uncertainty = 8*object_size
     X = np.zeros(4).T  # Initial Value for Position
@@ -33,8 +29,8 @@ if __name__ == '__main__':
 
     # Open ClickPoints Database
     db = clickpoints.DataFile("./cell_data.cdb")
-    db = clickpoints.DataFile("./penguin_data.cdb")
-    db = clickpoints.DataFile("./pillar_data.cdb")
+    # db = clickpoints.DataFile("./penguin_data.cdb")
+    # db = clickpoints.DataFile("./pillar_data.cdb")
 
     # Init_Background from Image_Median
     N = db.getImages().count()
@@ -42,7 +38,7 @@ if __name__ == '__main__':
                                for j in np.random.randint(0, N, 20)], axis=0), dtype=np.int)
 
     # Init Segmentation Module with Init_Image
-    VB = ViBeSegmentation(init_image=init, n_min=12, r=1800, phi=4)
+    VB = ViBeSegmentation(init_image=init, n_min=18, r=20, phi=1)
     # Init Detection Module
     BD = BlobDetector(object_size, object_number)
     print('Initialized')
@@ -61,7 +57,7 @@ if __name__ == '__main__':
 
     # Start Iteration over Images
     print('Starting Iteration')
-    images = db.getImageIterator(start_frame=342, end_frame=380)
+    images = db.getImageIterator()
     for image in images:
 
         i = image.get_id()

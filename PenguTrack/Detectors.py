@@ -40,6 +40,7 @@ from scipy.ndimage.interpolation import map_coordinates
 from skimage import img_as_uint
 
 from scipy import ndimage as ndi
+from scipy.special import lambertw
 
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max
@@ -210,19 +211,35 @@ class AreaDetector(Detector):
         while len(image.shape) > 2:
             image = np.linalg.norm(image, axis=-1)
         image = np.array(image, dtype=bool)
-        regions = skimage.measure.regionprops(skimage.measure.label(image, connectivity=2))
-        if len(regions) <= 0:
+
+        labeled = skimage.measure.label(image, connectivity=2)
+        self.Areas.extend([prop.area for prop in skimage.measure.regionprops(labeled)])
+        # bad_ids = [prop.label for prop in skimage.measure.regionprops(labeled) if prop.area < self.ObjectArea]
+        # for id in bad_ids:
+        #     labeled[labeled == id] = 0
+        # regions_list = skimage.measure.regionprops(labeled)
+        regions_list = [prop for prop in skimage.measure.regionprops(labeled) if prop.area > self.ObjectArea]
+
+        if len(regions_list) <= 0:
             return np.array([])
 
-        # import matplotlib.pyplot as plt
+        import matplotlib.pyplot as plt
         # print(self.ObjectArea, len(self.Areas))
-        # self.Areas.extend([prop.area for prop in regions])
-        # if len(self.Areas)>1e4:
-        #     plt.hist(self.Areas, bins=100)
-        #     plt.show()
+        print("Object Area at ",self.ObjectArea)
+        if len(self.Areas)>1e3:
+            bins = int(np.amax(self.Areas)+1)
+            plt.hist(self.Areas, bins=bins)
+            hist, bin_edges = np.histogram(self.Areas, bins=bins)
+            # plt.figure()
+            # hfft = np.fft.fft(hist)
+            # plt.plot(hfft)
+            plt.show()
 
         out = []
-        for prop in regions:
+        regions = {}
+        [regions.update({prop.label: prop}) for prop in regions_list if prop.area > 0.5*self.ObjectArea]
+
+        for prop in regions.values():
             if 0.5 * self.ObjectArea < prop.area < 1.6 * self.ObjectArea:
                 if return_regions:
                     out.append(prop)
@@ -698,6 +715,88 @@ class ViBeSegmentation(Segmentation):
         print("Updated %s pixels" % n)
         return self.SegMap
 
+
+class BlobSegmentation(Segmentation):
+    """
+    Segmentation method detecting blobs.
+    """
+    def __init__(self, max_size, min_size=1, init_image=None):
+        """
+    Segmentation method detecting blobs.
+
+        Parameters
+        ----------
+        min_size: int, optional
+            Number of buffer frames.
+        min_size: int, optional
+            Minimum diameter of blobs.
+
+        init_image: array_like, optional
+            Image for initialisation of background.
+
+        """
+        super(BlobSegmentation, self).__init__()
+        self.Min = min_size
+        self.Max = max_size
+        self.Skale = None
+
+        if init_image is not None:
+            self.Skale = np.mean((np.sum(np.mean(self.Samples, axis=0).astype(np.uint32)**2, axis=-1)**0.5))
+
+        self.SegMap = None
+        self.width = None
+        self.height = None
+
+    def detect(self, image, do_neighbours=True):
+        """
+        Segmentation function. This compares the input image to the background model and returns a segmentation map.
+
+        Parameters
+        ----------
+        image: array_like
+            Input Image.
+        do_neighbours: bool, optional
+            If True neighbouring pixels will be updated accordingly to their foreground vicinity, else this
+            time-intensiv calculation will not be done.
+
+
+        Returns
+        ----------
+        SegMap: array_like, bool
+            The segmented image.
+        """
+        super(BlobSegmentation, self).detect(image)
+
+        data = np.array(image, ndmin=2)
+
+        if self.width is None or self.height is None:
+            self.width, self.height = data.shape[:2]
+        this_skale = np.mean((np.sum(data.astype(np.uint32)**2, axis=-1)**0.5))
+
+        if this_skale == 0:
+            this_skale = self.Skale
+        if self.Skale is None:
+            self.Skale = this_skale
+
+        data = (data.astype(float)*(self.Skale/this_skale)).astype(np.int32)
+        image = np.array(data, dtype=int)
+        while len(image.shape) > 2:
+            image = np.linalg.norm(image, axis=-1)
+
+        if self.SegMap is None:
+            self.SegMap = np.ones((self.width, self.height), dtype=bool)
+
+        self.SegMap = img_as_uint(-1*
+                      skimage.filters.laplace(
+                      skimage.filters.gaussian(image.astype(np.uint8), self.Min)))
+        self.SegMap = (self.SegMap/256).astype(np.uint8)
+        self.SegMap = (self.SegMap) >0 & (self.SegMap <6)
+        # else:
+        #     raise ValueError('False format of data.')
+
+        return self.SegMap
+
+
 class SiAdViBeSegmentation(Segmentation):
     """
     Segmentation method comparing input images to image-background buffer. Able to learn new background information.
@@ -748,7 +847,9 @@ class SiAdViBeSegmentation(Segmentation):
         self.F = f
         self.Sensor_Size = sensor_size
         self.h_p = h_p
+        self.w_p = 0.21
         self.Max_Dist = max_dist
+
 
         data = np.array(init_image, ndmin=2)
 
@@ -797,28 +898,47 @@ class SiAdViBeSegmentation(Segmentation):
 
         # Initialize grid
         xx, yy = np.meshgrid(np.arange(self.width), np.arange(self.height))
-        # Grid has same aspect ratio as picture, but width max_dist
+        # Grid has same aspect ratio as picture
+
+        # counter-angle to phi is used in further calculation
+        phi_ = np.pi/2 - self.Phi
+
+
+        # calculate Maximal analysed distance
+        self.c = 1. / (self.camera_h / self.h_p - 1.)
+        self.y_min = np.asarray([0, self.camera_h*np.tan(phi_-np.arctan(self.Sensor_Size[1]/2./f)), -self.camera_h])
+        # y_min = self.camera_h*np.tan(phi_-np.arctan(self.Sensor_Size[1]/2./f))
+        # print("y_min at ",y_min)
+        # CC = self.h_p/np.log(1+self.c)
+        # self.Max_Dist = - CC * lambertw(-self.y_min[1]/CC)
+        # self.Max_Dist = [y_min*np.exp(-1*lambertw(-y_min*(2j*np.pi*n*np.log(1+self.c)/self.h_p), k=-1)) for n in range(-10,10)]
+        # print(np.nanargmin([m.imag for m in self.Max_Dist]))
+        # self.Max_Dist = self.Max_Dist[np.nanargmax([abs(m) for m in self.Max_Dist])]
+        # max_dist = self.Max_Dist
+        # print(self.Max_Dist)
+        # self.Max_Dist = 1250#abs(self.Max_Dist)
+        # max_dist = 1250#abs(max_dist)
+        # raise NotImplementedError
+
+        # calculate Penguin-Projection Size
+        self.Penguin_Size = np.log(1 + self.c) * self.height / np.log(self.Max_Dist / self.y_min[1])
+
+        # warp the grid
         self.Res = max_dist/self.height
         yy = yy * (max_dist/self.height)
         xx = (xx-self.width/2.) * (max_dist/self.height)
-        # counter-angle to phi is used in further calculation
-        phi_ = np.pi/2 - self.Phi
         # x_s is the crossing-Point of camera mid-beam and grid plane
         self.x_s = np.asarray([0, np.tan(phi_)*self.camera_h, -self.camera_h])
         self.x_s_norm = np.linalg.norm(self.x_s)
         # vector of maximal distance to camera (in y)
         self.y_max = np.asarray([0, max_dist, -self.camera_h])
         self.y_max_norm = np.linalg.norm(self.y_max)
-        self.y_min = np.asarray([0, self.camera_h*np.tan(phi_-np.arctan(self.Sensor_Size[1]/2./f)), -self.camera_h])
         self.alpha_y = np.arccos(np.dot(self.y_max.T, self.x_s).T/(self.y_max_norm*self.x_s_norm)) * -1
         warped_xx, warped_yy = self.warp_log([xx, yy])
         # reshape grid points for image interpolation
         grid = np.asarray([warped_xx.T, warped_yy.T]).T
         self.grid = grid.T.reshape((2, self.width * self.height))
 
-        # calculate Penguin-Projection Size
-        self.c = 1. / (self.camera_h / self.h_p - 1.)
-        self.Penguin_Size = np.log(1 + self.c) * self.height / np.log(self.Max_Dist / self.y_min[1])
 
         # Initialize with warped image
         # data = self.horizontal_equalisation(data)
@@ -1068,6 +1188,8 @@ class SiAdViBeSegmentation(Segmentation):
     # Define Warp Function
     def warp_log(self, xy):
         xx_, yy_ = xy
+
+        xx_ /= (self.Max_Dist/self.height)/(self.h_p/self.Penguin_Size)
         # vectors of every grid point in the plane (-h)
         yy_ /= self.Max_Dist  # linear 0 to 1
         yy_ *= np.log(self.Max_Dist / self.y_min[1])  # linear 0 to log(max/min)
@@ -1199,11 +1321,17 @@ class SiAdViBeSegmentation(Segmentation):
     def log_to_orth(self, xy):
         # self.height / self.Sensor_Size[1] + self.height / 2.
         xx_, yy_ = xy
+        xx_ -= self.width/2.
+        xx_ /= (self.Max_Dist/self.height)/(self.h_p/self.Penguin_Size)
+        xx_ += self.width/2.
         yy_ = self.height - self.y_min[1]*np.exp((self.height-yy_)/self.height*np.log(self.Max_Dist/self.y_min[1]))/self.Res
         return xx_, yy_
 
     def orth_to_log(self, xy):
         # self.height / self.Sensor_Size[1] + self.height / 2.
         xx_, yy_ = xy
+        xx_ -= self.width/2.
+        xx_ /= (self.h_p/self.Penguin_Size)/(self.Max_Dist/self.height)
+        xx_ += self.width/2.
         yy_ = self.height - np.log((self.height - yy_)*(self.Res/self.y_min[1]))*(self.height/np.log(self.Max_Dist/self.y_min[1]))
         return xx_, yy_
