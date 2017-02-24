@@ -221,12 +221,15 @@ if __name__ == "__main__":
     marker_type = db.setMarkerType(name="Projection-Correction Area marker", color="#FFFFFF")
     com.ReloadTypes()
 
-    # Actual penguin size in m
-    h_p = 1.#0.6
+
 
     # Load penguin-markers, rotate them
     penguin_type = db.getMarkerType(name="Penguin_Size")
     x_p1, y_p1, x_p2, y_p2 = np.array([[m.x1, m.y1, m.x2, m.y2] for m in db.getLines(type="Penguin_Size")]).T
+
+    # Actual penguin size in m
+    h_p = float(penguin_type.text) #0.525#0.6
+    print("Size at ", h_p)
 
     m, t = np.polyfit(x, y, 1)  # linear fit for camera role
     angle_m = np.arctan(m)

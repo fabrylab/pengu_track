@@ -1,7 +1,7 @@
 from __future__ import print_function, division
 import clickpoints
 import numpy as np
-
+# import sys
 pingusize=12
 
 db = clickpoints.DataFile("/home/alex/Masterarbeit/master_project/master_project/adelie_data/770_PANA/Neuer Ordner/new0.cdb")
@@ -15,11 +15,12 @@ auto_pos = np.asarray([[marker.x, marker.y] for marker in Auto_Markers])
 
 dist_mat = np.linalg.norm(GT_pos[None,:].T-auto_pos[:,None].T, axis=0)
 
-dists = np.amin(dist_mat, axis=1)
-n_false_positive = len(dists[dists>pingusize])+dist_mat.shape[1]-dist_mat.shape[0]
-n_correct = len(dists[dists<pingusize])
+dists1 = np.amin(dist_mat, axis=1)
+dists0 = np.amin(dist_mat, axis=0)
+n_false_positive = len(dists0[dists0>pingusize])
+n_correct = len(dists1[dists1<=pingusize])
 n_not_found = dist_mat.shape[0]-n_correct
-total_rms_err = np.sqrt(np.mean(np.square(dists[dists<pingusize])))
+total_rms_err = np.sqrt(np.mean(np.square(dists1[dists1 < pingusize])))
 
 print("N-Total: %s GT, %s Auto" % dist_mat.shape)
 print("Correct Detections: %s absolute, %s relative %%"%(n_correct, 100*n_correct/dist_mat.shape[0]))
