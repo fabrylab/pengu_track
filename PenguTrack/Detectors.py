@@ -226,14 +226,14 @@ class AreaDetector(Detector):
         import matplotlib.pyplot as plt
         # print(self.ObjectArea, len(self.Areas))
         print("Object Area at ",self.ObjectArea)
-        if len(self.Areas)>1e3:
-            bins = int(np.amax(self.Areas)+1)
-            plt.hist(self.Areas, bins=bins)
-            hist, bin_edges = np.histogram(self.Areas, bins=bins)
+        #if len(self.Areas)>1e3:
+        #    bins = int(np.amax(self.Areas)+1)
+        #    plt.hist(self.Areas, bins=bins)
+        #    hist, bin_edges = np.histogram(self.Areas, bins=bins)
             # plt.figure()
             # hfft = np.fft.fft(hist)
             # plt.plot(hfft)
-            plt.show()
+        #    plt.show()
 
         out = []
         regions = {}
@@ -1189,7 +1189,7 @@ class SiAdViBeSegmentation(Segmentation):
     def warp_log(self, xy):
         xx_, yy_ = xy
 
-        xx_ /= (self.Max_Dist/self.height)/(self.h_p/self.Penguin_Size)
+        #xx_ /= (self.Max_Dist/self.height)/(self.h_p/self.Penguin_Size)
         # vectors of every grid point in the plane (-h)
         yy_ /= self.Max_Dist  # linear 0 to 1
         yy_ *= np.log(self.Max_Dist / self.y_min[1])  # linear 0 to log(max/min)
@@ -1322,7 +1322,7 @@ class SiAdViBeSegmentation(Segmentation):
         # self.height / self.Sensor_Size[1] + self.height / 2.
         xx_, yy_ = xy
         xx_ -= self.width/2.
-        xx_ /= (self.Max_Dist/self.height)/(self.h_p/self.Penguin_Size)
+        #xx_ /= (self.Max_Dist/self.height)/(self.h_p/self.Penguin_Size)
         xx_ += self.width/2.
         yy_ = self.height - self.y_min[1]*np.exp((self.height-yy_)/self.height*np.log(self.Max_Dist/self.y_min[1]))/self.Res
         return xx_, yy_
@@ -1331,7 +1331,7 @@ class SiAdViBeSegmentation(Segmentation):
         # self.height / self.Sensor_Size[1] + self.height / 2.
         xx_, yy_ = xy
         xx_ -= self.width/2.
-        xx_ /= (self.h_p/self.Penguin_Size)/(self.Max_Dist/self.height)
+        #xx_ /= (self.h_p/self.Penguin_Size)/(self.Max_Dist/self.height)
         xx_ += self.width/2.
         yy_ = self.height - np.log((self.height - yy_)*(self.Res/self.y_min[1]))*(self.height/np.log(self.Max_Dist/self.y_min[1]))
         return xx_, yy_

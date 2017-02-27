@@ -12,10 +12,12 @@ import platform
 from os import path
 
 # Connect to database
-file_path = str(sys.argv[0].split("'")[1])
+for p in sys.argv:
+	print(p)
+file_path = str(sys.argv[1])
 if platform.system() != 'Linux':
     file_path = file_path.replace("/mnt/jobs", r"//131.188.117.98/shared/jobs")
-path.normpath(file_path)
+#path.normpath(file_path)
 db = clickpoints.DataFile(file_path)
 start_frame = 0
 
@@ -28,10 +30,16 @@ from PenguTrack.Detectors import SiAdViBeSegmentation
 from PenguTrack.Detectors import BlobDetector
 from PenguTrack.Detectors import AreaDetector
 from PenguTrack.Detectors import Measurement as Pengu_Meas
+from PenguTrack.Detectors import AreaDetector
+from PenguTrack.Detectors import BlobSegmentation
+from PenguTrack.Detectors import SiAdViBeSegmentation
 
 import scipy.stats as ss
 
+#Initialise PenguTrack
 object_size = 2  # Object diameter (smallest)
+penguin_height = 0.462#0.575
+penguin_width = 0.21
 object_number = 100  # Number of Objects in First Track
 
 # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
@@ -54,6 +62,9 @@ N = db.getImages().count()
 init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
                            for j in np.random.randint(0, N, 10)], axis=0), dtype=np.int)
 
+# Init Segmentation Module with Init_Image
+
+# VB = ViBeSegmentation(init_image=init, n_min=18, r=20, phi=1)
 # Load horizon-markers
 horizont_type = db.getMarkerType(name="Horizon")
 try:
@@ -68,13 +79,18 @@ except ValueError:
     raise ValueError("No markers with name 'Horizon'!")
 
 # Initialize detector and start backwards.
-VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3,9e-3], penguin_markers, 0.6, 1000, n=2, init_image=init, n_min=2, r=10, phi=1)
+VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 500, n=2, init_image=init, n_min=2, r=10, phi=1)
+
 for i in range(1,10)[::-1]:
     VB.detect(db.getImage(frame=i).data, do_neighbours=False)
 
+BS = BlobSegmentation(15, min_size=4)
 imgdata = VB.horizontal_equalisation(db.getImage(frame=0).data)
-BD = BlobDetector(object_size, object_number)
-AD = AreaDetector(VB.Penguin_Size)
+
+# Init Detection Module
+# BD = BlobDetector(object_size, object_number)
+print("Detecting Penguins of size ", 50, VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
+AD = AreaDetector(50)#VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
 print('Initialized')
 
 # Define ClickPoints Marker
@@ -134,7 +150,7 @@ db.setMeasurement = setMeasurement
 
 # Start Iteration over Images
 print('Starting Iteration')
-images = db.getImageIterator(start_frame=0, end_frame=1)
+images = db.getImageIterator()#start_frame=start_frame, end_frame=3)
 for image in images:
 
     i = image.get_id()
@@ -142,24 +158,75 @@ for image in images:
     MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
 
     # Detection step
-    SegMap = VB.detect(image.data, do_neighbours=True)
-    SegMap = np.asarray(SegMap).astype(bool)
+    SegMap = VB.detect(image.data, do_neighbours=False)
+    # import matplotlib.pyplot as plt
+    # plt.imshow(SegMap)
+    # plt.figure()
+    # from scipy import ndimage
+    # k = np.zeros((object_size+2, VB.Penguin_Size+2))
+    # k[1:-1, 1:-1] = 1.
+    # SegMap = ndimage.convolve(SegMap, k.astype(bool).T, mode="constant", cval=0.)
+    # plt.imshow(SegMap)
+    # plt.figure()
+    import matplotlib.pyplot as plt
+    # SegMap = binary_dilation(SegMap)
+    # SegMap = np.asarray(SegMap).astype(bool)
+    # plt.imshow(SegMap)
+    # SegMap2 = BS.detect(VB.horizontal_equalisation(image.data))
+    # SegMap2 = np.asarray(SegMap2).astype(bool)
+    # plt.figure()
+    # plt.imshow(SegMap2)
+    # SegMap = SegMap & SegMap2
+    # plt.figure()
+    # plt.imshow(SegMap)
+    # plt.show()
+
+    from skimage.measure import label, regionprops
+    # labeled = label(SegMap, connectivity=2)
+    # bad_ids = [prop.label for prop in regionprops(labeled) if prop.area < VB.Penguin_Size]
+    # for id in bad_ids:
+    #     labeled[labeled == id] = 0
+    # plt.imshow(label(SegMap, connectivity=2))
+    # plt.show()
+
+    # labeled[labeled != 0] = 1
 
     Positions = AD.detect(SegMap)
 
+    # def trafo(x):
+    #     x -= VB.width
+    #     x *= (VB.Max_Dist/VB.height)/(VB.h_p/VB.Penguin_Size)
+    #     x += VB.width
+    #     return x
     for pos in Positions:
-        pos.PositionY, pos.PositionX = VB.log_to_orth([pos.PositionY, pos.PositionX])
+        pos.PositionY, pos.PositionX = VB.log_to_orth([pos.PositionY
+                                                      , pos.PositionX])
 
+    # Positions = [VB.back_warp_orth(VB.warp_log([VB.Res * (pos.PositionY - VB.width / 2.),
+    #                                             VB.Res * (VB.height - pos.PositionX)])) for pos in Positions]
+    # Positions = [Pengu_Meas(1., [pos[0], pos[1]]) for pos in Positions]
+    # xxyy = np.array([[pos.PositionX, pos.PositionY] for pos in Positions])
+    # plt.scatter(xxyy.T[0], xxyy.T[1])
+    # plt.show()
+    # x_p, y_p = Positions
+    # x_p = x_p-
+    # Positions = VB.warp2(Positions)
+    # xy = np.array(VB.grid)
+    # xx, yy = VB.warp_orth(VB.back_warp_orth(xy))
+    # plt.scatter(xx, yy)
+    # plt.show()
     # Setting Mask in ClickPoints
-    db.setMask(image=image, data=(~SegMap).astype(np.uint8))
+    db.setMask(image=image, data=(255*(~SegMap).astype(np.uint8)))
     print("Mask save")
     n = 1
 
     if np.all(Positions != np.array([])):
 
         # Update Filter with new Detections
-        MultiKal.update(z=Positions, i=i)
-
+        try:
+            MultiKal.update(z=Positions, i=i)
+        except IndexError:
+            continue
         # Get Tracks from Filter (a little dirty)
         for k in MultiKal.Filters.keys():
             x = y = np.nan
@@ -177,8 +244,12 @@ for image in images:
                 pred_x, pred_y = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])
                 prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
 
+            # x, y = VB.warp_orth([x, y])
+            # x = VB.Res*(x-VB.width/2.)
+            # y = VB.height-y
             try:
-                db.setMarker(image=image, x=y, y=x, text="Detection %s"%k, type=marker_type)
+                yy, xx = VB.orth_to_log([y,x])
+                db.setMarker(image=image, x=yy, y=xx, text="Detection %s"%k, type=marker_type)
             except:
                 pass
             x, y = VB.warp_orth([VB.Res * (y - VB.width / 2.), VB.Res * (VB.height - x)])
@@ -189,23 +260,28 @@ for image in images:
             if np.isnan(x) or np.isnan(y):
                 pass
             else:
-                pred_marker = db.setMarker(image=image, x=pred_x, y=pred_y, text="Track %s" % k, type=marker_type3)
-                if db.getTrack(k):
-                    if k == MultiKal.CriticalIndex:
-                        db.setMarker(image=image, type=marker_type, x=x, y=y,
-                                     text='Track %s, Prob %.2f, CRITICAL' % (k, prob))
-                    track_marker = db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y,
-                                 text='Track %s, Prob %.2f' % (k, prob))
-                    print('Set Track(%s)-Marker at %s, %s' % (k, x, y))
+                pred_marker = db.setMarker(image=image, x=pred_x, y=pred_y, text="Track %s" % (100+k), type=marker_type3)
+                if db.getTrack(k+100):
+                    # db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
+                    #if k == MultiKal.CriticalIndex:
+                    #    db.setMarker(image=image, type=marker_type, x=x, y=y,
+                    #                 text='Track %s, Prob %.2f, CRITICAL' % (k, prob))
+                    track_marker = db.setMarker(image=image, type=marker_type2, track=(100+k), x=x, y=y,
+                                 text='Track %s, Prob %.2f' % ((100+k), prob))
+                    print('Set Track(%s)-Marker at %s, %s' % ((100+k), x, y))
                 else:
-                    db.setTrack(marker_type2, id=k)
+                    db.setTrack(marker_type2, id=100+k)
+                    # db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
                     if k == MultiKal.CriticalIndex:
                         db.setMarker(image=image, type=marker_type, x=x, y=y,
-                                     text='Track %s, Prob %.2f, CRITICAL' % (k, prob))
-                    track_marker = db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y,
-                                 text='Track %s, Prob %.2f' % (k, prob))
-                    print('Set new Track %s and Track-Marker at %s, %s' % (k, x, y))
+                                     text='Track %s, Prob %.2f, CRITICAL' % ((100+k), prob))
+                    track_marker = db.setMarker(image=image, type=marker_type2, track=100+k, x=x, y=y,
+                                 text='Track %s, Prob %.2f' % ((100+k), prob))
+                    print('Set new Track %s and Track-Marker at %s, %s' % ((100+k), x, y))
 
+                # db.db.connect()
+                # meas_entry = Measurement(marker=track_marker, log=prob, x=x, y=y)
+                # meas_entry.save()
                 db.setMeasurement(marker=track_marker, log=prob, x=x, y=y)
 
     print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
@@ -228,7 +304,8 @@ n_correct = len(dists[dists<VB.Penguin_Size])
 n_not_found = dist_mat.shape[0]-n_correct
 total_rms_err = np.sqrt(np.mean(np.square(dists[dists<VB.Penguin_Size])))
 
-with open("eval.txt","a") as myfile:
+file
+with open("eval_0.txt","a") as myfile:
     myfile.write("\n")
     myfile.write("P-Faktor %s"%sys.argv[1])
     myfile.write("\n")

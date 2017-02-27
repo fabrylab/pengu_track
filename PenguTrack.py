@@ -1,5 +1,5 @@
 from __future__ import division, print_function
-import resource
+#import resource
 
 # import cv2
 import numpy as np
@@ -22,10 +22,10 @@ from PenguTrack.Detectors import BlobSegmentation
 
 import scipy.stats as ss
 
-resource.setrlimit(resource.RLIMIT_AS, (12000 * 1048576L, -1L))
+#resource.setrlimit(resource.RLIMIT_AS, (12000 * 1048576L, -1L))
 
 # Connect to database
-db = clickpoints.DataFile("/home/alex/Masterarbeit/master_project/master_project/adelie_data/770_PANA/Neuer Ordner/new0.cdb")
+db = clickpoints.DataFile("C:\\Users\\User\\Desktop\\241.cdb")
 start_frame = 0
 
 #Initialise PenguTrack
@@ -71,18 +71,18 @@ except ValueError:
     raise ValueError("No markers with name 'Horizon'!")
 
 # Initialize detector and start backwards.
-VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 2000, n=2, init_image=init, n_min=2, r=10, phi=1)
+VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 500, n=2, init_image=init, n_min=2, r=10, phi=1)
 
-# for i in range(1,10)[::-1]:
-#     VB.detect(db.getImage(frame=i).data, do_neighbours=False)
+for i in range(1,10)[::-1]:
+    VB.detect(db.getImage(frame=i).data, do_neighbours=False)
 
 BS = BlobSegmentation(15, min_size=4)
 imgdata = VB.horizontal_equalisation(db.getImage(frame=0).data)
 
 # Init Detection Module
 # BD = BlobDetector(object_size, object_number)
-print("Detecting Penguins of size ", 215)#VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
-AD = AreaDetector(215)#VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
+print("Detecting Penguins of size ", 50, VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
+AD = AreaDetector(50)#VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
 print('Initialized')
 
 # Define ClickPoints Marker
@@ -183,7 +183,7 @@ for image in images:
 
     # labeled[labeled != 0] = 1
 
-    Positions = AD.detect(SegMap)
+    Positions = AD.detect(~SegMap.astype(bool))
 
     # def trafo(x):
     #     x -= VB.width
@@ -252,24 +252,24 @@ for image in images:
             if np.isnan(x) or np.isnan(y):
                 pass
             else:
-                pred_marker = db.setMarker(image=image, x=pred_x, y=pred_y, text="Track %s" % k, type=marker_type3)
-                if db.getTrack(k):
+                pred_marker = db.setMarker(image=image, x=pred_x, y=pred_y, text="Track %s" % (100+k), type=marker_type3)
+                if db.getTrack(k+100):
                     # db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
-                    if k == MultiKal.CriticalIndex:
-                        db.setMarker(image=image, type=marker_type, x=x, y=y,
-                                     text='Track %s, Prob %.2f, CRITICAL' % (k, prob))
-                    track_marker = db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y,
-                                 text='Track %s, Prob %.2f' % (k, prob))
-                    print('Set Track(%s)-Marker at %s, %s' % (k, x, y))
+                    #if k == MultiKal.CriticalIndex:
+                    #    db.setMarker(image=image, type=marker_type, x=x, y=y,
+                    #                 text='Track %s, Prob %.2f, CRITICAL' % (k, prob))
+                    track_marker = db.setMarker(image=image, type=marker_type2, track=(100+k), x=x, y=y,
+                                 text='Track %s, Prob %.2f' % ((100+k), prob))
+                    print('Set Track(%s)-Marker at %s, %s' % ((100+k), x, y))
                 else:
-                    db.setTrack(marker_type2, id=k)
+                    db.setTrack(marker_type2, id=100+k)
                     # db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
                     if k == MultiKal.CriticalIndex:
                         db.setMarker(image=image, type=marker_type, x=x, y=y,
-                                     text='Track %s, Prob %.2f, CRITICAL' % (k, prob))
-                    track_marker = db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y,
-                                 text='Track %s, Prob %.2f' % (k, prob))
-                    print('Set new Track %s and Track-Marker at %s, %s' % (k, x, y))
+                                     text='Track %s, Prob %.2f, CRITICAL' % ((100+k), prob))
+                    track_marker = db.setMarker(image=image, type=marker_type2, track=100+k, x=x, y=y,
+                                 text='Track %s, Prob %.2f' % ((100+k), prob))
+                    print('Set new Track %s and Track-Marker at %s, %s' % ((100+k), x, y))
 
                 # db.db.connect()
                 # meas_entry = Measurement(marker=track_marker, log=prob, x=x, y=y)

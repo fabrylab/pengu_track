@@ -893,9 +893,9 @@ class MultiFilter(Filter):
         i: int
             Recent/corresponding time-stamp.
         """
-        for j in self.ActiveFilters.keys():
+        for j in list(self.ActiveFilters.keys()):
             _filter = self.ActiveFilters[j]
-            if np.amax(_filter.Predicted_X.keys())-np.amax(_filter.X.keys()) >= self.FilterThreshold:
+            if np.amax(list(_filter.Predicted_X.keys()))-np.amax(list(_filter.X.keys())) >= self.FilterThreshold:
                 self.ActiveFilters.pop(j)
 
         predicted_x = {}
@@ -913,13 +913,15 @@ class MultiFilter(Filter):
     def initial_update(self, z, i):
         print("Initial Filter Update")
 
+		if len(z)<=1:
+			raise ValueError("No Measurements found!")
         measurements = list(z)
         z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
         M = z.shape[0]
 
         for j in range(M):
             _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
-
+	
             _filter.Predicted_X.update({i: _filter.Model.infer_state(z[j])})
             _filter.X.update({i: _filter.Model.infer_state(z[j])})
             _filter.Measurements.update({i: measurements[j]})
