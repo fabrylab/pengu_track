@@ -913,8 +913,8 @@ class MultiFilter(Filter):
     def initial_update(self, z, i):
         print("Initial Filter Update")
 
-		if len(z)<=1:
-			raise ValueError("No Measurements found!")
+        if len(z)<=1:
+            raise ValueError("No Measurements found!")
         measurements = list(z)
         z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
         M = z.shape[0]

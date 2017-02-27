@@ -36,6 +36,7 @@ from PenguTrack.Detectors import SiAdViBeSegmentation
 
 import scipy.stats as ss
 
+
 #Initialise PenguTrack
 object_size = 2  # Object diameter (smallest)
 penguin_height = 0.462#0.575
@@ -81,16 +82,16 @@ except ValueError:
 # Initialize detector and start backwards.
 VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 500, n=2, init_image=init, n_min=2, r=10, phi=1)
 
-for i in range(1,10)[::-1]:
-    VB.detect(db.getImage(frame=i).data, do_neighbours=False)
+#for i in range(1,10)[::-1]:
+#    VB.detect(db.getImage(frame=i).data, do_neighbours=False)
 
 BS = BlobSegmentation(15, min_size=4)
 imgdata = VB.horizontal_equalisation(db.getImage(frame=0).data)
 
 # Init Detection Module
 # BD = BlobDetector(object_size, object_number)
-print("Detecting Penguins of size ", 50, VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
-AD = AreaDetector(50)#VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
+print("Detecting Penguins of size ", 100, VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
+AD = AreaDetector(100)#VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
 print('Initialized')
 
 # Define ClickPoints Marker
@@ -191,7 +192,9 @@ for image in images:
 
     # labeled[labeled != 0] = 1
 
-    Positions = AD.detect(SegMap)
+    db.setMask(image=image, data=(255*(~SegMap).astype(np.uint8)))
+    Positions = AD.detect(~db.getMask(image=image).data.astype(bool))
+    print(Positions)
 
     # def trafo(x):
     #     x -= VB.width
@@ -216,7 +219,6 @@ for image in images:
     # plt.scatter(xx, yy)
     # plt.show()
     # Setting Mask in ClickPoints
-    db.setMask(image=image, data=(255*(~SegMap).astype(np.uint8)))
     print("Mask save")
     n = 1
 
