@@ -126,7 +126,7 @@ class Filter(object):
                 x = self.Predicted_X[i-1]
             except KeyError:
                 # Try recursive prediction from previous timesteps
-                if np.any(self.Predicted_X.keys() < i):
+                if np.any([k < i for k in self.Predicted_X.keys()]):
                     print('Recursive Prediction, i = %s' % i)
                     u, i = self.predict(u, i=i-1)
                     x = self.Predicted_X[i-1]

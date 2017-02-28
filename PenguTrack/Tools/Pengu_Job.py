@@ -41,7 +41,7 @@ import scipy.stats as ss
 object_size = 2  # Object diameter (smallest)
 penguin_height = 0.462#0.575
 penguin_width = 0.21
-object_number = 100  # Number of Objects in First Track
+object_number = 500  # Number of Objects in First Track
 
 # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
 model = VariableSpeed(1, 1, dim=2, timeconst=0.5)
@@ -82,7 +82,7 @@ except ValueError:
 # Initialize detector and start backwards.
 VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 500, n=2, init_image=init, n_min=2, r=10, phi=1)
 
-#for i in range(1,10)[::-1]:
+#for i in range(1,20)[::-1]:
 #    VB.detect(db.getImage(frame=i).data, do_neighbours=False)
 
 BS = BlobSegmentation(15, min_size=4)
@@ -90,8 +90,8 @@ imgdata = VB.horizontal_equalisation(db.getImage(frame=0).data)
 
 # Init Detection Module
 # BD = BlobDetector(object_size, object_number)
-print("Detecting Penguins of size ", 100, VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
-AD = AreaDetector(100)#VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
+print("Detecting Penguins of size ", 42, VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
+AD = AreaDetector(42)#VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
 print('Initialized')
 
 # Define ClickPoints Marker
@@ -151,16 +151,17 @@ db.setMeasurement = setMeasurement
 
 # Start Iteration over Images
 print('Starting Iteration')
-images = db.getImageIterator()#start_frame=start_frame, end_frame=3)
+images = db.getImageIterator(start_frame=21, end_frame=555)#start_frame=start_frame, end_frame=3)
 for image in images:
 
     i = image.get_id()
     # Prediction step
-    MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
+    #MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
 
     # Detection step
-    SegMap = VB.detect(image.data, do_neighbours=False)
-    # import matplotlib.pyplot as plt
+    #SegMap = VB.detect(image.data, do_neighbours=False)
+    SegMap = db.getMask(image=image)
+	# import matplotlib.pyplot as plt
     # plt.imshow(SegMap)
     # plt.figure()
     # from scipy import ndimage
@@ -169,7 +170,7 @@ for image in images:
     # SegMap = ndimage.convolve(SegMap, k.astype(bool).T, mode="constant", cval=0.)
     # plt.imshow(SegMap)
     # plt.figure()
-    import matplotlib.pyplot as plt
+    #import matplotlib.pyplot as plt
     # SegMap = binary_dilation(SegMap)
     # SegMap = np.asarray(SegMap).astype(bool)
     # plt.imshow(SegMap)
@@ -182,7 +183,7 @@ for image in images:
     # plt.imshow(SegMap)
     # plt.show()
 
-    from skimage.measure import label, regionprops
+    #from skimage.measure import label, regionprops
     # labeled = label(SegMap, connectivity=2)
     # bad_ids = [prop.label for prop in regionprops(labeled) if prop.area < VB.Penguin_Size]
     # for id in bad_ids:
@@ -192,9 +193,16 @@ for image in images:
 
     # labeled[labeled != 0] = 1
 
-    db.setMask(image=image, data=(255*(~SegMap).astype(np.uint8)))
-    Positions = AD.detect(~db.getMask(image=image).data.astype(bool))
-    print(Positions)
+    #db.setMask(image=image, data=(255*(~SegMap).astype(np.uint8)))
+    Mask = ~db.getMask(image=image).data.astype(bool)
+    from skimage.morphology import binary_closing
+    selem4 = np.array([[0,1,1,1,0],
+                   [0,1,1,1,0],
+                   [0,1,1,1,0],
+                   [0,1,1,1,0],
+                   [0,1,1,1,0]])
+    Positions = AD.detect(binary_closing(Mask, selem=selem4))
+    #print(Positions)
 
     # def trafo(x):
     #     x -= VB.width
@@ -254,7 +262,7 @@ for image in images:
                 db.setMarker(image=image, x=yy, y=xx, text="Detection %s"%k, type=marker_type)
             except:
                 pass
-            x, y = VB.warp_orth([VB.Res * (y - VB.width / 2.), VB.Res * (VB.height - x)])
+            x_img, y_img = VB.warp_orth([VB.Res * (y - VB.width / 2.), VB.Res * (VB.height - x)])
             pred_x, pred_y = VB.warp_orth([VB.Res * (pred_y - VB.width / 2.), VB.Res * (VB.height - pred_x)])
 
 
@@ -268,18 +276,18 @@ for image in images:
                     #if k == MultiKal.CriticalIndex:
                     #    db.setMarker(image=image, type=marker_type, x=x, y=y,
                     #                 text='Track %s, Prob %.2f, CRITICAL' % (k, prob))
-                    track_marker = db.setMarker(image=image, type=marker_type2, track=(100+k), x=x, y=y,
+                    track_marker = db.setMarker(image=image, type=marker_type2, track=(100+k), x=x_img, y=y_img,
                                  text='Track %s, Prob %.2f' % ((100+k), prob))
-                    print('Set Track(%s)-Marker at %s, %s' % ((100+k), x, y))
+                    print('Set Track(%s)-Marker at %s, %s' % ((100+k), x_img, y_img))
                 else:
                     db.setTrack(marker_type2, id=100+k)
                     # db.setMarker(image=image, type=marker_type2, track=k, x=x, y=y, text='Track %s, Prob %.2f'%(k, prob))
                     if k == MultiKal.CriticalIndex:
                         db.setMarker(image=image, type=marker_type, x=x, y=y,
                                      text='Track %s, Prob %.2f, CRITICAL' % ((100+k), prob))
-                    track_marker = db.setMarker(image=image, type=marker_type2, track=100+k, x=x, y=y,
+                    track_marker = db.setMarker(image=image, type=marker_type2, track=100+k, x=x_img, y=y_img,
                                  text='Track %s, Prob %.2f' % ((100+k), prob))
-                    print('Set new Track %s and Track-Marker at %s, %s' % ((100+k), x, y))
+                    print('Set new Track %s and Track-Marker at %s, %s' % ((100+k), x_img, y_img))
 
                 # db.db.connect()
                 # meas_entry = Measurement(marker=track_marker, log=prob, x=x, y=y)
