@@ -206,9 +206,8 @@ for image in images:
                 prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
 
             # Case 3: we want to see the prediction markers
-            if i in MultiKal.Filters[k].Measurements.keys():
+            if i in MultiKal.Filters[k].Predicted_X.keys():
                 pred_x, pred_y = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])
-                prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
                 # rescale to pixel coordinates
                 pred_x_px = pred_x * (VB.height/VB.Max_Dist)
                 pred_y_px = pred_y * (VB.height/VB.Max_Dist)
@@ -225,7 +224,8 @@ for image in images:
             pred_x_img, pred_y_img = VB.warp_orth([VB.Res * (pred_y_px - VB.width / 2.), VB.Res * (VB.height - pred_x_px)])
 
             # Write assigned tracks to ClickPoints DataBase
-            pred_marker = db.setMarker(image=image, x=pred_x_img, y=pred_y_img, text="Track %s" % (100 + k),
+            if i in MultiKal.Filters[k].Predicted_X.keys():
+                pred_marker = db.setMarker(image=image, x=pred_x_img, y=pred_y_img, text="Track %s" % (100 + k),
                                        type=marker_type3)
             if np.isnan(x) or np.isnan(y):
                 pass
