@@ -223,7 +223,7 @@ class AreaDetector(Detector):
         if len(regions_list) <= 0:
             return np.array([])
 
-        import matplotlib.pyplot as plt
+        # import matplotlib.pyplot as plt
         # print(self.ObjectArea, len(self.Areas))
         print("Object Area at ",self.ObjectArea)
         #if len(self.Areas)>1e3:
