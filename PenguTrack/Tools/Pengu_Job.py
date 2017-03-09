@@ -82,8 +82,8 @@ except ValueError:
 # Initialize detector and start backwards.
 VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 500, n=2, init_image=init, n_min=2, r=10, phi=1)
 
-#for i in range(1,20)[::-1]:
-#    VB.detect(db.getImage(frame=i).data, do_neighbours=False)
+for i in range(1,10):
+    VB.detect(db.getImage(frame=i).data, do_neighbours=False)
 
 BS = BlobSegmentation(15, min_size=4)
 imgdata = VB.horizontal_equalisation(db.getImage(frame=0).data)
@@ -154,7 +154,7 @@ db.setMeasurement = setMeasurement
 
 # Start Iteration over Images
 print('Starting Iteration')
-images = db.getImageIterator(start_frame=21, end_frame=555)#start_frame=start_frame, end_frame=3)
+images = db.getImageIterator(start_frame=11)#start_frame=start_frame, end_frame=3)
 for image in images:
 
     i = image.get_id()
@@ -162,13 +162,14 @@ for image in images:
     MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
 
     # Segmentation step
-    # SegMap = VB.detect(image.data, do_neighbours=False)
-    SegMap = db.getMask(image=image).data
+    SegMap = VB.detect(image.data, do_neighbours=False)
 
     # Setting Mask in ClickPoints
-    # db.setMask(image=image, data=(255*(~SegMap).astype(np.uint8)))
-    # print("Mask save")
+    db.setMask(image=image, data=(255*(~SegMap).astype(np.uint8)))
+    print("Mask save")
 
+
+    SegMap = db.getMask(image=image).data
     Mask = ~SegMap.astype(bool)
 
     # Detection of regions with distinct areas
@@ -179,7 +180,7 @@ for image in images:
                    [0,1,1,1,0],
                    [0,1,1,1,0]])
     Positions = AD.detect(binary_closing(Mask, selem=selem4))
-    #print(Positions)
+    print("Found %s animals!"%len(Positions))
 
     # Project from log-scale map to ortho-map and rescale to metric coordinates
     for pos in Positions:
