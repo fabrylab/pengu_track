@@ -127,7 +127,10 @@ class Measurement(db.base_model):
     y = peewee.FloatField()
 
 if "measurement" not in db.db.get_tables():
-    db.db.connect()
+    try:
+        db.db.connect()
+    except peewee.OperationalError:
+        pass
     Measurement.create_table()#  important to respect unique constraint
 
 db.table_measurement = Measurement   # for consistency
