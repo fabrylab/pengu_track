@@ -171,7 +171,7 @@ class AreaDetector(Detector):
     """
     Detector classifying objects by area and number to be used with pengu-track modules.
     """
-    def __init__(self, object_area, threshold=None):
+    def __init__(self, object_area, threshold=None, lower_limit=None, upper_limit=None):
         """
         Detector classifying objects by number and size, taking area-separation into account.
 
@@ -187,6 +187,15 @@ class AreaDetector(Detector):
         """
         super(AreaDetector, self).__init__()
         self.ObjectArea = int(object_area)
+        if lower_limit:
+            self.LowerLimit = int(lower_limit)
+        else:
+            self.LowerLimit = 0.4*self.ObjectArea
+        if upper_limit:
+            self.UpperLimit = int(upper_limit)
+        else:
+            self.UpperLimit = 1.6*self.ObjectArea
+
         self.Threshold = threshold
         self.Areas = []
 
@@ -218,7 +227,7 @@ class AreaDetector(Detector):
         # for id in bad_ids:
         #     labeled[labeled == id] = 0
         # regions_list = skimage.measure.regionprops(labeled)
-        regions_list = [prop for prop in skimage.measure.regionprops(labeled) if prop.area > self.ObjectArea]
+        regions_list = [prop for prop in skimage.measure.regionprops(labeled) if prop.area > self.LowerLimit]
 
         if len(regions_list) <= 0:
             return np.array([])
@@ -237,10 +246,10 @@ class AreaDetector(Detector):
 
         out = []
         regions = {}
-        [regions.update({prop.label: prop}) for prop in regions_list if prop.area > 0.5*self.ObjectArea]
+        [regions.update({prop.label: prop}) for prop in regions_list if prop.area > self.LowerLimit]
 
         for prop in regions.values():
-            if 0.5 * self.ObjectArea < prop.area < 1.6 * self.ObjectArea:
+            if self.LowerLimit < prop.area < self.UpperLimit:
                 if return_regions:
                     out.append(prop)
                 else:

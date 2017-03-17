@@ -9,4 +9,4 @@ setup(name='PenguTrack',
       py_modules=['PenguTrack','PenguTrack.Detectors','PenguTrack.Filters', 'PenguTrack.Models',
                   'PenguTrack.Tools.Correction','PenguTrack.Tools.Eval_Detections','PenguTrack.Tools.Example','PenguTrack.Tools.PlotDetectionEvaluation',
                   'PenguTrack.Tools.Rotate', 'PenguTrack.Tools.rotateMarker'],
-      requires=['numpy','clickpoints','scipy','scikit-image','matplotlib','peewee','pandas'])
+      install_requires=['numpy','clickpoints','scipy','scikit-image','matplotlib','peewee','pandas'])

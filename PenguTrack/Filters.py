@@ -233,7 +233,16 @@ class Filter(object):
                     except KeyError:
                         self.predict(i=i)
                         comparison = self.Predicted_X[i]
-                position = np.asarray([self.Measurements[i].PositionX, self.Measurements[i].PositionY])
+                try:
+                    position = np.asarray([self.Measurements[i].PositionX,
+                                           self.Measurements[i].PositionY,
+                                           self.Measurements[i].PositionZ])
+                except ValueError:
+                    try:
+                        position = np.asarray([self.Measurements[i].PositionX,
+                                               self.Measurements[i].PositionY])
+                    except ValueError:
+                        position = np.asarray([self.Measurements[i].PositionX])
 
                 # def integrand(*args):
                 #     x = np.array(args)
@@ -242,9 +251,15 @@ class Filter(object):
                 # integral = integrate.nquad(integrand,
                 #                            np.array([-1*np.ones_like(self.Model.State_dim)*100,
                 #                                      np.ones(self.Model.State_dim)*100]).T)
-                # print(integral)l
-                probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
+                # print(integral)
+                try:
+                    probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
                                                                                  - self.Model.measure(comparison))))
+                except ValueError:
+                    print(position.shape, position)
+                    print(comparison.shape, comparison)
+                    print(self.Model.measure(comparison).shape, self.Model.measure(comparison))
+                    raise
         else:
             for i in keys:
                 # Generate Value for comparison with measurement
@@ -259,8 +274,16 @@ class Filter(object):
                     except KeyError:
                         self.predict(i=i)
                         comparison = self.Predicted_X[i]
-
-                position = np.asarray([measurements[i].PositionX, measurements[i].PositionY])
+                try:
+                    position = np.asarray([measurements[i].PositionX,
+                                           measurements[i].PositionY,
+                                           measurements[i].PositionZ])
+                except ValueError:
+                    try:
+                        position = np.asarray([measurements[i].PositionX,
+                                               measurements[i].PositionY])
+                    except ValueError:
+                        position = np.asarray([measurements[i].PositionX])
                 probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
                                                                                  - self.Model.measure(comparison))))
         return probs
@@ -502,7 +525,13 @@ class KalmanFilter(Filter):
         """
         z, i = super(KalmanFilter, self).update(z=z, i=i)
         measurement = copy.copy(z)
-        z = np.asarray([z.PositionX, z.PositionY])
+        try:
+            z = np.asarray([z.PositionX, z.PositionY, z.PositionZ])
+        except ValueError:
+            try:
+                z = np.asarray([z.PositionX, z.PositionY])
+            except ValueError:
+                z = np.asarray([z.PositionX])
         try:
             x = self.Predicted_X[i]
         except KeyError:
@@ -916,7 +945,13 @@ class MultiFilter(Filter):
         if len(z)<=1:
             raise ValueError("No Measurements found!")
         measurements = list(z)
-        z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
+        try:
+            z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
+        except ValueError:
+            try:
+                z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
+            except ValueError:
+                z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
         M = z.shape[0]
 
         for j in range(M):
@@ -953,7 +988,13 @@ class MultiFilter(Filter):
             Recent/corresponding time-stamp.
         """
         measurements = list(z)
-        z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
+        try:
+            z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
+        except ValueError:
+            try:
+                z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
+            except ValueError:
+                z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
         M = z.shape[0]
         N = len(self.ActiveFilters.keys())
 
