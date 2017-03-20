@@ -15,6 +15,8 @@ from os import path
 for p in sys.argv:
 	print(p)
 file_path = str(sys.argv[1])
+q = float(sys.argv[2])
+r = float(sys.argv[3])
 if platform.system() != 'Linux':
     file_path = file_path.replace("/mnt/jobs", r"//131.188.117.98/shared/jobs")
 #path.normpath(file_path)
@@ -46,17 +48,16 @@ object_number = 500  # Number of Objects in First Track
 # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
 model = VariableSpeed(1, 1, dim=2, timeconst=0.5)
 
-uncertainty = 4 * object_size
 X = np.zeros(4).T  # Initial Value for Position
-Q = np.diag([uncertainty, uncertainty])  # Prediction uncertainty
-R = np.diag([object_size, object_size])  # Measurement uncertainty
+Q = np.diag([q*object_size, q*object_size])  # Prediction uncertainty
+R = np.diag([r*object_size, r*object_size])  # Measurement uncertainty
 
 State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filter
 Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
 
 # Initialize Filter
-MultiKal = MultiFilter(KalmanFilter, model, np.array([uncertainty, uncertainty]),
-                       np.array([uncertainty, uncertainty]), meas_dist=Meas_Dist, state_dist=State_Dist)
+MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
+                       np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
 
 # Init_Background from Image_Median
 N = db.getImages().count()

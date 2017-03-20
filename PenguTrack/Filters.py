@@ -237,11 +237,11 @@ class Filter(object):
                     position = np.asarray([self.Measurements[i].PositionX,
                                            self.Measurements[i].PositionY,
                                            self.Measurements[i].PositionZ])
-                except ValueError:
+                except (ValueError, AttributeError):
                     try:
                         position = np.asarray([self.Measurements[i].PositionX,
                                                self.Measurements[i].PositionY])
-                    except ValueError:
+                    except (ValueError, AttributeError):
                         position = np.asarray([self.Measurements[i].PositionX])
 
                 # def integrand(*args):
@@ -278,11 +278,11 @@ class Filter(object):
                     position = np.asarray([measurements[i].PositionX,
                                            measurements[i].PositionY,
                                            measurements[i].PositionZ])
-                except ValueError:
+                except (ValueError, AttributeError):
                     try:
                         position = np.asarray([measurements[i].PositionX,
                                                measurements[i].PositionY])
-                    except ValueError:
+                    except (ValueError, AttributeError):
                         position = np.asarray([measurements[i].PositionX])
                 probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
                                                                                  - self.Model.measure(comparison))))
@@ -527,7 +527,7 @@ class KalmanFilter(Filter):
         measurement = copy.copy(z)
         try:
             z = np.asarray([z.PositionX, z.PositionY, z.PositionZ])
-        except ValueError:
+        except (ValueError, AttributeError):
             try:
                 z = np.asarray([z.PositionX, z.PositionY])
             except ValueError:
@@ -947,10 +947,10 @@ class MultiFilter(Filter):
         measurements = list(z)
         try:
             z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
-        except ValueError:
+        except (ValueError, AttributeError):
             try:
                 z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
-            except ValueError:
+            except (ValueError, AttributeError):
                 z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
         M = z.shape[0]
 
@@ -990,10 +990,10 @@ class MultiFilter(Filter):
         measurements = list(z)
         try:
             z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
-        except ValueError:
+        except (ValueError, AttributeError):
             try:
                 z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
-            except ValueError:
+            except (ValueError, AttributeError):
                 z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
         M = z.shape[0]
         N = len(self.ActiveFilters.keys())
