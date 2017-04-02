@@ -9,3 +9,6 @@ movie/
 Developement/
 cell_data.cdb-shm
 cell_data.cdb-wal
+*.png
+build/
+PenguTrack.egg-info/

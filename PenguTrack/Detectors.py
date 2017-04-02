@@ -478,7 +478,15 @@ class Segmentation(object):
         super(Segmentation, self).__init__()
 
     def detect(self, image):
-        return np.random.rand(2)
+        out = self.segmentate(image)
+        self.update(out, image)
+        return out
+
+    def update(self,mask, image):
+        pass
+
+    def segmentate(self, image):
+        pass
 
 
 class MoGSegmentation(Segmentation):
@@ -665,8 +673,69 @@ class ViBeSegmentation(Segmentation):
         SegMap: array_like, bool
             The segmented image.
         """
-        super(ViBeSegmentation, self).detect(image)
+        return super(ViBeSegmentation, self).detect(image)
 
+        # data = np.array(image, ndmin=2)
+        #
+        # if self.width is None or self.height is None:
+        #     self.width, self.height = data.shape[:2]
+        # this_skale = np.mean((np.sum(data.astype(np.uint32)**2, axis=-1)**0.5))
+        #
+        # if this_skale == 0:
+        #     this_skale = self.Skale
+        # if self.Skale is None:
+        #     self.Skale = this_skale
+        #
+        # data = (data.astype(float)*(self.Skale/this_skale)).astype(np.int32)
+        # if self.Samples is None:
+        #     self.Samples = np.tile(data, self.N).reshape((self.N,)+data.shape)
+        # if self.SegMap is None:
+        #     self.SegMap = np.ones((self.width, self.height), dtype=bool)
+        #
+        # if len(data.shape) == 3:
+        #     self.SegMap = (np.sum((np.sum((self.Samples.astype(np.int32)-data)**2, axis=-1)**0.5/np.sqrt(data.shape[-1])
+        #                            > self.R), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
+        # elif len(data.shape) == 2:
+        #     self.SegMap = (np.sum((np.abs(self.Samples.astype(np.int32)-data) > self.R), axis=0, dtype=np.uint8)
+        #                    >= self.N_min).astype(bool)
+        # else:
+        #     raise ValueError('False format of data.')
+        #
+        # image_mask = (np.random.rand(self.width, self.height)*self.Phi < 1) & self.SegMap
+        #
+        # sample_index = np.random.randint(0, self.N)
+        # self.Samples[sample_index][image_mask] = (data[image_mask]).astype(np.uint8)
+        #
+        # n = np.sum(image_mask)
+        # if n > 0 and do_neighbours:
+        #     x, y = np.array(np.meshgrid(np.arange(self.width), np.arange(self.height))).T[image_mask].T
+        #     rand_x, rand_y = np.asarray(map(self._Neighbour_Map.get, np.random.randint(0, 8, size=n))).T
+        #     rand_x += x
+        #     rand_y += y
+        #     notdoubled = ~(np.asarray([x_ in rand_x[:i] for i, x_ in enumerate(rand_x)]) &
+        #                    np.asarray([y_ in rand_y[:i] for i, y_ in enumerate(rand_y)]))
+        #     notborder = np.asarray(((0 <= rand_y) & (rand_y < self.height)) & ((0 <= rand_x) & (rand_x < self.width)))
+        #     mask = notborder & notdoubled
+        #     x = x[mask]
+        #     y = y[mask]
+        #     rand_x = rand_x[mask]
+        #     rand_y = rand_y[mask]
+        #     neighbours = np.zeros_like(image_mask, dtype=bool)
+        #     neighbours[rand_x, rand_y] = True
+        #     mask1 = np.zeros_like(image_mask, dtype=bool)
+        #     mask1[x, y] = True
+        #     try:
+        #         self.Samples[sample_index][neighbours] = (data[mask1]).astype(np.uint8)
+        #     except ValueError:
+        #         print(np.sum(neighbours), np.sum(image_mask), x.shape, y.shape)
+        #         raise
+        # print("Updated %s pixels" % n)
+        # out = self.segmentate(image, do_neighbours=do_neighbours)
+        # self.update(out, image, do_neighbours=do_neighbours)
+        # return out
+
+    def segmentate(self, image, do_neighbours=True):
+        super(ViBeSegmentation, self).segmentate(image)
         data = np.array(image, ndmin=2)
 
         if self.width is None or self.height is None:
@@ -692,8 +761,24 @@ class ViBeSegmentation(Segmentation):
                            >= self.N_min).astype(bool)
         else:
             raise ValueError('False format of data.')
+        return self.SegMap
 
-        image_mask = (np.random.rand(self.width, self.height)*self.Phi < 1) & self.SegMap
+    def update(self, mask, image, do_neighbours=True):
+
+        data = np.array(image, ndmin=2)
+
+        if self.width is None or self.height is None:
+            self.width, self.height = data.shape[:2]
+        this_skale = np.mean((np.sum(data.astype(np.uint32)**2, axis=-1)**0.5))
+
+        if this_skale == 0:
+            this_skale = self.Skale
+        if self.Skale is None:
+            self.Skale = this_skale
+
+        data = (data.astype(float)*(self.Skale/this_skale)).astype(np.int32)
+
+        image_mask = (np.random.rand(self.width, self.height)*self.Phi < 1) & mask
 
         sample_index = np.random.randint(0, self.N)
         self.Samples[sample_index][image_mask] = (data[image_mask]).astype(np.uint8)
@@ -722,8 +807,6 @@ class ViBeSegmentation(Segmentation):
                 print(np.sum(neighbours), np.sum(image_mask), x.shape, y.shape)
                 raise
         print("Updated %s pixels" % n)
-        return self.SegMap
-
 
 class BlobSegmentation(Segmentation):
     """
