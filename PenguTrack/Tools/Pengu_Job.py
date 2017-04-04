@@ -180,6 +180,16 @@ for image in images:
                    [0,1,1,1,0],
                    [0,1,1,1,0],
                    [0,1,1,1,0]])
+    from skimage.measure import label,regionprops
+    import matplotlib.pyplot as plt
+    regions = regionprops(label(binary_closing(Mask, selem=selem4)))
+    areas = np.asarray([prop.area for prop in regions])
+    plt.hist(areas, bins =100)
+    plt.figure()
+    plt.semilogy()
+    plt.hist(areas, bins=100)
+    plt.show()
+    break
     Positions = AD.detect(binary_closing(Mask, selem=selem4))
     print("Found %s animals!"%len(Positions))
 
@@ -198,7 +208,7 @@ for image in images:
         except IndexError:
             continue
         # Get Tracks from Filters
-        for k in MultiKal.Filters.keys():
+        for k in MultiKal.ActiveFilters.keys():
             x = y = np.nan
             # Case 1: we tracked something in this filter
             if i in MultiKal.Filters[k].Measurements.keys():

@@ -333,21 +333,21 @@ class PenguTrackWindow(QtWidgets.QWidget):
                         raise
 
                     # Get Tracks from Filter (a little dirty)
-                    for k in self.Tracker.Filters.keys():
+                    for k in self.Tracker.ActiveFilters.keys():
                         x = y = np.nan
-                        if i in self.Tracker.Filters[k].Measurements.keys():
-                            meas = self.Tracker.Filters[k].Measurements[i]
+                        if i in self.Tracker.ActiveFilters[k].Measurements.keys():
+                            meas = self.Tracker.ActiveFilters[k].Measurements[i]
                             y = meas.PositionX
                             x = meas.PositionY
-                            prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
-                        elif i in self.Tracker.Filters[k].X.keys():
+                            prob = self.Tracker.ActiveFilters[k].log_prob(keys=[i], compare_bel=False)
+                        elif i in self.Tracker.ActiveFilters[k].X.keys():
                             meas = None
-                            y, x = self.Tracker.Model.measure(self.Tracker.Filters[k].X[i])
-                            prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
+                            y, x = self.Tracker.Model.measure(self.Tracker.ActiveFilters[k].X[i])
+                            prob = self.Tracker.ActiveFilters[k].log_prob(keys=[i], compare_bel=False)
 
-                        if i in self.Tracker.Filters[k].Measurements.keys():
-                            pred_y, pred_x = self.Tracker.Model.measure(self.Tracker.Filters[k].Predicted_X[i])
-                            prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
+                        if i in self.Tracker.ActiveFilters[k].Measurements.keys():
+                            pred_y, pred_x = self.Tracker.Model.measure(self.Tracker.ActiveFilters[k].Predicted_X[i])
+                            prob = self.Tracker.ActiveFilters[k].log_prob(keys=[i], compare_bel=False)
 
                         # Write assigned tracks to ClickPoints DataBase
                         if np.isnan(x) or np.isnan(y):
