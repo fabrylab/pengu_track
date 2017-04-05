@@ -171,7 +171,7 @@ class AreaDetector(Detector):
     """
     Detector classifying objects by area and number to be used with pengu-track modules.
     """
-    def __init__(self, object_area, threshold=None, lower_limit=None, upper_limit=None):
+    def __init__(self, object_area, object_number, threshold=None, lower_limit=None, upper_limit=None):
         """
         Detector classifying objects by number and size, taking area-separation into account.
 
@@ -187,6 +187,7 @@ class AreaDetector(Detector):
         """
         super(AreaDetector, self).__init__()
         self.ObjectArea = int(object_area)
+        self.ObjectNumber = object_number
         if lower_limit:
             self.LowerLimit = int(lower_limit)
         else:
@@ -198,7 +199,7 @@ class AreaDetector(Detector):
 
         self.Threshold = threshold
         self.Areas = []
-
+        self.Sigma = None
     def detect(self, image, return_regions=False):
         """
         Detection function. Parts the image into blob-regions with size according to their area.
@@ -222,7 +223,20 @@ class AreaDetector(Detector):
         image = np.array(image, dtype=bool)
 
         labeled = skimage.measure.label(image, connectivity=2)
-        self.Areas.extend([prop.area for prop in skimage.measure.regionprops(labeled)])
+
+        if len(self.Areas)<1e4 or self.Sigma is None:
+            from scipy.optimize import curve_fit
+            self.Areas.extend([prop.area for prop in skimage.measure.regionprops(labeled)])
+            hist, bins = np.histogram(self.Areas, bins=max(self.Areas) - min(self.Areas))
+            def gauss(x, sigma):
+                return self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5 * np.exp(-(x - self.ObjectArea) ** 2 / (2 * sigma ** 2))
+
+            def curve(x, sigma):
+                return gauss(x, sigma) + hist[0] * x ** -2
+
+            params, cov = curve_fit(curve, bins[1:], hist, (self.ObjectArea/2.), bounds=(1, self.ObjectArea))
+            self.Sigma = params
+            print("FOUND SIGMA OF %s"%params)
         # bad_ids = [prop.label for prop in skimage.measure.regionprops(labeled) if prop.area < self.ObjectArea]
         # for id in bad_ids:
         #     labeled[labeled == id] = 0
@@ -234,7 +248,7 @@ class AreaDetector(Detector):
 
         # import matplotlib.pyplot as plt
         # print(self.ObjectArea, len(self.Areas))
-        print("Object Area at ",self.ObjectArea)
+        print("Object Area at ",self.ObjectArea, "pm", self.Sigma)
         #if len(self.Areas)>1e3:
         #    bins = int(np.amax(self.Areas)+1)
         #    plt.hist(self.Areas, bins=bins)
@@ -248,75 +262,62 @@ class AreaDetector(Detector):
         regions = {}
         [regions.update({prop.label: prop}) for prop in regions_list if prop.area > self.LowerLimit]
 
+        N_max = np.floor(self.ObjectArea/self.Sigma)
+
         for prop in regions.values():
+            n = np.ceil(prop.area/self.ObjectArea)
             if self.LowerLimit < prop.area < self.UpperLimit:
+                # if return_regions:
+                #     out.append(prop)
+                # else:
+                #     sigma = self.Sigma
+                #     mu = self.ObjectArea
+                #     prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5*((prop.area - mu)/sigma) ** 2
+                #     out.append(Measurement(prob, prop.centroid))
+                out.extend(self.measure(prop, 1, return_regions))
+            elif n < N_max:
+                pass
+                # out.extend(self.measure(prop, n, return_regions))
+        return out
+
+    def measure(self, prop, n, return_regions):
+        out = []
+        if n ==1:
+            if return_regions:
+                out.append(prop)
+            else:
+                sigma = self.Sigma
+                mu = self.ObjectArea
+                prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
+                                                                                            prop.area - mu) / sigma) ** 2
+                out.append(Measurement(prob, prop.centroid))
+        elif n>1:
+            if min(prop.image.shape) < 2:
                 if return_regions:
-                    out.append(prop)
+                    out.extend([prop, prop])
                 else:
-                    out.append(Measurement(1., prop.centroid))
-            elif 1.6 * self.ObjectArea <= prop.area < 2.4 * self.ObjectArea:
-                if min(prop.image.shape)<2:
-                    # if return_regions:
-                    #     out.extend([prop, prop])
-                    # else:
-                    #     bb = np.asarray(prop.bbox)
-                    #     out.extend([Measurement(1., bb[:2]+i/3.*(bb[2:]-bb[:2])) for i in range(2)])
-                    pass
+                    bb = np.asarray(prop.bbox)
+                    sigma = 2 * self.Sigma
+                    mu = 2 * self.ObjectArea
+                    prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
+                                                                                                prop.area - mu) / sigma) ** 2
+                    out.extend([Measurement(prob, bb[:2]+i/float(n+1)*(bb[2:]-bb[:2])) for i in range(n+1)])
+            else:
+                distance = ndi.distance_transform_edt(prop.image)
+                local_maxi = peak_local_max(distance, indices=False,
+                                            labels=prop.image, num_peaks=n)
+                markers = ndi.label(local_maxi)[0]
+                labels = watershed(-distance, markers, mask=prop.image)
+                new_reg = skimage.measure.regionprops(labels)
+                new_reg = [new for new in new_reg if new.label <= n]
+                if return_regions:
+                    out.extend(new_reg)
                 else:
-                    distance = ndi.distance_transform_edt(prop.image)
-                    local_maxi = peak_local_max(distance, indices=False,
-                                                labels=prop.image, num_peaks=2)
-                    markers = ndi.label(local_maxi)[0]
-                    labels = watershed(-distance, markers, mask=prop.image)
-                    new_reg = skimage.measure.regionprops(labels)
-                    new_reg = [new for new in new_reg if new.label <= 2]
-                    # print("Found double-penguin at:\n")
-                    # for new in new_reg[:2]:
-                    #     print(np.asarray(prop.bbox)[:2]+new.centroid)
-                    if return_regions:
-                        out.extend(new_reg)
-                    else:
-                        out.extend([Measurement(1., np.asarray(prop.bbox)[:2]+new.centroid) for new in new_reg])
-            elif 2.4 * self.ObjectArea <= prop.area < 3.4 * self.ObjectArea:
-                if min(prop.image.shape)<2:
-                    pass
-                    # if return_regions:
-                    #     out.extend([prop, prop])
-                    # else:
-                    #     bb = np.asarray(prop.bbox)
-                    #     out.extend([Measurement(1., bb[:2]+i/4.*(bb[2:]-bb[:2])) for i in range(3)])
-                else:
-                    distance = ndi.distance_transform_edt(prop.image)
-                    local_maxi = peak_local_max(distance, indices=False,
-                                                labels=prop.image, num_peaks=3)
-                    markers = ndi.label(local_maxi)[0]
-                    labels = watershed(-distance, markers, mask=prop.image)
-                    new_reg = skimage.measure.regionprops(labels)
-                    new_reg = [new for new in new_reg if new.label <= 3]
-                    if return_regions:
-                        out.extend(new_reg)
-                    else:
-                        out.extend([Measurement(1., np.asarray(prop.bbox)[:2]+new.centroid) for new in new_reg])
-            elif 3.4 * self.ObjectArea <= prop.area < 4.4 * self.ObjectArea:
-                if min(prop.image.shape)<2:
-                    pass
-                    # if return_regions:
-                    #     out.extend([prop, prop])
-                    # else:
-                    #     bb = np.asarray(prop.bbox)
-                    #     out.extend([Measurement(1., bb[:2]+i/5.*(bb[2:]-bb[:2])) for i in range(4)])
-                else:
-                    distance = ndi.distance_transform_edt(prop.image)
-                    local_maxi = peak_local_max(distance, indices=False,
-                                                labels=prop.image, num_peaks=4)
-                    markers = ndi.label(local_maxi)[0]
-                    labels = watershed(-distance, markers, mask=prop.image)
-                    new_reg = skimage.measure.regionprops(labels)
-                    new_reg = [new for new in new_reg if new.label <= 4]
-                    if return_regions:
-                        out.extend(new_reg)
-                    else:
-                        out.extend([Measurement(1., np.asarray(prop.bbox)[:2]+new.centroid) for new in new_reg])
+                    sigma = 2 * self.Sigma
+                    mu = 2 * self.ObjectArea
+                    prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
+                                                                                                prop.area - mu) / sigma) ** 2
+                    out.extend([Measurement(prob, np.asarray(prop.bbox)[:2] + new.centroid) for new in new_reg])
         return out
 
 

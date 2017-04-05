@@ -44,6 +44,7 @@ object_size = 0.5  # Object diameter (smallest)
 penguin_height = 0.462#0.575
 penguin_width = 0.21
 object_number = 500  # Number of Objects in First Track
+object_area = 42
 
 # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
 model = VariableSpeed(1, 1, dim=2, timeconst=0.5)
@@ -89,10 +90,8 @@ for i in range(1,10):
 BS = BlobSegmentation(15, min_size=4)
 imgdata = VB.horizontal_equalisation(db.getImage(frame=0).data)
 
-# Init Detection Module
-# BD = BlobDetector(object_size, object_number)
-print("Detecting Penguins of size ", 42, VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
-AD = AreaDetector(42)#VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
+print("Detecting Penguins of size ", object_area, VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
+AD = AreaDetector(object_area, object_number)#VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
 print('Initialized')
 
 # Define ClickPoints Marker
@@ -175,21 +174,12 @@ for image in images:
 
     # Detection of regions with distinct areas
     from skimage.morphology import binary_closing
-    selem4 = np.array([[0,1,1,1,0],
-                   [0,1,1,1,0],
-                   [0,1,1,1,0],
-                   [0,1,1,1,0],
-                   [0,1,1,1,0]])
-    from skimage.measure import label,regionprops
-    import matplotlib.pyplot as plt
-    regions = regionprops(label(binary_closing(Mask, selem=selem4)))
-    areas = np.asarray([prop.area for prop in regions])
-    plt.hist(areas, bins =100)
-    plt.figure()
-    plt.semilogy()
-    plt.hist(areas, bins=100)
-    plt.show()
-    break
+
+    selem4 = np.array([[0, 1, 1, 1, 0],
+                       [0, 1, 1, 1, 0],
+                       [0, 1, 1, 1, 0],
+                       [0, 1, 1, 1, 0],
+                       [0, 1, 1, 1, 0]])
     Positions = AD.detect(binary_closing(Mask, selem=selem4))
     print("Found %s animals!"%len(Positions))
 
@@ -211,18 +201,18 @@ for image in images:
         for k in MultiKal.ActiveFilters.keys():
             x = y = np.nan
             # Case 1: we tracked something in this filter
-            if i in MultiKal.Filters[k].Measurements.keys():
-                meas = MultiKal.Filters[k].Measurements[i]
+            if i in MultiKal.ActiveFilters[k].Measurements.keys():
+                meas = MultiKal.ActiveFilters[k].Measurements[i]
                 x = meas.PositionX
                 y = meas.PositionY
                 # rescale to pixel coordinates
                 x_px = x * (VB.height/VB.Max_Dist)
                 y_px = y * (VB.height/VB.Max_Dist)
-                prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
+                prob = MultiKal.ActiveFilters[k].log_prob(keys=[i], compare_bel=False)
 
             # Case 3: we want to see the prediction markers
-            if i in MultiKal.Filters[k].Predicted_X.keys():
-                pred_x, pred_y = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])
+            if i in MultiKal.ActiveFilters[k].Predicted_X.keys():
+                pred_x, pred_y = MultiKal.Model.measure(MultiKal.ActiveFilters[k].Predicted_X[i])
                 # rescale to pixel coordinates
                 pred_x_px = pred_x * (VB.height/VB.Max_Dist)
                 pred_y_px = pred_y * (VB.height/VB.Max_Dist)
@@ -239,7 +229,7 @@ for image in images:
             pred_x_img, pred_y_img = VB.warp_orth([VB.Res * (pred_y_px - VB.width / 2.), VB.Res * (VB.height - pred_x_px)])
 
             # Write assigned tracks to ClickPoints DataBase
-            if i in MultiKal.Filters[k].Predicted_X.keys():
+            if i in MultiKal.ActiveFilters[k].Predicted_X.keys():
                 pred_marker = db.setMarker(image=image, x=pred_x_img, y=pred_y_img, text="Track %s" % (100 + k),
                                        type=marker_type3)
             if np.isnan(x) or np.isnan(y):
@@ -265,34 +255,38 @@ for image in images:
 
 print('done with Tracking')
 
-GT_Type = db.getMarkerType(name="GT_Detections")
-GT_Markers = db.getMarkers(type=GT_Type)
-Auto_Type = db.getMarkerType(name="PT_Track_Marker")
-Auto_Markers = db.getMarkers(type=Auto_Type, frame=0)
-
-GT_pos = np.asarray([[marker.x, marker.y] for marker in GT_Markers])
-auto_pos = np.asarray([[marker.x, marker.y] for marker in Auto_Markers])
-
-dist_mat = np.linalg.norm(GT_pos[None,:].T-auto_pos[:,None].T, axis=0)
-
-dists = np.amin(dist_mat, axis=1)
-n_false_positive = len(dists[dists>VB.Penguin_Size])+dist_mat.shape[1]-dist_mat.shape[0]
-n_correct = len(dists[dists<VB.Penguin_Size])
-n_not_found = dist_mat.shape[0]-n_correct
-total_rms_err = np.sqrt(np.mean(np.square(dists[dists<VB.Penguin_Size])))
-
-
-with open("eval_0.txt","a") as myfile:
-    myfile.write("\n")
-    myfile.write("P-Faktor %s"%sys.argv[1])
-    myfile.write("\n")
-    myfile.write("N-Total: %s GT, %s Auto"%dist_mat.shape)
-    myfile.write("\n")
-    myfile.write("Correct Detections: %s absolute, %s relative %%"%(n_correct, 100*n_correct/dist_mat.shape[0]))
-    myfile.write("\n")
-    myfile.write("False Positives: %s absolute, %s relative %%"%(n_false_positive, 100*n_false_positive/dist_mat.shape[1]))
-    myfile.write("\n")
-    myfile.write("False Negative: %s absolute, %s relative %%"%(n_not_found, 100*n_not_found/dist_mat.shape[0]))
-    myfile.write("\n")
-    myfile.write("Total RMS-Error: %s absolute, %s relative %%"%(total_rms_err, 100*total_rms_err/VB.Penguin_Size))
-    myfile.write("\n")
+# track_length_table = np.asarray([[t.id, len(t.markers)] for t in db.getTracks(type=marker_type2)])
+# db.deleteTracks(id=track_length_table.T[0][track_length_table.T[1]<4])
+# print("Deleted shorter Tracks")
+#
+# GT_Type = db.getMarkerType(name="GT_Detections")
+# GT_Markers = db.getMarkers(type=GT_Type)
+# Auto_Type = db.getMarkerType(name="PT_Track_Marker")
+# Auto_Markers = db.getMarkers(type=Auto_Type, frame=0)
+#
+# GT_pos = np.asarray([[marker.x, marker.y] for marker in GT_Markers])
+# auto_pos = np.asarray([[marker.x, marker.y] for marker in Auto_Markers])
+#
+# dist_mat = np.linalg.norm(GT_pos[None,:].T-auto_pos[:,None].T, axis=0)
+#
+# dists = np.amin(dist_mat, axis=1)
+# n_false_positive = len(dists[dists>VB.Penguin_Size])+dist_mat.shape[1]-dist_mat.shape[0]
+# n_correct = len(dists[dists<VB.Penguin_Size])
+# n_not_found = dist_mat.shape[0]-n_correct
+# total_rms_err = np.sqrt(np.mean(np.square(dists[dists<VB.Penguin_Size])))
+#
+#
+# with open("eval_0.txt","a") as myfile:
+#     myfile.write("\n")
+#     myfile.write("P-Faktor %s"%sys.argv[1])
+#     myfile.write("\n")
+#     myfile.write("N-Total: %s GT, %s Auto"%dist_mat.shape)
+#     myfile.write("\n")
+#     myfile.write("Correct Detections: %s absolute, %s relative %%"%(n_correct, 100*n_correct/dist_mat.shape[0]))
+#     myfile.write("\n")
+#     myfile.write("False Positives: %s absolute, %s relative %%"%(n_false_positive, 100*n_false_positive/dist_mat.shape[1]))
+#     myfile.write("\n")
+#     myfile.write("False Negative: %s absolute, %s relative %%"%(n_not_found, 100*n_not_found/dist_mat.shape[0]))
+#     myfile.write("\n")
+#     myfile.write("Total RMS-Error: %s absolute, %s relative %%"%(total_rms_err, 100*total_rms_err/VB.Penguin_Size))
+#     myfile.write("\n")

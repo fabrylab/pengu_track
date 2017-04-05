@@ -252,9 +252,11 @@ class Filter(object):
                 #                            np.array([-1*np.ones_like(self.Model.State_dim)*100,
                 #                                      np.ones(self.Model.State_dim)*100]).T)
                 # print(integral)
+
                 try:
                     probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
                                                                                  - self.Model.measure(comparison))))
+                    probs += self.Measurements[i].Log_Probability
                 except ValueError:
                     print(position.shape, position)
                     print(comparison.shape, comparison)
