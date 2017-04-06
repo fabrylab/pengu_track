@@ -43,8 +43,8 @@ import scipy.stats as ss
 object_size = 0.5  # Object diameter (smallest)
 penguin_height = 0.462#0.575
 penguin_width = 0.21
-object_number = 500  # Number of Objects in First Track
-object_area = 42
+object_number = 300  # Number of Objects in First Track
+object_area = 55
 
 # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
 model = VariableSpeed(1, 1, dim=2, timeconst=0.5)
@@ -59,6 +59,8 @@ Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
 # Initialize Filter
 MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
                        np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
+
+MultiKal.LogProbabilityThreshold = -10.
 
 # Init_Background from Image_Median
 N = db.getImages().count()
@@ -143,7 +145,7 @@ def setMeasurement(marker=None, log=None, x=None, y=None):
     except peewee.DoesNotExist:
         item = db.table_measurement()
 
-    dictionary = dict(marker=marker, x=x, y=y)
+    dictionary = dict(marker=marker, log=log, x=x, y=y)
     for key in dictionary:
         if dictionary[key] is not None:
             setattr(item, key, dictionary[key])
@@ -209,7 +211,6 @@ for image in images:
                 x_px = x * (VB.height/VB.Max_Dist)
                 y_px = y * (VB.height/VB.Max_Dist)
                 prob = MultiKal.ActiveFilters[k].log_prob(keys=[i], compare_bel=False)
-
             # Case 3: we want to see the prediction markers
             if i in MultiKal.ActiveFilters[k].Predicted_X.keys():
                 pred_x, pred_y = MultiKal.Model.measure(MultiKal.ActiveFilters[k].Predicted_X[i])
@@ -249,7 +250,7 @@ for image in images:
                     print('Set new Track %s and Track-Marker at %s, %s' % ((100+k), x_img, y_img))
 
                 # Save measurement in Database
-                db.setMeasurement(marker=track_marker, log=prob, x=x, y=y)
+                db.setMeasurement(marker=track_marker, log=meas.Log_Probability, x=x, y=y)
 
     print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
 

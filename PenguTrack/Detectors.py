@@ -166,6 +166,125 @@ class BlobDetector(Detector):
         else:
             return []
 
+class SimpleAreaDetector(Detector):
+    """
+    Detector classifying objects by area and number to be used with pengu-track modules.
+    """
+    def __init__(self, object_area, object_number, threshold=None, lower_limit=None, upper_limit=None):
+        """
+        Detector classifying objects by number and size, taking area-separation into account.
+
+        Parameters
+        ----------
+        object_size: non-zero int
+            Smallest diameter of an object to be detected.
+        object_number: non-zero int
+            If threshold in None, this number specifies the number of objects to track
+            in the first picture and sets the threshold accordingly.
+        threshold: float, optional
+            Threshold for binning the image.
+        """
+        super(SimpleAreaDetector, self).__init__()
+        self.start_ObjectArea = int(object_area)
+        self.sample_size = 1
+        self.ObjectArea = int(object_area)
+        self.ObjectNumber = object_number
+        if lower_limit:
+            self.LowerLimit = int(lower_limit)
+        else:
+            self.LowerLimit = 0.4*self.ObjectArea
+        if upper_limit:
+            self.UpperLimit = int(upper_limit)
+        else:
+            self.UpperLimit = 1.6*self.ObjectArea
+
+        self.Threshold = threshold
+        self.Sigma = self.ObjectArea/2.
+    def detect(self, image, return_regions=False):
+        """
+        Detection function. Parts the image into blob-regions with size according to their area.
+        Returns information about the regions.
+
+        Parameters
+        ----------
+        image: array_like
+            Image will be converted to uint8 Greyscale and then binnearized.
+        return_regions: bool, optional
+            If True, function will return skimage.measure.regionprops object,
+            else a list of the blob centroids and areas.
+
+        Returns
+        -------
+        regions: array_like
+            List of information about each blob of adequate size.
+        """
+        while len(image.shape) > 2:
+            image = np.linalg.norm(image, axis=-1)
+        image = np.array(image, dtype=bool)
+
+        labeled = skimage.measure.label(image, connectivity=2)
+
+        regions_list = [prop for prop in skimage.measure.regionprops(labeled) if prop.area > self.LowerLimit]
+
+        if len(regions_list) <= 0:
+            return np.array([])
+
+        print("Object Area at ",self.ObjectArea, "pm", self.Sigma)
+
+        out = []
+        regions = {}
+        [regions.update({prop.label: prop}) for prop in regions_list if prop.area > self.LowerLimit]
+
+        N_max = np.floor(self.ObjectArea/self.Sigma)
+
+        for prop in regions.values():
+            n = np.ceil(prop.area/self.ObjectArea)
+            if self.LowerLimit < prop.area < self.UpperLimit:
+                out.extend(self.measure(prop, 1, return_regions))
+            elif n < N_max:
+                pass
+                # out.extend(self.measure(prop, n, return_regions))
+        return out
+
+    def measure(self, prop, n, return_regions):
+        out = []
+        if n ==1:
+            if return_regions:
+                out.append(prop)
+            else:
+                sigma = self.Sigma
+                mu = self.ObjectArea
+                prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
+                                                                                            prop.area - mu) / sigma) ** 2
+                out.append(Measurement(prob, prop.centroid))
+        elif n>1:
+            if min(prop.image.shape) < 2:
+                if return_regions:
+                    out.extend([prop, prop])
+                else:
+                    bb = np.asarray(prop.bbox)
+                    sigma = 2 * self.Sigma
+                    mu = 2 * self.ObjectArea
+                    prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
+                                                                                                prop.area - mu) / sigma) ** 2
+                    out.extend([Measurement(prob, bb[:2]+i/float(n+1)*(bb[2:]-bb[:2])) for i in range(n+1)])
+            else:
+                distance = ndi.distance_transform_edt(prop.image)
+                local_maxi = peak_local_max(distance, indices=False,
+                                            labels=prop.image, num_peaks=n)
+                markers = ndi.label(local_maxi)[0]
+                labels = watershed(-distance, markers, mask=prop.image)
+                new_reg = skimage.measure.regionprops(labels)
+                new_reg = [new for new in new_reg if new.label <= n]
+                if return_regions:
+                    out.extend(new_reg)
+                else:
+                    sigma = 2 * self.Sigma
+                    mu = 2 * self.ObjectArea
+                    prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
+                                                                                                prop.area - mu) / sigma) ** 2
+                    out.extend([Measurement(prob, np.asarray(prop.bbox)[:2] + new.centroid) for new in new_reg])
+        return out
 
 class AreaDetector(Detector):
     """
@@ -186,6 +305,8 @@ class AreaDetector(Detector):
             Threshold for binning the image.
         """
         super(AreaDetector, self).__init__()
+        self.start_ObjectArea = int(object_area)
+        self.sample_size = 1
         self.ObjectArea = int(object_area)
         self.ObjectNumber = object_number
         if lower_limit:
@@ -224,19 +345,26 @@ class AreaDetector(Detector):
 
         labeled = skimage.measure.label(image, connectivity=2)
 
-        if len(self.Areas)<1e4 or self.Sigma is None:
-            from scipy.optimize import curve_fit
+        if len(self.Areas)<1e5 or self.Sigma is None:
+            self.sample_size +=1
             self.Areas.extend([prop.area for prop in skimage.measure.regionprops(labeled)])
+        else:
+            new_areas = [prop.area for prop in skimage.measure.regionprops(labeled)]
+            self.Areas = self.Areas[len(new_areas):]
+            self.Areas.extend(new_areas)
+        if True and len(self.Areas) > 0:
+            self.ObjectArea = self.start_ObjectArea
+            from scipy.optimize import curve_fit
             hist, bins = np.histogram(self.Areas, bins=max(self.Areas) - min(self.Areas))
-            def gauss(x, sigma):
-                return self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5 * np.exp(-(x - self.ObjectArea) ** 2 / (2 * sigma ** 2))
+            def gauss(x, sigma, mu):
+                return self.sample_size*0.15*self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5 * np.exp(-(x - mu) ** 2 / (2 * sigma ** 2))
 
-            def curve(x, sigma):
-                return gauss(x, sigma) + hist[0] * x ** -2
+            def curve(x, sigma, mu):
+                return gauss(x, sigma, mu) + hist[0] * x ** -2.2
 
-            params, cov = curve_fit(curve, bins[1:], hist, (self.ObjectArea/2.), bounds=(1, self.ObjectArea))
-            self.Sigma = params
-            print("FOUND SIGMA OF %s"%params)
+            params, cov = curve_fit(curve, bins[1:], hist, (self.ObjectArea/6., self.ObjectArea), bounds=([1,0.5*self.ObjectArea], [self.ObjectArea, 2*self.ObjectArea]))
+            self.Sigma, self.ObjectArea = params
+            print("FOUND SIGMA OF %s"%self.Sigma)
         # bad_ids = [prop.label for prop in skimage.measure.regionprops(labeled) if prop.area < self.ObjectArea]
         # for id in bad_ids:
         #     labeled[labeled == id] = 0
@@ -487,6 +615,46 @@ class Segmentation(object):
         pass
 
     def segmentate(self, image):
+        pass
+
+class TresholdSegmentation(Segmentation):
+
+    def __init__(self, treshold):
+        super(TresholdSegmentation, self).__init__()
+
+        self.width = None
+        self.height = None
+        self.SegMap = None
+        self.Treshold = int(treshold)
+        self.Skale = None
+
+    def segmentate(self, image):
+        data = np.array(image, ndmin=2)
+
+        if self.width is None or self.height is None:
+            self.width, self.height = data.shape[:2]
+        this_skale = np.mean((np.sum(data.astype(np.uint32)**2, axis=-1)**0.5))
+
+        if this_skale == 0:
+            this_skale = self.Skale
+        if self.Skale is None:
+            self.Skale = this_skale
+
+        data = (data.astype(float)*(self.Skale/this_skale)).astype(np.int32)
+
+        if self.SegMap is None:
+            self.SegMap = np.ones((self.width, self.height), dtype=bool)
+
+        if len(data.shape) == 3:
+            self.SegMap = (np.sum(data**2, axis=-1)**0.5/data.shape[-1]**0.5 > self.Treshold).astype(bool)
+        elif len(data.shape) == 2:
+            print(np.amin(data), np.amax(data))
+            self.SegMap = (data > self.Treshold).astype(bool)
+        else:
+            raise ValueError('False format of data.')
+        return self.SegMap
+
+    def update(self,mask, image):
         pass
 
 

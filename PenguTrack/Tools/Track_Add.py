@@ -82,8 +82,6 @@ class PenguTrackWindow(QtWidgets.QWidget):
         self.functions = {}
         font = QtGui.QFont("", 11)
 
-        self.
-
         # add spinboxes
         self.spinboxes = {}
         self.spin_functions = [self.pt_set_size, self.pt_set_area, self.pt_set_number]
@@ -174,7 +172,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
             self.Segmentation.detect(db.getImage(frame=i).data, do_neighbours=False)
 
         # Init Detection Module
-        self.Detector = AreaDetector(self.object_area)
+        self.Detector = AreaDetector(self.object_area, self.object_number)
 
         # Define ClickPoints Marker
 
@@ -237,11 +235,12 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
     def pt_set_area(self, value):
         self.object_area = int(value)
-        self.Detector = AreaDetector(self.object_area)
+        self.Detector = AreaDetector(self.object_area, self.object_number)
         self.reload_markers()
 
     def pt_set_number(self, value):
         self.object_number = int(value)
+        self.Detector = AreaDetector(self.object_area, self.object_number)
         self.reload_markers()
 
     def pt_set_size(self, value):
