@@ -12,3 +12,33 @@ cell_data.cdb-wal
 *.png
 build/
 PenguTrack.egg-info/
+..hgignore.swp
+.idea/dictionaries/alex.xml
+.idea/vcs.xml
+.idea/workspace.xml.orig
+20140507-040000_microbsDDU_D10.JPG
+ExampleData.zip
+Horizon.cdb
+PenguTrack/Tools/GlacioNoZoom.cdb
+PenguTrack/Tools/GlacioZoom.cdb
+PenguTrack/Tools/P7700001.JPG
+PenguTrack/Tools/Props.csv
+PenguTrack/Tools/eval.txt
+ProbGain.csv
+cell_data.cdb
+corrIm1.cdb
+eval_old.txt
+horizon.jpg
+horizon/New Folder/h2.cdb
+horizon/New Folder/horizon15.jpg
+horizon/New Folder/synth30phi1h_p.jpg
+horizon/New Folder/synth30phi1h_p2.jpg
+horizon/h1.cdb
+horizon/h1.cdb-shm
+horizon/h1.cdb-wal
+horizon/synth30phi1h_p3.jpg
+logprobMat.csv
+penguin_data.cdb
+pillar_data.cdb
+test.py
+testbild.cdb

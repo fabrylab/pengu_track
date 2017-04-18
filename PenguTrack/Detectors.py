@@ -220,7 +220,7 @@ class SimpleAreaDetector(Detector):
         """
         while len(image.shape) > 2:
             image = np.linalg.norm(image, axis=-1)
-        image = np.array(image, dtype=bool)
+        # image = np.array(image, dtype=bool)
 
         labeled = skimage.measure.label(image, connectivity=2)
 

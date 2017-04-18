@@ -19,7 +19,7 @@ import scipy.stats as ss
 
 import clickpoints
 
-MaxI_db = clickpoints.DataFile("/home/alex/2017-03-10_Tzellen_microwells_bestdata/30sec/max_Indizes.cdb")
+# MaxI_db = clickpoints.DataFile("/home/alex/2017-03-10_Tzellen_microwells_bestdata/30sec/max_Indizes.cdb")
 res = 6.45/10
 
 __icon__ = "fa.coffee"
@@ -109,13 +109,13 @@ class PenguTrackWindow(QtWidgets.QWidget):
         # Initialise PenguTrack
         self.object_size = self.spin_start[0]  # Object diameter (smallest)
         self.object_number = self.spin_start[1]  # Number of Objects in First Track
-        self.object_area = int(self.spin_start[0]**2*np.pi)
+        self.object_area = int((self.spin_start[0]/2.)**2*np.pi)
 
         # add even more sliders. tihihi...
         self.sliders = {}
         self.slider_functions = [self.pt_set_q, self.pt_set_r, self.pt_set_lum_treshold, self.pt_set_var_treshold]
         self.slider_min_max = [[1, 10], [1, 10], [1, 2**12], [1, 2**12]]
-        self.slider_start = [2, 2, 128, 255]
+        self.slider_start = [2, 2, 800, 255]
         self.slider_formats = [" %3d", "    %3d", "    %3d", "    %3d"]
         for i, name in enumerate(["Prediciton Error", "Detection Error", "Luminance Treshold", "Variance Treshold"]):
             sublayout = QtWidgets.QHBoxLayout()
@@ -161,8 +161,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
                                np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
 
         # Init_Background from Image_Median
-        N = db.getImages().count()
-        init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
+        N = db.getImages(layer=0).count()
+        init = np.array(np.median([np.asarray(db.getImage(frame=j, layer=2).data, dtype=np.int)
                                    for j in np.random.randint(0, N, 5)], axis=0), dtype=np.int)
 
         # Init Segmentation Module with Init_Image
@@ -191,6 +191,12 @@ class PenguTrackWindow(QtWidgets.QWidget):
         db.deleteMarkers(type=marker_type3)
         self.prediction_marker_type = marker_type3
 
+        if not db.getMaskType(name="PT_SegMask"):
+            self.mask_type = db.setMaskType(name="PT_SegMask", color="#FF59E3")
+        else:
+            self.mask_type = db.getMaskType(name="PT_SegMask")
+        self.mask_type_id = self.mask_type.id
+
         # Delete Old Tracks
         db.deleteTracks(type=self.track_marker_type)
 
@@ -200,8 +206,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
         print('Initialized')
 
         # Get images and template
-        self.image_iterator = db.getImageIterator(start_frame=start_frame)
-        self.current_image = db.getImage(frame=start_frame)
+        self.image_iterator = db.getImageIterator(start_frame=start_frame, layer=2)
+        self.current_image = db.getImage(frame=start_frame, layer=2)
         self.image_data = self.current_image.data
         self.markers = db.getMarkers(frame=start_frame)
         self.current_marker = None
@@ -236,7 +242,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
     def pt_set_size(self, value, name):
         self.texts[name].setText(name + ": " + self.formats[name] % self.sliders[name].value())
         self.object_size = int(value)
-        self.object_area = int(self.object_size**2*np.pi)
+        self.object_area = int((self.object_size/2.)**2*np.pi)
         self.Detector = AreaDetector(self.object_area, self.object_number)
         self.reload_markers()
         self.r = int(value)
@@ -283,19 +289,30 @@ class PenguTrackWindow(QtWidgets.QWidget):
         self.update_filter_params(np.diag(Q), np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
 
     def reload_markers(self):
+        print("Reloading Markers")
         db.deleteMarkers(image=self.current_image, type=self.detection_marker_type)
-        Positions = self.Detector.detect(~db.getMask(image=self.current_image).data.astype(bool))
+        self.reload_mask()
+        SegMap = ~db.getMask(image=self.current_image).data.astype(bool)
+        if np.sum(SegMap) < np.sum(~SegMap):
+            Index_Image = db.getImage(frame=self.current_image.frame, layer=3).data
+            Map = np.zeros_like(Index_Image)
+            Map[SegMap] = Index_Image[SegMap]
+            Positions = self.Detector.detect(Map)
+        else:
+            Positions = self.Detector.detect(SegMap)
+        # Positions = self.Detector.detect(~db.getMask(image=self.current_image).data.astype(bool))
         print(len(Positions))
         for pos in Positions:
             db.setMarker(image=self.current_image, y=pos.PositionX, x=pos.PositionY, type=self.detection_marker_type)
         com.ReloadMarker()
 
     def reload_mask(self):
-        self.setEnabled(False)
+        print("Reloading Mask")
+        # self.setEnabled(False)
         SegMap = self.Segmentation.segmentate(self.image_data)
         db.setMask(image=self.current_image, data=(~SegMap).astype(np.uint8))
         com.ReloadMask()
-        self.setEnabled(True)
+        # self.setEnabled(True)
 
     def update_filter_params(self, *args, **kwargs):
         self.Tracker.filter_args = args
@@ -311,12 +328,12 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
     def track(self, value):
         if value:
-            images = db.getImageIterator(start_frame=start_frame)
+            images = db.getImageIterator(start_frame=start_frame, layer=2)
             for image in images:
-                # i = image.frame
-                i = image.get_id()
+                i = image.sort_index
+                # i = image.get_id()
 
-                Index_Image = MaxI_db.getImage(frame=i).data
+                Index_Image = db.getImage(frame=i, layer=3).data
                 # Prediction step
                 try:
                     self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=i)
@@ -326,7 +343,9 @@ class PenguTrackWindow(QtWidgets.QWidget):
                     raise
                 # Detection step
                 SegMap = self.Segmentation.detect(image.data)
-                Positions2D = self.Detector.detect(SegMap)
+                Map = np.zeros_like(Index_Image)
+                Map[SegMap] = Index_Image[SegMap]
+                Positions2D = self.Detector.detect(Map)
 
                 Positions3D = []
                 for pos in Positions2D:
@@ -338,8 +357,6 @@ class PenguTrackWindow(QtWidgets.QWidget):
                 Positions = Positions3D  # convenience
 
                 # Setting Mask in ClickPoints
-                if not db.getMaskType(name="PT_SegMask"):
-                    mask_type = db.setMaskType(name="PT_SegMask", color="#FF59E3")
                 m = db.setMask(image=image, data=(~SegMap).astype(np.uint8))
                 print("Mask save", m)
                 n = 1
@@ -393,7 +410,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
                                                             text='Track %s, Prob %.2f' % ((100 + k), prob))
                                 print('Set Track(%s)-Marker at %s, %s' % ((100 + k), x_img, y_img))
                             else:
-                                db.setTrack(self.track_marker_type, id=100 + k)
+                                db.setTrack(self.track_marker_type, id=100 + k, hidden=True)
                                 if k == self.Tracker.CriticalIndex:
                                     db.setMarker(image=image, type=self.track_marker_type, x=x_img, y=y_img,
                                                  text='Track %s, Prob %.2f, CRITICAL' % ((100 + k), prob))
@@ -404,10 +421,16 @@ class PenguTrackWindow(QtWidgets.QWidget):
                                                             text='Track %s, Prob %.2f' % ((100 + k), prob))
                                 print('Set new Track %s and Track-Marker at %s, %s' % ((100 + k), x_img, y_img))
 
-                            db.setMeasurement(marker=track_marker, log=prob, x=x, y=y, z=z)
-
-                com.ReloadMarker(i+1)
-                com.JumpToFrameWait(i+1)
+                            # db.setMeasurement(marker=track_marker, log=prob, x=x, y=y, z=z)
+                            db.db.connect()
+                            meas_entry = Measurement(marker=track_marker, log=prob, x=x, y=y, z=z)
+                            meas_entry.save()
+                # from time import time
+                # start = time()
+                # com.JumpToFrame(i)
+                # com.ReloadMarker(i)
+                # com.ReloadMask()
+                # print("Loading Frames costs %s s"%(time()-start))
                 print("Got %s Filters" % len(self.Tracker.ActiveFilters.keys()))
                 if not self.start_button.isChecked():
                     break
