@@ -657,6 +657,50 @@ class TresholdSegmentation(Segmentation):
     def update(self,mask, image):
         pass
 
+class VarianceSegmentation(Segmentation):
+
+    def __init__(self, treshold, r):
+        super(VarianceSegmentation, self).__init__()
+
+        self.width = None
+        self.height = None
+        self.SegMap = None
+        self.Treshold = int(treshold)
+        self.Skale = None
+        self.Radius = int(r)
+        self.selem = skimage.morphology.disk(self.Radius)
+
+    def segmentate(self, image):
+        data = np.array(image, ndmin=2)
+
+        if self.width is None or self.height is None:
+            self.width, self.height = data.shape[:2]
+        this_skale = np.mean((np.sum(data.astype(np.uint32)**2, axis=-1)**0.5))
+
+        if this_skale == 0:
+            this_skale = self.Skale
+        if self.Skale is None:
+            self.Skale = this_skale
+
+        data = (data.astype(float)*(self.Skale/this_skale)).astype(np.int32)
+
+        if self.SegMap is None:
+            self.SegMap = np.ones((self.width, self.height), dtype=bool)
+
+        data_mean = filters.rank.mean(data, self.selem)
+        data_std = filters.rank.mean(data**2, self.selem) - data_mean**2
+        if len(data.shape) == 3:
+            self.SegMap = (np.sum(data_std**2, axis=-1)**0.5/data.shape[-1]**0.5 > self.Treshold**2).astype(bool)
+        elif len(data.shape) == 2:
+            print(np.amin(data), np.amax(data))
+            self.SegMap = (data_std > self.Treshold**2).astype(bool)
+        else:
+            raise ValueError('False format of data.')
+        return self.SegMap
+
+    def update(self,mask, image):
+        pass
+
 
 class MoGSegmentation(Segmentation):
     """
@@ -686,6 +730,8 @@ class MoGSegmentation(Segmentation):
         self.Mu = None
         self.Var = None
 
+        self.dists = None
+
         if init_image is not None:
             data = np.array(init_image, ndmin=2)
             selem = np.ones((3, 3))
@@ -706,6 +752,83 @@ class MoGSegmentation(Segmentation):
             self.Skale = np.mean(np.linalg.norm(self.Mu, axis=-1).astype(float))
 
         self.Mu = np.random.normal(self.Mu, np.sqrt(self.Var)+0.5)
+
+    def segmentate(self, image):
+        """
+        Segmentation function. This function binearizes the input image by assuming the pixels,
+        which do not fit the background gaussians are foreground.
+
+        Parameters
+        ----------
+        image: array_like
+            Image to be segmented.
+
+        Returns
+        ----------
+        SegMap: array_like, bool
+            Segmented Image.
+        """
+        super(MoGSegmentation, self).detect(image)
+
+        data = np.array(image, ndmin=2)
+
+        if self.width is None or self.height is None:
+            self.width, self.height = data.shape[:2]
+        this_skale = np.mean(np.linalg.norm(data, axis=-1).astype(float))
+
+        if this_skale == 0:
+            this_skale = self.Skale
+        if self.Skale is None:
+            self.Skale = this_skale
+
+        data = (data.astype(float)*(self.Skale/this_skale)).astype(np.int32)
+        if self.Mu is None:
+            selem = np.ones((3, 3))
+            data_mean = filters.rank.mean(data, selem)
+            data_std = filters.rank.mean(data**2, selem) - data_mean**2
+            if len(data.shape) == 3:
+                self.Mu = np.tile(data_mean, self.N).reshape(data.shape+(self.N,)).transpose((3, 0, 1, 2))
+                self.Var = np.tile(data_std, self.N).reshape(data.shape+(self.N,)).transpose((3, 0, 1, 2))
+            elif len(data.shape) == 2:
+                self.Mu = np.tile(data_mean, (self.N, 1, 1,))
+                self.Var = np.tile(data_std, (self.N, 1, 1,))
+            else:
+                raise ValueError('False format of data.')
+
+        self.dists = np.abs(self.Mu-data)*(1/self.Var**0.5)
+
+        if len(data.shape) == 3:
+            return np.sum(np.sum(self.dists < 4, axis=0), axis=-1) > 2
+        elif len(data.shape) == 2:
+            return np.sum(self.dists < 4, axis=0) > 2
+        else:
+            raise ValueError('False format of data.')
+
+    def update(self, mask, image):
+
+        data = np.array(image, ndmin=2)
+
+        if self.width is None or self.height is None:
+            self.width, self.height = data.shape[:2]
+        this_skale = np.mean(np.linalg.norm(data, axis=-1).astype(float))
+
+        if this_skale == 0:
+            this_skale = self.Skale
+        if self.Skale is None:
+            self.Skale = this_skale
+
+        data = (data.astype(float)*(self.Skale/this_skale)).astype(np.int32)
+        dists = self.dists
+        matchs = np.zeros_like(data, dtype=bool)
+        matchs[np.unravel_index(np.argmin(dists, axis=0), data.shape)] = True
+        # matchs = (dists == np.amin(dists, axis=0))
+        outliers = (dists == np.amin(dists, axis=0))
+
+        self.Mu[matchs] = (self.Mu[matchs] * ((self.N-1)/self.N) + data.ravel()*(1./self.N))
+        self.Var[matchs] = (self.Var[matchs] * ((self.N-2)/(self.N-1)) + (data.ravel()-self.Mu[matchs]))*(1./(self.N-1))
+
+        self.Mu[outliers] = np.mean(self.Mu, axis=0).ravel()
+        self.Var[outliers] = np.mean(self.Var, axis=0).ravel()
 
     def detect(self, image):
         """

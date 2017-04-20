@@ -12,7 +12,7 @@ from PenguTrack.Filters import KalmanFilter
 from PenguTrack.Filters import MultiFilter
 from PenguTrack.Models import VariableSpeed
 from PenguTrack.Detectors import SimpleAreaDetector as AreaDetector
-from PenguTrack.Detectors import TresholdSegmentation
+from PenguTrack.Detectors import TresholdSegmentation, VarianceSegmentation
 from PenguTrack.Detectors import Measurement as PT_Measurement
 
 import scipy.stats as ss
@@ -166,7 +166,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
                                    for j in np.random.randint(0, N, 5)], axis=0), dtype=np.int)
 
         # Init Segmentation Module with Init_Image
-        self.Segmentation = TresholdSegmentation(treshold=int(self.slider_start[3]))
+        self.Segmentation = TresholdSegmentation(treshold=int(self.slider_start[2]))
+        self.Segmentation2 = VarianceSegmentation(int(self.slider_start[3]), int(np.ceil(self.object_size/2.)))
 
         # Init Detection Module
         self.Detector = AreaDetector(self.object_area, self.object_number)
@@ -218,7 +219,10 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
     def pt_set_var_treshold(self, value, name):
         self.texts[name].setText(name + ": " + self.formats[name] % self.sliders[name].value())
-        pass
+        # self.variance_treshold = int(np.ceil(value))
+        # self.Segmentation2.Treshold = self.variance_treshold
+        # self.reload_mask()
+        # pass
 
     def pt_set_lum_treshold(self, value, name):
         self.texts[name].setText(name + ": " + self.formats[name] % self.sliders[name].value())
@@ -242,6 +246,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
     def pt_set_size(self, value, name):
         self.texts[name].setText(name + ": " + self.formats[name] % self.sliders[name].value())
         self.object_size = int(value)
+        self.Segmentation2.Radius = int(np.ceil(value/2.))
+        self.reload_mask()
         self.object_area = int((self.object_size/2.)**2*np.pi)
         self.Detector = AreaDetector(self.object_area, self.object_number)
         self.reload_markers()
@@ -290,6 +296,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
     def reload_markers(self):
         print("Reloading Markers")
+        self.current_image = com.CurrentImage()
         db.deleteMarkers(image=self.current_image, type=self.detection_marker_type)
         self.reload_mask()
         SegMap = ~db.getMask(image=self.current_image).data.astype(bool)
@@ -308,9 +315,12 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
     def reload_mask(self):
         print("Reloading Mask")
+        self.current_image = com.CurrentImage()
+        print(self.current_image)
         # self.setEnabled(False)
         SegMap = self.Segmentation.segmentate(self.image_data)
-        db.setMask(image=self.current_image, data=(~SegMap).astype(np.uint8))
+        # SegMap2 = self.Segmentation2.segmentate(self.image_data)
+        db.setMask(frame=self.current_image, layer=0, data=(~(SegMap).astype(np.uint8)))
         com.ReloadMask()
         # self.setEnabled(True)
 
@@ -343,6 +353,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
                     raise
                 # Detection step
                 SegMap = self.Segmentation.detect(image.data)
+                # SegMap2 = self.Segmentation2.detect(image.data)
+                # SegMap = SegMap & SegMap2
                 Map = np.zeros_like(Index_Image)
                 Map[SegMap] = Index_Image[SegMap]
                 Positions2D = self.Detector.detect(Map)
