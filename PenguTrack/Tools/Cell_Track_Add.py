@@ -207,8 +207,9 @@ class PenguTrackWindow(QtWidgets.QWidget):
         print('Initialized')
 
         # Get images and template
-        self.image_iterator = db.getImageIterator(start_frame=start_frame, layer=2)
-        self.current_image = db.getImage(frame=start_frame, layer=2)
+        self.current_layer = com.CurrentLayer()
+        self.image_iterator = db.getImageIterator(start_frame=start_frame, layer=self.current_layer)
+        self.current_image = db.getImage(frame=start_frame, layer=self.current_layer)
         self.image_data = self.current_image.data
         self.markers = db.getMarkers(frame=start_frame)
         self.current_marker = None
@@ -316,11 +317,13 @@ class PenguTrackWindow(QtWidgets.QWidget):
     def reload_mask(self):
         print("Reloading Mask")
         self.current_image = com.CurrentImage()
+        self.current_layer = com.CurrentLayer()
         print(self.current_image)
         # self.setEnabled(False)
         SegMap = self.Segmentation.segmentate(self.image_data)
         # SegMap2 = self.Segmentation2.segmentate(self.image_data)
-        db.setMask(frame=self.current_image, layer=0, data=(~(SegMap).astype(np.uint8)))
+        db.setMask(frame=self.current_image, layer=self.current_layer, data=(~(SegMap).astype(np.uint8)))
+        print(db.getMask(frame=self.current_image, layer=self.current_layer).data)
         com.ReloadMask()
         # self.setEnabled(True)
 
