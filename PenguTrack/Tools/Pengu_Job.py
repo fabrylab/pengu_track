@@ -15,11 +15,24 @@ from os import path
 for p in sys.argv:
 	print(p)
 file_path = str(sys.argv[1])
-q = float(sys.argv[2])
-r = float(sys.argv[3])
-if platform.system() != 'Linux':
-    file_path = file_path.replace("/mnt/jobs", r"//131.188.117.98/shared/jobs")
+# q = float(sys.argv[2])
+# r = float(sys.argv[3])
+q = 2
+r = 1
+# if platform.system() != 'Linux':
+#     file_path = file_path.replace("/mnt/jobs", r"//131.188.117.98/shared/jobs")
 #path.normpath(file_path)
+
+import os
+# path = "/mnt/jobs/Pengu_Track_Evaluation/20150204/247.cdb"
+path = str(file_path)
+os.system("mkdir ~/Desktop/TODO")
+os.system("cp %s ~/Desktop/TODO/%s_done.cdb"%(path, path[-7:-4]))
+# os.system("cp -r %s/* ~/Desktop/TODO/"%path[:-7])
+
+file_path = "/home/alex/Desktop/TODO/%s_done.cdb"%path[-7:-4]
+
+global db
 db = clickpoints.DataFile(file_path)
 start_frame = 0
 
@@ -122,6 +135,7 @@ db.deleteTracks(type=marker_type3)
 import peewee
 
 class Measurement(db.base_model):
+    import peewee
     # full definition here - no need to use migrate
     marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name="measurement", on_delete='CASCADE') # reference to frame and track via marker!
     log = peewee.FloatField(default=0)
@@ -139,6 +153,7 @@ db.table_measurement = Measurement   # for consistency
 
 
 def setMeasurement(marker=None, log=None, x=None, y=None):
+    import peewee
     assert not (marker is None), "Measurement must refer to a marker."
     try:
         item = db.table_measurement.get(marker=marker)
@@ -241,7 +256,7 @@ for image in images:
                                  text='Track %s, Prob %.2f' % ((100+k), prob))
                     print('Set Track(%s)-Marker at %s, %s' % ((100+k), x_img, y_img))
                 else:
-                    db.setTrack(marker_type2, id=100+k)
+                    db.setTrack(marker_type2, id=100+k, hidden=True)
                     if k == MultiKal.CriticalIndex:
                         db.setMarker(image=image, type=marker_type, x=x_img, y=y_img,
                                      text='Track %s, Prob %.2f, CRITICAL' % ((100+k), prob))
@@ -256,6 +271,9 @@ for image in images:
 
 print('done with Tracking')
 
+os.system("cp ~/Desktop/TODO/%s_done.cdb %s "%(path[:-7], path[-7:-4]))
+
+os.system("rm -r ~/Desktop/TODO/*")
 # track_length_table = np.asarray([[t.id, len(t.markers)] for t in db.getTracks(type=marker_type2)])
 # db.deleteTracks(id=track_length_table.T[0][track_length_table.T[1]<4])
 # print("Deleted shorter Tracks")

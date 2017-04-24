@@ -36,7 +36,8 @@ import skimage.filters as filters
 import skimage.morphology
 
 from skimage import transform
-from scipy.ndimage.interpolation import map_coordinates, shift
+from scipy.ndimage.interpolation import map_coordinates
+from scipy.ndimage.interpolation import shift
 from skimage import img_as_uint
 
 from scipy import ndimage as ndi
@@ -692,10 +693,12 @@ class VarianceSegmentation(Segmentation):
         # data_std = filters.rank.mean(data**2, self.selem) - data_mean**2
         if len(data.shape) == 3:
             # self.SegMap = (np.sum(data_std**2, axis=-1)**0.5/data.shape[-1]**0.5 > self.Treshold**2).astype(bool)
-            self.SegMap = (self.local_std(data) > self.Treshold).astype(bool)
+            self.SegMap = (self.local_std(data) < self.Treshold).astype(bool)
         elif len(data.shape) == 2:
-            print(np.amin(data), np.amax(data))
-            self.SegMap = (self.local_std(data) > self.Treshold).astype(bool)
+            # print(np.amin(data), np.amax(data))
+            std = self.local_std(data)
+            print("AFFFENEALKF",np.amin(std), np.amax(std), np.mean(std))
+            self.SegMap = (self.local_std(data) < self.Treshold).astype(bool)
         else:
             raise ValueError('False format of data.')
         return self.SegMap
@@ -706,8 +709,8 @@ class VarianceSegmentation(Segmentation):
     def local_std(self, img):
         shifts = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]]
         stack = [img]
-        for shift in shifts:
-            stack.append(shift(img, shift, order=0, mode='reflect'))
+        for s in shifts:
+            stack.append(shift(img, s, order=0, mode='reflect'))
         stack = np.array(stack)
         return np.std(stack, axis=0)
 
