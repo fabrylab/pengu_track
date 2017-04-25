@@ -234,7 +234,7 @@ class SimpleAreaDetector(Detector):
 
         out = []
         regions = {}
-        [regions.update({prop.label: prop}) for prop in regions_list if prop.area > self.LowerLimit]
+        [regions.update({prop.label: prop}) for prop in regions_list if self.UpperLimit > prop.area > self.LowerLimit]
 
         N_max = np.floor(self.ObjectArea/self.Sigma)
 

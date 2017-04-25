@@ -82,11 +82,11 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
         # add spinboxes
         self.spinboxes = {}
-        self.spin_functions = [self.pt_set_size, self.pt_set_number]
-        self.spin_start = [10, 20]
-        self.spin_min_max = [[1, 100], [1, 1000]]
-        self.spin_formats = ["    %4d", "    %4d"]
-        for i, name in enumerate(["Object Size (px)", "Object Number (approx.)"]):
+        self.spin_functions = [self.pt_set_minsize,self.pt_set_maxsize, self.pt_set_number]
+        self.spin_start = [10, 10, 20]
+        self.spin_min_max = [[1, 100], [1, 100], [1, 1000]]
+        self.spin_formats = ["    %4d","    %4d", "    %4d"]
+        for i, name in enumerate(["Object Size min(px)","Object Size max(px)", "Object Number (approx.)"]):
             sublayout = QtWidgets.QHBoxLayout()
             sublayout.setContentsMargins(0, 0, 0, 0)
             spin = QtWidgets.QSpinBox(self)
@@ -263,12 +263,13 @@ class PenguTrackWindow(QtWidgets.QWidget):
         self.Detector.ObjectNumber = self.object_number
         # self.reload_markers()
 
-    def pt_set_size(self, value, name):
+    def pt_set_minsize(self, value, name):
         self.texts[name].setText(name + ": " + self.formats[name] % self.spinboxes[name].value())
-        self.object_size = int(value)
-        self.Segmentation2.Radius = int(np.ceil(value/2.))
-        self.object_area = int((self.object_size/2.)**2*np.pi)
-        self.Detector.ObjectArea = self.object_area
+        # self.object_size = int(value)
+        # self.Segmentation2.Radius = int(np.ceil(value/2.))
+        # self.object_area = int((self.object_size/2.)**2*np.pi)
+        # self.Detector.ObjectArea = self.object_area
+        self.Detector.LowerLimit = int((value/2.)**2*np.pi)
         self.Detector.ObjectNumber = self.object_number
 
         self.r = int(value)
@@ -285,6 +286,53 @@ class PenguTrackWindow(QtWidgets.QWidget):
         self.update_filter_params(np.diag(Q), np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
 
         self.reload_mask()
+
+    def pt_set_maxsize(self, value, name):
+        self.texts[name].setText(name + ": " + self.formats[name] % self.spinboxes[name].value())
+        # self.object_size = int(value)
+        # self.Segmentation2.Radius = int(np.ceil(value/2.))
+        # self.object_area = int((self.object_size/2.)**2*np.pi)
+        # self.Detector.ObjectArea = self.object_area
+        self.Detector.UpperLimit = int((value/2.)**2*np.pi)
+        self.Detector.ObjectNumber = self.object_number
+
+        self.r = int(value)
+        X = np.zeros(6).T  # Initial Value for Position
+        Q = np.diag([self.q * self.object_size * res,
+                     self.q * self.object_size * res,
+                     self.q * self.object_size * res])  # Prediction uncertainty
+        R = np.diag([self.r * self.object_size * res,
+                     self.r * self.object_size * res,
+                     self.r * self.object_size * res])  # Measurement uncertainty
+
+        State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filter
+        Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
+        self.update_filter_params(np.diag(Q), np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
+
+        self.reload_mask()
+
+    # def pt_set_size(self, value, name):
+    #     self.texts[name].setText(name + ": " + self.formats[name] % self.spinboxes[name].value())
+    #     self.object_size = int(value)
+    #     self.Segmentation2.Radius = int(np.ceil(value/2.))
+    #     self.object_area = int((self.object_size/2.)**2*np.pi)
+    #     self.Detector.ObjectArea = self.object_area
+    #     self.Detector.ObjectNumber = self.object_number
+    #
+    #     self.r = int(value)
+    #     X = np.zeros(6).T  # Initial Value for Position
+    #     Q = np.diag([self.q * self.object_size * res,
+    #                  self.q * self.object_size * res,
+    #                  self.q * self.object_size * res])  # Prediction uncertainty
+    #     R = np.diag([self.r * self.object_size * res,
+    #                  self.r * self.object_size * res,
+    #                  self.r * self.object_size * res])  # Measurement uncertainty
+    #
+    #     State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filter
+    #     Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
+    #     self.update_filter_params(np.diag(Q), np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
+    #
+    #     self.reload_mask()
 
     def pt_set_r(self, value, name):
         self.texts[name].setText(name + ": " + self.formats[name] % self.sliders[name].value())
@@ -331,7 +379,14 @@ class PenguTrackWindow(QtWidgets.QWidget):
         # else:
         #     Positions = self.Detector.detect(SegMap)
         print(self.Detector.ObjectArea, self.Detector.ObjectNumber)
+        mask = db.getMask(frame=self.current_frame, layer=0).data.astype(bool)
+        index_data = db.getImage(frame=self.current_frame, layer=1).data
+        index_data[mask] = np.zeros_like(index_data)[mask]
+        import matplotlib.pyplot as plt
+        plt.imshow(index_data)
+        plt.show()
         Positions = self.Detector.detect(~db.getMask(frame=self.current_frame, layer=0).data.astype(bool))
+        #Positions = self.Detector.detect(~db.getMask(frame=self.current_frame, layer=0).data.astype(bool))
         self.detect_button.setChecked(False)
         if len(Positions) > self.object_number*10:
             print("No update! Too many objects detected.")
@@ -347,9 +402,14 @@ class PenguTrackWindow(QtWidgets.QWidget):
         self.current_image = db.getImage(frame=self.current_frame, layer=self.current_layer)
         self.image_data = self.current_image.data
         SegMap1 = self.Segmentation.segmentate(db.getImage(frame=self.current_frame, layer=2).data)
+        #import matplotlib.pyplot as plt
+        #plt.imshow(db.getImage(frame=self.current_frame, layer=2).data)
+        #plt.figure()
         SegMap2 = self.Segmentation2.segmentate(db.getImage(frame=self.current_frame, layer=1).data)
+        #plt.imshow(db.getImage(frame=self.current_frame, layer=1).data)
+        #plt.show()
         # SegMap = SegMap1 & SegMap2
-        SegMap = SegMap1 | SegMap2
+        SegMap = SegMap1 #| SegMap2
         db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
         com.ReloadMask()
 
