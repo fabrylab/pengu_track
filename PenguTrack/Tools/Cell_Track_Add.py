@@ -450,6 +450,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
                     raise
                 # Detection step
                 SegMap = self.Segmentation.segmentate(db.getImage(frame=i, layer=2).data)
+                db.setMask(frame=i, layer=0, data=((~SegMap).astype(np.uint8)))
                 # SegMap = self.Segmentation.detect(image.data)
                 # SegMap2 = self.Segmentation2.detect(image.data)
                 # SegMap = SegMap & SegMap2
@@ -474,8 +475,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
                 m = db.setMask(frame=i, layer=0, data=(~SegMap).astype(np.uint8))
                 print("Mask save", m)
                 n = 1
-
-                if np.all(Positions != np.array([])):
+                if len(Positions) != 0:
+                # if np.all(Positions != np.array([])):
 
                     # Update Filter with new Detections
                     try:

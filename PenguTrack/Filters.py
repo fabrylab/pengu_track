@@ -1009,8 +1009,10 @@ class MultiFilter(Filter):
 
         for j, k in enumerate(self.ActiveFilters.keys()):
             gain_dict.update({j: k})
-            for m in range(M):
-                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: measurements[m]})
+            for m, meas in enumerate(measurements):
+                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas})
+            # for m in range(M):
+            #     probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: measurements[m]})
 
         # self.Probability_Gain.update({i: np.array(probability_gain)})
         # self.CriticalIndex = gain_dict[np.nanargmax([np.sort(a)[-2]/np.sort(a)[-1] for a in probability_gain[:N]])]
