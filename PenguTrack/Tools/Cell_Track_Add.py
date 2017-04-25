@@ -123,8 +123,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
         # add even more sliders. tihihi...
         self.sliders = {}
         self.slider_functions = [self.pt_set_q, self.pt_set_r, self.pt_set_lum_treshold, self.pt_set_var_treshold]
-        self.slider_min_max = [[1, 10], [1, 10], [1, 2**12], [0, 110]]
-        self.slider_start = [2, 2, 800, 255]
+        self.slider_min_max = [[1, 10], [1, 10], [1, 2**12], [-100, 100]]
+        self.slider_start = [2, 2, 800, 0]
         self.slider_formats = [" %3d", "    %3d", "    %3d", "    %3d"]
         for i, name in enumerate(["Prediciton Error", "Detection Error", "Luminance Treshold", "Variance Treshold"]):
             sublayout = QtWidgets.QHBoxLayout()
@@ -235,7 +235,9 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
     def pt_set_var_treshold(self, value, name):
         self.texts[name].setText(name + ": " + self.formats[name] % self.sliders[name].value())
-        self.variance_treshold = int(np.ceil(2**(value/10)))
+        # self.variance_treshold = int(np.ceil(2**(value/10)))
+        self.variance_treshold = 2**(value/10)
+        print("Setting Variance-Treshold to %s"%self.variance_treshold)
         self.Segmentation2.Treshold = self.variance_treshold
         self.reload_mask()
         # pass
@@ -346,7 +348,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
         self.image_data = self.current_image.data
         SegMap1 = self.Segmentation.segmentate(db.getImage(frame=self.current_frame, layer=2).data)
         SegMap2 = self.Segmentation2.segmentate(db.getImage(frame=self.current_frame, layer=1).data)
-        SegMap = SegMap1 & SegMap2
+        # SegMap = SegMap1 & SegMap2
+        SegMap = SegMap1 | SegMap2
         db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
         com.ReloadMask()
 
