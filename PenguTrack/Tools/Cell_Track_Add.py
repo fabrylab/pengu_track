@@ -83,7 +83,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
         # add spinboxes
         self.spinboxes = {}
         self.spin_functions = [self.pt_set_minsize,self.pt_set_maxsize, self.pt_set_number]
-        self.spin_start = [10, 10, 20]
+        self.spin_start = [5, 30, 200]
         self.spin_min_max = [[1, 100], [1, 100], [1, 1000]]
         self.spin_formats = ["    %4d","    %4d", "    %4d"]
         for i, name in enumerate(["Object Size min(px)","Object Size max(px)", "Object Number (approx.)"]):
@@ -91,8 +91,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
             sublayout.setContentsMargins(0, 0, 0, 0)
             spin = QtWidgets.QSpinBox(self)
             # spin.format = formats[i]
-            spin.setValue(self.spin_start[i])
             spin.setRange(self.spin_min_max[i][0], self.spin_min_max[i][1])
+            spin.setValue(self.spin_start[i])
             spin.editingFinished.connect(lambda spin=spin, i=i, name=name: self.spin_functions[i](spin.value(), name))
             spin.valueChanged.connect(lambda value, name=name: self.update_text(value, name))
             self.spinboxes.update({name: spin})
@@ -124,7 +124,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
         self.sliders = {}
         self.slider_functions = [self.pt_set_q, self.pt_set_r, self.pt_set_lum_treshold, self.pt_set_var_treshold]
         self.slider_min_max = [[1, 10], [1, 10], [1, 2**12], [-100, 100]]
-        self.slider_start = [2, 2, 800, 0]
+        self.slider_start = [2, 1, 871, 0]
         self.slider_formats = [" %3d", "    %3d", "    %3d", "    %3d"]
         for i, name in enumerate(["Prediciton Error", "Detection Error", "Luminance Treshold", "Variance Treshold"]):
             sublayout = QtWidgets.QHBoxLayout()
@@ -182,6 +182,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
         # Init Detection Module
         self.Detector = AreaDetector(self.object_area, self.object_number)
+        self.Detector.LowerLimit = int((self.spin_start[0]/2.)**2*np.pi)
+        self.Detector.UpperLimit = int((self.spin_start[1]/2.)**2*np.pi)
 
         # Define ClickPoints Marker
 
@@ -383,13 +385,14 @@ class PenguTrackWindow(QtWidgets.QWidget):
         index_data = db.getImage(frame=self.current_frame, layer=1).data
         index_data[mask] = np.zeros_like(index_data)[mask]
         import matplotlib.pyplot as plt
-        plt.imshow(index_data)
-        plt.show()
+        # plt.imshow(index_data)
+        # plt.show()
+        # Positions = self.Detector.detect(index_data)
         Positions = self.Detector.detect(~db.getMask(frame=self.current_frame, layer=0).data.astype(bool))
-        #Positions = self.Detector.detect(~db.getMask(frame=self.current_frame, layer=0).data.astype(bool))
         self.detect_button.setChecked(False)
-        if len(Positions) > self.object_number*10:
-            print("No update! Too many objects detected.")
+        if False:#len(Positions) > self.object_number*10:
+            pass
+            #print("No update! Too many objects detected.")
         else:
             print("Found %s Objects!"%len(Positions))
             for pos in Positions:
@@ -446,12 +449,17 @@ class PenguTrackWindow(QtWidgets.QWidget):
                     print(self.Tracker.X.keys())
                     raise
                 # Detection step
-                SegMap = self.Segmentation.detect(image.data)
+                SegMap = self.Segmentation.segmentate(db.getImage(frame=i, layer=2).data)
+                # SegMap = self.Segmentation.detect(image.data)
                 # SegMap2 = self.Segmentation2.detect(image.data)
                 # SegMap = SegMap & SegMap2
-                Map = np.zeros_like(Index_Image)
-                Map[SegMap] = Index_Image[SegMap]
-                Positions2D = self.Detector.detect(Map)
+                # Map = np.zeros_like(Index_Image)
+                # Map[SegMap] = Index_Image[SegMap]
+                mask = db.getMask(frame=i, layer=0).data.astype(bool)
+                index_data = db.getImage(frame=i, layer=1).data
+                index_data[mask] = np.zeros_like(index_data)[mask]
+                # Positions2D = self.Detector.detect(index_data)
+                Positions2D = self.Detector.detect(~db.getMask(frame=i, layer=0).data.astype(bool))
 
                 Positions3D = []
                 for pos in Positions2D:
@@ -508,28 +516,31 @@ class PenguTrackWindow(QtWidgets.QWidget):
                         if np.isnan(x) or np.isnan(y):
                             pass
                         else:
-                            pred_marker = db.setMarker(frame=i, layer=0, x=x_img, y=y_img,
-                                                       text="Track %s" % (100 + k), type=self.prediction_marker_type)
-                            if db.getTrack(k + 100):
+                            pred_marker = db.setMarker(frame=i, layer=0, x=pred_x_img, y=pred_y_img,
+                                                       text="Track %s" % (1000 + k), type=self.prediction_marker_type)
+                            if db.getTrack(k + 1000):
                                 track_marker = db.setMarker(frame=i, layer=0, type=self.track_marker_type,
-                                                            track=(100 + k),
+                                                            track=(1000 + k),
                                                             x=x_img, y=y_img,
-                                                            text='Track %s, Prob %.2f' % ((100 + k), prob))
-                                print('Set Track(%s)-Marker at %s, %s' % ((100 + k), x_img, y_img))
+                                                            text='Track %s, Prob %.2f' % ((1000 + k), prob))
+                                print('Set Track(%s)-Marker at %s, %s' % ((1000 + k), x_img, y_img))
                             else:
-                                db.setTrack(self.track_marker_type, id=100 + k, hidden=True)
+                                db.setTrack(self.track_marker_type, id=1000 + k, hidden=True)
                                 if k == self.Tracker.CriticalIndex:
                                     db.setMarker(image=i, layer=0, type=self.track_marker_type, x=x_img, y=y_img,
-                                                 text='Track %s, Prob %.2f, CRITICAL' % ((100 + k), prob))
+                                                 text='Track %s, Prob %.2f, CRITICAL' % ((1000 + k), prob))
                                 track_marker = db.setMarker(image=image, type=self.track_marker_type,
-                                                            track=100 + k,
+                                                            track=1000 + k,
                                                             x=x_img,
                                                             y=y_img,
-                                                            text='Track %s, Prob %.2f' % ((100 + k), prob))
-                                print('Set new Track %s and Track-Marker at %s, %s' % ((100 + k), x_img, y_img))
+                                                            text='Track %s, Prob %.2f' % ((1000 + k), prob))
+                                print('Set new Track %s and Track-Marker at %s, %s' % ((1000 + k), x_img, y_img))
 
                             # db.setMeasurement(marker=track_marker, log=prob, x=x, y=y, z=z)
-                            db.db.connect()
+                            try:
+                                db.db.connect()
+                            except peewee.OperationalError:
+                                pass
                             meas_entry = Measurement(marker=track_marker, log=prob, x=x, y=y, z=z)
                             meas_entry.save()
                 # from time import time
