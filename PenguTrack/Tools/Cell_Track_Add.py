@@ -124,7 +124,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
         self.sliders = {}
         self.slider_functions = [self.pt_set_q, self.pt_set_r, self.pt_set_lum_treshold, self.pt_set_var_treshold]
         self.slider_min_max = [[1, 10], [1, 10], [1, 2**12], [-100, 100]]
-        self.slider_start = [2, 1, 871, 0]
+        self.slider_start = [2, 1, 871, -7]
         self.slider_formats = [" %3d", "    %3d", "    %3d", "    %3d"]
         for i, name in enumerate(["Prediciton Error", "Detection Error", "Luminance Treshold", "Variance Treshold"]):
             sublayout = QtWidgets.QHBoxLayout()
@@ -380,6 +380,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
         #     Positions = self.Detector.detect(Map)
         # else:
         #     Positions = self.Detector.detect(SegMap)
+        self.Detector.ObjectArea = int((self.Detector.UpperLimit+self.Detector.LowerLimit)/2.)
         print(self.Detector.ObjectArea, self.Detector.ObjectNumber)
         mask = db.getMask(frame=self.current_frame, layer=0).data.astype(bool)
         index_data = db.getImage(frame=self.current_frame, layer=1).data
@@ -389,6 +390,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
         # plt.show()
         # Positions = self.Detector.detect(index_data)
         Positions = self.Detector.detect(~db.getMask(frame=self.current_frame, layer=0).data.astype(bool))
+
         self.detect_button.setChecked(False)
         if False:#len(Positions) > self.object_number*10:
             pass
@@ -411,8 +413,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
         SegMap2 = self.Segmentation2.segmentate(db.getImage(frame=self.current_frame, layer=1).data)
         #plt.imshow(db.getImage(frame=self.current_frame, layer=1).data)
         #plt.show()
-        # SegMap = SegMap1 & SegMap2
-        SegMap = SegMap1 #| SegMap2
+        SegMap = SegMap1 & SegMap2
+        # SegMap = SegMap2 #SegMap1 | SegMap2
         db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
         com.ReloadMask()
 
@@ -449,11 +451,11 @@ class PenguTrackWindow(QtWidgets.QWidget):
                     print(self.Tracker.X.keys())
                     raise
                 # Detection step
-                SegMap = self.Segmentation.segmentate(db.getImage(frame=i, layer=2).data)
+                SegMap1 = self.Segmentation.segmentate(db.getImage(frame=i, layer=2).data)
+                SegMap2 = self.Segmentation2.detect(db.getImage(frame=i, layer=1).data) #image.data)
+                SegMap = SegMap1 & SegMap2
                 db.setMask(frame=i, layer=0, data=((~SegMap).astype(np.uint8)))
                 # SegMap = self.Segmentation.detect(image.data)
-                # SegMap2 = self.Segmentation2.detect(image.data)
-                # SegMap = SegMap & SegMap2
                 # Map = np.zeros_like(Index_Image)
                 # Map[SegMap] = Index_Image[SegMap]
                 mask = db.getMask(frame=i, layer=0).data.astype(bool)
@@ -526,7 +528,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
                                                             text='Track %s, Prob %.2f' % ((1000 + k), prob))
                                 print('Set Track(%s)-Marker at %s, %s' % ((1000 + k), x_img, y_img))
                             else:
-                                db.setTrack(self.track_marker_type, id=1000 + k, hidden=True)
+                                db.setTrack(self.track_marker_type, id=1000 + k, hidden=False)
                                 if k == self.Tracker.CriticalIndex:
                                     db.setMarker(image=i, layer=0, type=self.track_marker_type, x=x_img, y=y_img,
                                                  text='Track %s, Prob %.2f, CRITICAL' % ((1000 + k), prob))

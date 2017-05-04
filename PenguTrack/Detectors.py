@@ -226,6 +226,16 @@ class SimpleAreaDetector(Detector):
         labeled = skimage.measure.label(image, connectivity=2)
 
         regions_list = [prop for prop in skimage.measure.regionprops(labeled) if self.UpperLimit > prop.area > self.LowerLimit]
+        # for region in regions_list:
+        #     print('---------------', region.solidity)
+        #     for line in region.image:
+        #         print(line.astype(np.uint8))
+        solidity_list = [prop.solidity for prop in regions_list]
+        # with open("/home/user/test.txt", "wb") as myfile:
+        #     for s in solidity_list:
+        #         myfile.write("%s \n"%s)
+        regions_list = [region for region in regions_list if region.solidity > 0.5]
+
 
         if len(regions_list) <= 0:
             return np.array([])
@@ -240,10 +250,10 @@ class SimpleAreaDetector(Detector):
 
         for prop in regions.values():
             n = np.ceil(prop.area/self.ObjectArea)
-            if self.LowerLimit < prop.area < self.UpperLimit:
-                out.extend(self.measure(prop, 1, return_regions))
-            elif n < N_max:
-                pass
+            # if self.LowerLimit < prop.area < self.UpperLimit:
+            out.extend(self.measure(prop, 1, return_regions))
+            # elif n < N_max:
+            #     pass
                 # out.extend(self.measure(prop, n, return_regions))
         return out
 
