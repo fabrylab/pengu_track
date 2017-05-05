@@ -228,8 +228,7 @@ class SimpleAreaDetector(Detector):
 
         # Filter the regions for area and convexity
         regions_list = [prop for prop in skimage.measure.regionprops(labeled)
-                        if (self.UpperLimit > prop.area > self.LowerLimit and prop.solidity > 0.5)]
-
+                        if (self.UpperLimit > prop.area > self.LowerLimit)]# and prop.solidity > 0.5)]
         if len(regions_list) <= 0:
             return np.array([])
 

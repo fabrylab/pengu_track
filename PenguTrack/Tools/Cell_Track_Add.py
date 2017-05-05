@@ -173,8 +173,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
         # Init_Background from Image_Median
         N = db.getImages(layer=0).count()
-        init = np.array(np.median([np.asarray(db.getImage(frame=j, layer=2).data, dtype=np.int)
-                                   for j in np.random.randint(0, N, 5)], axis=0), dtype=np.int)
+        # init = np.array(np.median([np.asarray(db.getImage(frame=j, layer=2).data, dtype=np.int)
+        #                            for j in np.random.randint(0, N, 5)], axis=0), dtype=np.int)
 
         # Init Segmentation Module with Init_Image
         self.Segmentation = TresholdSegmentation(treshold=int(self.slider_start[2]))
@@ -385,11 +385,16 @@ class PenguTrackWindow(QtWidgets.QWidget):
         mask = db.getMask(frame=self.current_frame, layer=0).data.astype(bool)
         index_data = db.getImage(frame=self.current_frame, layer=1).data
         index_data[mask] = np.zeros_like(index_data)[mask]
-        import matplotlib.pyplot as plt
-        # plt.imshow(index_data)
-        # plt.show()
-        # Positions = self.Detector.detect(index_data)
-        Positions = self.Detector.detect(~db.getMask(frame=self.current_frame, layer=0).data.astype(bool))
+
+        index_3d = np.zeros((np.amax(index_data),)+index_data.shape, dtype=np.uint16)
+        for z in range(np.amax(index_data)):
+            index_3d[z] = index_data == (z+1)
+        from skimage.measure import label
+        index_3d = label(index_3d, connectivity=3)
+        index_data2 = np.sum(index_3d, axis=0)
+
+        Positions = self.Detector.detect(index_data2)
+        # Positions = self.Detector.detect(~db.getMask(frame=self.current_frame, layer=0).data.astype(bool))
 
         self.detect_button.setChecked(False)
         if False:#len(Positions) > self.object_number*10:
@@ -413,7 +418,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
         SegMap2 = self.Segmentation2.segmentate(db.getImage(frame=self.current_frame, layer=1).data)
         #plt.imshow(db.getImage(frame=self.current_frame, layer=1).data)
         #plt.show()
-        SegMap = SegMap1 & SegMap2
+        SegMap = SegMap1# & SegMap2
         # SegMap = SegMap2 #SegMap1 | SegMap2
         db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
         com.ReloadMask()
@@ -437,9 +442,11 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
     def track(self, value):
         if value:
+            print("Starting Tracking")
             images = db.getImageIterator(start_frame=start_frame, layer=2)
             for image in images:
                 i = image.sort_index
+                print("Doing Frame %s"%i)
                 # i = image.get_id()
 
                 Index_Image = db.getImage(frame=i, layer=3).data
@@ -453,7 +460,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
                 # Detection step
                 SegMap1 = self.Segmentation.segmentate(db.getImage(frame=i, layer=2).data)
                 SegMap2 = self.Segmentation2.detect(db.getImage(frame=i, layer=1).data) #image.data)
-                SegMap = SegMap1 & SegMap2
+                SegMap = SegMap1 #& SegMap2
                 db.setMask(frame=i, layer=0, data=((~SegMap).astype(np.uint8)))
                 # SegMap = self.Segmentation.detect(image.data)
                 # Map = np.zeros_like(Index_Image)
@@ -461,8 +468,17 @@ class PenguTrackWindow(QtWidgets.QWidget):
                 mask = db.getMask(frame=i, layer=0).data.astype(bool)
                 index_data = db.getImage(frame=i, layer=1).data
                 index_data[mask] = np.zeros_like(index_data)[mask]
-                # Positions2D = self.Detector.detect(index_data)
-                Positions2D = self.Detector.detect(~db.getMask(frame=i, layer=0).data.astype(bool))
+
+                index_3d = np.zeros((np.amax(index_data),) + index_data.shape, dtype=np.uint16)
+                for z in range(np.amax(index_data)):
+                    index_3d[z] = index_data == (z + 1)
+                from skimage.measure import label
+                index_3d = label(index_3d, connectivity=3)
+                index_data2 = np.sum(index_3d, axis=0)
+                index_data2 = np.sum(label(index_3d, connectivity=3), axis=0)
+
+                Positions2D = self.Detector.detect(index_data2)
+                # Positions2D = self.Detector.detect(~db.getMask(frame=i, layer=0).data.astype(bool))
 
                 Positions3D = []
                 for pos in Positions2D:
