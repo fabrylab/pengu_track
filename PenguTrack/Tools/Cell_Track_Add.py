@@ -122,11 +122,11 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
         # add even more sliders. tihihi...
         self.sliders = {}
-        self.slider_functions = [self.pt_set_q, self.pt_set_r, self.pt_set_lum_treshold, self.pt_set_var_treshold]
-        self.slider_min_max = [[1, 10], [1, 10], [1, 2**12], [-100, 100]]
-        self.slider_start = [2, 1, 871, -7]
-        self.slider_formats = [" %3d", "    %3d", "    %3d", "    %3d"]
-        for i, name in enumerate(["Prediciton Error", "Detection Error", "Luminance Treshold", "Variance Treshold"]):
+        self.slider_functions = [self.pt_set_q, self.pt_set_r, self.pt_set_lum_treshold]#, self.pt_set_var_treshold]
+        self.slider_min_max = [[1, 10], [1, 10], [1, 2**12]]#, [-100, 100]]
+        self.slider_start = [2, 1, 871]#, -7]
+        self.slider_formats = [" %3d", "    %3d", "    %3d"]#, "    %3d"]
+        for i, name in enumerate(["Prediciton Error", "Detection Error", "Luminance Treshold"]):#, "Variance Treshold"]):
             sublayout = QtWidgets.QHBoxLayout()
             sublayout.setContentsMargins(0, 0, 0, 0)
             slider = QtWidgets.QSlider(self)
@@ -149,7 +149,11 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
         # Add start Button
         self.start_button = QtWidgets.QPushButton()
-        self.start_button.clicked.connect(self.track)
+
+        import cProfile
+        def f():
+            cProfile.run("window.track(True)")
+        self.start_button.clicked.connect(f)
         self.start_button.setCheckable(True)
         self.start_button.setText("Start Tracking!")
         self.layout.addWidget(self.start_button)
@@ -178,7 +182,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
         # Init Segmentation Module with Init_Image
         self.Segmentation = TresholdSegmentation(treshold=int(self.slider_start[2]))
-        self.Segmentation2 = VarianceSegmentation(int(self.slider_start[3]), int(np.ceil(self.object_size/2.)))
+        # self.Segmentation2 = VarianceSegmentation(int(self.slider_start[3]), int(np.ceil(self.object_size/2.)))
 
         # Init Detection Module
         self.Detector = AreaDetector(self.object_area, self.object_number)
@@ -235,14 +239,14 @@ class PenguTrackWindow(QtWidgets.QWidget):
     def update_text(self, value, name):
         self.texts[name].setText(name + ": " + self.formats[name]%value)
 
-    def pt_set_var_treshold(self, value, name):
-        self.texts[name].setText(name + ": " + self.formats[name] % self.sliders[name].value())
-        # self.variance_treshold = int(np.ceil(2**(value/10)))
-        self.variance_treshold = 2**(value/10)
-        print("Setting Variance-Treshold to %s"%self.variance_treshold)
-        self.Segmentation2.Treshold = self.variance_treshold
-        self.reload_mask()
-        # pass
+    # def pt_set_var_treshold(self, value, name):
+    #     self.texts[name].setText(name + ": " + self.formats[name] % self.sliders[name].value())
+    #     # self.variance_treshold = int(np.ceil(2**(value/10)))
+    #     self.variance_treshold = 2**(value/10)
+    #     print("Setting Variance-Treshold to %s"%self.variance_treshold)
+    #     self.Segmentation2.Treshold = self.variance_treshold
+    #     self.reload_mask()
+    #     # pass
 
     def pt_set_lum_treshold(self, value, name):
         self.texts[name].setText(name + ": " + self.formats[name] % self.sliders[name].value())
@@ -256,14 +260,14 @@ class PenguTrackWindow(QtWidgets.QWidget):
         self.object_number = int(value)
         self.Detector.ObjectArea = self.object_area
         self.Detector.ObjectNumber = self.object_number
-        self.reload_markers()
-
-    def pt_set_area(self, value, name):
-        self.texts[name].setText(name + ": " + self.formats[name] % self.spinboxes[name].value())
-        self.object_area = int(value)
-        self.Detector.ObjectArea = self.object_area
-        self.Detector.ObjectNumber = self.object_number
         # self.reload_markers()
+
+    # def pt_set_area(self, value, name):
+        # self.texts[name].setText(name + ": " + self.formats[name] % self.spinboxes[name].value())
+        # self.object_area = int(value)
+        # self.Detector.ObjectArea = self.object_area
+        # self.Detector.ObjectNumber = self.object_number
+        # # self.reload_markers()
 
     def pt_set_minsize(self, value, name):
         self.texts[name].setText(name + ": " + self.formats[name] % self.spinboxes[name].value())
@@ -287,8 +291,6 @@ class PenguTrackWindow(QtWidgets.QWidget):
         Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
         self.update_filter_params(np.diag(Q), np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
 
-        self.reload_mask()
-
     def pt_set_maxsize(self, value, name):
         self.texts[name].setText(name + ": " + self.formats[name] % self.spinboxes[name].value())
         # self.object_size = int(value)
@@ -311,7 +313,6 @@ class PenguTrackWindow(QtWidgets.QWidget):
         Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
         self.update_filter_params(np.diag(Q), np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
 
-        self.reload_mask()
 
     # def pt_set_size(self, value, name):
     #     self.texts[name].setText(name + ": " + self.formats[name] % self.spinboxes[name].value())
@@ -381,8 +382,10 @@ class PenguTrackWindow(QtWidgets.QWidget):
         # else:
         #     Positions = self.Detector.detect(SegMap)
         self.Detector.ObjectArea = int((self.Detector.UpperLimit+self.Detector.LowerLimit)/2.)
-        print(self.Detector.ObjectArea, self.Detector.ObjectNumber)
+        # print(self.Detector.ObjectArea, self.Detector.ObjectNumber)
         mask = db.getMask(frame=self.current_frame, layer=0).data.astype(bool)
+        from skimage.morphology import binary_opening
+        mask = binary_opening(mask)
         index_data = db.getImage(frame=self.current_frame, layer=1).data
         index_data[mask] = np.zeros_like(index_data)[mask]
 
@@ -415,7 +418,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
         #import matplotlib.pyplot as plt
         #plt.imshow(db.getImage(frame=self.current_frame, layer=2).data)
         #plt.figure()
-        SegMap2 = self.Segmentation2.segmentate(db.getImage(frame=self.current_frame, layer=1).data)
+        # SegMap2 = self.Segmentation2.segmentate(db.getImage(frame=self.current_frame, layer=1).data)
         #plt.imshow(db.getImage(frame=self.current_frame, layer=1).data)
         #plt.show()
         SegMap = SegMap1# & SegMap2
@@ -459,13 +462,15 @@ class PenguTrackWindow(QtWidgets.QWidget):
                     raise
                 # Detection step
                 SegMap1 = self.Segmentation.segmentate(db.getImage(frame=i, layer=2).data)
-                SegMap2 = self.Segmentation2.detect(db.getImage(frame=i, layer=1).data) #image.data)
+                # SegMap2 = self.Segmentation2.detect(db.getImage(frame=i, layer=1).data) #image.data)
                 SegMap = SegMap1 #& SegMap2
                 db.setMask(frame=i, layer=0, data=((~SegMap).astype(np.uint8)))
                 # SegMap = self.Segmentation.detect(image.data)
                 # Map = np.zeros_like(Index_Image)
                 # Map[SegMap] = Index_Image[SegMap]
                 mask = db.getMask(frame=i, layer=0).data.astype(bool)
+                from skimage.morphology import binary_opening
+                mask = binary_opening(mask)
                 index_data = db.getImage(frame=i, layer=1).data
                 index_data[mask] = np.zeros_like(index_data)[mask]
 
@@ -477,9 +482,9 @@ class PenguTrackWindow(QtWidgets.QWidget):
                 index_data2 = np.sum(index_3d, axis=0)
                 index_data2 = np.sum(label(index_3d, connectivity=3), axis=0)
 
-                Positions2D = self.Detector.detect(index_data2)
+                Positions2D = self.Detector.detect(index_data2, get_all=True)
                 # Positions2D = self.Detector.detect(~db.getMask(frame=i, layer=0).data.astype(bool))
-
+                print(len(Positions2D))
                 Positions3D = []
                 for pos in Positions2D:
                     posZ = Index_Image[int(pos.PositionX), int(pos.PositionY)]
@@ -487,11 +492,12 @@ class PenguTrackWindow(QtWidgets.QWidget):
                                                       [pos.PositionX * res, pos.PositionY * res, posZ * 10],
                                                       frame=pos.Frame,
                                                       track_id=pos.Track_Id))
+                print(len(Positions3D))
                 Positions = Positions3D  # convenience
 
                 # Setting Mask in ClickPoints
-                m = db.setMask(frame=i, layer=0, data=(~SegMap).astype(np.uint8))
-                print("Mask save", m)
+                # m = db.setMask(frame=i, layer=0, data=(~SegMap).astype(np.uint8))
+                # print("Mask save", m)
                 n = 1
                 if len(Positions) != 0:
                 # if np.all(Positions != np.array([])):
@@ -571,6 +577,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
                 print("Got %s Filters" % len(self.Tracker.ActiveFilters.keys()))
                 if not self.start_button.isChecked():
                     break
+            else:
+                return
 
 
 # create qt application

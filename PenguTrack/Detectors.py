@@ -201,9 +201,9 @@ class SimpleAreaDetector(Detector):
             self.UpperLimit = int(1.6*self.ObjectArea)
 
         self.Threshold = threshold
-        self.Sigma = self.ObjectArea/2.
+        self.Sigma = np.sqrt((self.UpperLimit-self.LowerLimit)/(4*np.log(1./0.95))) # self.ObjectArea/2.
 
-    def detect(self, image, return_regions=False):
+    def detect(self, image, return_regions=False, get_all=False):
         """
         Detection function. Parts the image into blob-regions with size according to their area.
         Returns information about the regions.
@@ -227,8 +227,11 @@ class SimpleAreaDetector(Detector):
         labeled = skimage.measure.label(image, connectivity=2)
 
         # Filter the regions for area and convexity
-        regions_list = [prop for prop in skimage.measure.regionprops(labeled)
-                        if (self.UpperLimit > prop.area > self.LowerLimit)]# and prop.solidity > 0.5)]
+        if get_all:
+            regions_list = [prop for prop in skimage.measure.regionprops(labeled)]
+        else:
+            regions_list = [prop for prop in skimage.measure.regionprops(labeled)
+                       if (self.UpperLimit > prop.area > self.LowerLimit and prop.solidity > 0.5)]
         if len(regions_list) <= 0:
             return np.array([])
 
@@ -243,6 +246,7 @@ class SimpleAreaDetector(Detector):
             else:
                 prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
                                                                                         prop.area - mu) / sigma) ** 2
+                print(prob)
                 out.append(Measurement(prob, prop.centroid))
         return out
 
@@ -657,7 +661,6 @@ class VarianceSegmentation(Segmentation):
         elif len(data.shape) == 2:
             # print(np.amin(data), np.amax(data))
             std = self.local_std(data)
-            print("AFFFENEALKF",np.amin(std), np.amax(std), np.mean(std))
             self.SegMap = (self.local_std(data) < self.Treshold).astype(bool)
         else:
             raise ValueError('False format of data.')
@@ -1159,7 +1162,7 @@ class SiAdViBeSegmentation(Segmentation):
     This Version uses also Size Adjustion, an adapted ortho-projection,
      conserving the original size of an object in a plane.
     """
-    def __init__(self, horizonmarkers, f, sensor_size, pengu_markers, h_p, max_dist, init_image,  n=20, r=15, n_min=1, phi=16):
+    def __init__(self, horizonmarkers, f, sensor_size, pengu_markers, h_p, max_dist, init_image,  n=20, r=15, n_min=1, phi=16, camera_h = None):
         """
         Segmentation method comparing input images to image-background buffer. Able to learn new background information.
 
@@ -1248,9 +1251,11 @@ class SiAdViBeSegmentation(Segmentation):
         gg = self.calc_gamma([x_p1, y_p1], [x_p2, y_p2], self.Sensor_Size, [self.height, self.width], f)
         hh = self.calc_height(tt, gg, self.Phi, self.h_p)
 
-        print("Height", np.mean(hh), np.std(hh) / len(hh) ** 0.5)
-        self.camera_h = np.mean(hh)
-
+        if camera_h is None:
+            self.camera_h = np.mean(hh)
+            print("Height", np.mean(hh), np.std(hh) / len(hh) ** 0.5)
+        else:
+            self.camera_h = float(camera_h)
 
         # Initialize grid
         xx, yy = np.meshgrid(np.arange(self.width), np.arange(self.height))

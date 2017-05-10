@@ -12,9 +12,9 @@ import platform
 from os import path
 
 # Connect to database
-for p in sys.argv:
-	print(p)
-file_path = str(sys.argv[1])
+# for p in sys.argv:
+# 	print(p)
+# file_path = str(sys.argv[1])
 # q = float(sys.argv[2])
 # r = float(sys.argv[3])
 q = 2
@@ -23,15 +23,16 @@ r = 1
 #     file_path = file_path.replace("/mnt/jobs", r"//131.188.117.98/shared/jobs")
 #path.normpath(file_path)
 
-import os
-# path = "/mnt/jobs/Pengu_Track_Evaluation/20150204/247.cdb"
-path = str(file_path)
-os.system("mkdir ~/Desktop/TODO")
-os.system("cp %s ~/Desktop/TODO/%s_done.cdb"%(path, path[-7:-4]))
-# os.system("cp -r %s/* ~/Desktop/TODO/"%path[:-7])
+# import os
+# # path = "/mnt/jobs/Pengu_Track_Evaluation/20150204/247.cdb"
+# path = str(file_path)
+# os.system("mkdir ~/Desktop/TODO")
+# os.system("cp %s ~/Desktop/TODO/%s_done.cdb"%(path, path[-7:-4]))
+# # os.system("cp -r %s/* ~/Desktop/TODO/"%path[:-7])
+#
+# file_path = "/home/alex/Desktop/TODO/%s_done.cdb"%path[-7:-4]
 
-file_path = "/home/alex/Desktop/TODO/%s_done.cdb"%path[-7:-4]
-
+file_path = "/home/alex/Masterarbeit/770_PANA/new.cdb"
 global db
 db = clickpoints.DataFile(file_path)
 start_frame = 0
@@ -98,6 +99,7 @@ except ValueError:
 
 # Initialize detector and start backwards.
 VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 500, n=2, init_image=init, n_min=2, r=10, phi=1)
+# VB.camera_h = 25.
 
 for i in range(1,10):
     VB.detect(db.getImage(frame=i).data, do_neighbours=False)
@@ -197,6 +199,7 @@ for image in images:
                        [0, 1, 1, 1, 0],
                        [0, 1, 1, 1, 0],
                        [0, 1, 1, 1, 0]])
+
     Positions = AD.detect(binary_closing(Mask, selem=selem4))
     print("Found %s animals!"%len(Positions))
 
@@ -256,7 +259,7 @@ for image in images:
                                  text='Track %s, Prob %.2f' % ((100+k), prob))
                     print('Set Track(%s)-Marker at %s, %s' % ((100+k), x_img, y_img))
                 else:
-                    db.setTrack(marker_type2, id=100+k, hidden=True)
+                    db.setTrack(marker_type2, id=100+k, hidden=False)
                     if k == MultiKal.CriticalIndex:
                         db.setMarker(image=image, type=marker_type, x=x_img, y=y_img,
                                      text='Track %s, Prob %.2f, CRITICAL' % ((100+k), prob))
@@ -309,3 +312,4 @@ os.system("rm -r ~/Desktop/TODO/*")
 #     myfile.write("\n")
 #     myfile.write("Total RMS-Error: %s absolute, %s relative %%"%(total_rms_err, 100*total_rms_err/VB.Penguin_Size))
 #     myfile.write("\n")
+

@@ -900,7 +900,7 @@ class MultiFilter(Filter):
         self.Filters = {}
         self.ActiveFilters = {}
         self.FilterThreshold = 3
-        self.LogProbabilityThreshold = -18.
+        self.LogProbabilityThreshold = 0.05#0.99#-200#-18.
         self.filter_args = args
         self.filter_kwargs = kwargs
         self.CriticalIndex = None
@@ -990,6 +990,8 @@ class MultiFilter(Filter):
             Recent/corresponding time-stamp.
         """
         measurements = list(z)
+
+        meas_logp = np.array([m.Log_Probability for m in z])
         try:
             z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
         except (ValueError, AttributeError):
@@ -997,6 +999,13 @@ class MultiFilter(Filter):
                 z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
             except (ValueError, AttributeError):
                 z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
+        # print(np.mean(meas_logp), np.amin(meas_logp), np.amax(meas_logp))
+        print(len(z))
+        z = z[meas_logp >= (self.LogProbabilityThreshold * (np.amax(meas_logp)-np.amin(meas_logp)) + np.amin(meas_logp))]
+        measurements = list(np.asarray(measurements)[meas_logp >= (self.LogProbabilityThreshold *
+                                                                  (np.amax(meas_logp)-np.amin(meas_logp)) +
+                                                                  np.amin(meas_logp))])
+        print(len(z))
         M = z.shape[0]
         N = len(self.ActiveFilters.keys())
 
@@ -1005,7 +1014,7 @@ class MultiFilter(Filter):
             return measurements, i
 
         gain_dict = {}
-        probability_gain = np.ones((max(M, N), M))*self.LogProbabilityThreshold
+        probability_gain = np.ones((max(M, N), max(M,N)))/0.#*self.LogProbabilityThreshold
 
         for j, k in enumerate(self.ActiveFilters.keys()):
             gain_dict.update({j: k})
@@ -1013,19 +1022,46 @@ class MultiFilter(Filter):
                 probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas})
             # for m in range(M):
             #     probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: measurements[m]})
+        probability_gain[np.isinf(probability_gain)] = np.nan
+        print(np.isnan(probability_gain))
+        print(np.all(np.isnan(probability_gain)))
+        probability_gain[np.isnan(probability_gain)] = np.nanmin(probability_gain)
 
-        # self.Probability_Gain.update({i: np.array(probability_gain)})
-        # self.CriticalIndex = gain_dict[np.nanargmax([np.sort(a)[-2]/np.sort(a)[-1] for a in probability_gain[:N]])]
+        # print(np.mean(probability_gain), np.amin(probability_gain), np.amax(probability_gain))
+        # print(probability_gain)
+        # print(np.amin(probability_gain),np.nanmax(probability_gain), np.mean(probability_gain))
+        # norm = np.linalg.det(np.exp(probability_gain))#np.sum(np.exp(probability_gain), axis=1)
+        # print(norm)
+        # probability_gain = probability_gain-norm #(probability_gain.T - np.log(norm)).T
+        # print(probability_gain)
+        self.Probability_Gain.update({i: np.array(probability_gain)})
+        self.CriticalIndex = gain_dict[np.nanargmax([np.sort(a)[-2]/np.sort(a)[-1] for a in probability_gain[:N]])]
         x = {}
         x_err = {}
+        from scipy.optimize import linear_sum_assignment
+        # print("NEW SUPERDUPERTRACKER2!!!")
+        rows, cols = linear_sum_assignment(-1*probability_gain)
+        probs = probability_gain[rows, cols]
+        # print(probs)
+        # import matplotlib.pyplot as plt
+        # plt.figure()
+        # plt.hist(probs, bins=50)
+        # plt.draw()
         for j in range(M):
 
-            if not np.all(np.isnan(probability_gain)+np.isinf(probability_gain)):
-                k, m = np.unravel_index(np.nanargmax(probability_gain), probability_gain.shape)
-            else:
-                k, m = np.unravel_index(np.nanargmin(probability_gain), probability_gain.shape)
+            # if not np.all(np.isnan(probability_gain)+np.isinf(probability_gain)):
+            #     k, m = np.unravel_index(np.nanargmax(probability_gain), probability_gain.shape)
+            # else:
+            #     k, m = np.unravel_index(np.nanargmin(probability_gain), probability_gain.shape)
+            k = rows[j]
+            m = cols[j]
 
-            if probability_gain[k, m] > self.LogProbabilityThreshold:
+            if N > M and m >= M:
+                continue
+
+            # print(np.amin(probability_gain))
+            if probability_gain[k, m] >= (self.LogProbabilityThreshold * (np.amax(probability_gain)-np.amin(probability_gain))
+                                             + np.amin(probability_gain)) and gain_dict.has_key(k):
                 self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
@@ -1046,8 +1082,8 @@ class MultiFilter(Filter):
                 self.ActiveFilters.update({l: _filter})
                 self.Filters.update({l: _filter})
 
-            probability_gain[k, :] = np.nan
-            probability_gain[:, m] = np.nan
+            # probability_gain[k, :] = np.nan
+            # probability_gain[:, m] = np.nan
 
         if len(self.ActiveFilters.keys()) < M:
             raise RuntimeError('Lost Filters on the way. This should never happen')
