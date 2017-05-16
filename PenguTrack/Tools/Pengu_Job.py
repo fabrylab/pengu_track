@@ -10,6 +10,7 @@ import sys
 import clickpoints
 import platform
 from os import path
+from time import time
 
 # Connect to database
 # for p in sys.argv:
@@ -17,7 +18,7 @@ from os import path
 # file_path = str(sys.argv[1])
 # q = float(sys.argv[2])
 # r = float(sys.argv[3])
-q = 2
+q = 1
 r = 1
 # if platform.system() != 'Linux':
 #     file_path = file_path.replace("/mnt/jobs", r"//131.188.117.98/shared/jobs")
@@ -32,9 +33,11 @@ r = 1
 #
 # file_path = "/home/alex/Desktop/TODO/%s_done.cdb"%path[-7:-4]
 
-file_path = "/home/alex/Masterarbeit/770_PANA/new.cdb"
+file_path = "/home/alex/Masterarbeit/770_PANA/test.cdb"
 global db
 db = clickpoints.DataFile(file_path)
+
+
 start_frame = 0
 
 #Initialise PenguTrack
@@ -44,11 +47,17 @@ from PenguTrack.Models import VariableSpeed
 from PenguTrack.Detectors import ViBeSegmentation
 from PenguTrack.Detectors import SiAdViBeSegmentation
 from PenguTrack.Detectors import BlobDetector
-from PenguTrack.Detectors import AreaDetector
 from PenguTrack.Detectors import Measurement as Pengu_Meas
-from PenguTrack.Detectors import AreaDetector
+from PenguTrack.Detectors import SimpleAreaDetector as AreaDetector
 from PenguTrack.Detectors import BlobSegmentation
 from PenguTrack.Detectors import SiAdViBeSegmentation
+# from PenguTrack.Detectors import rgb2gray
+
+def rgb2gray(rgb):
+    # rgb = np.asarray(rgb)
+    dt = rgb.dtype
+    return np.dot(rgb[...,:3], [0.299, 0.587, 0.114]).astype(dt)
+
 
 import scipy.stats as ss
 
@@ -74,11 +83,11 @@ Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
 MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
                        np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
 
-MultiKal.LogProbabilityThreshold = -10.
+# MultiKal.LogProbabilityThreshold = -10.
 
 # Init_Background from Image_Median
 N = db.getImages().count()
-init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
+init = np.array(np.median([np.asarray(rgb2gray(db.getImage(frame=j).data), dtype=np.int)
                            for j in np.random.randint(0, N, 10)], axis=0), dtype=np.int)
 
 # Init Segmentation Module with Init_Image
@@ -98,17 +107,17 @@ except ValueError:
     raise ValueError("No markers with name 'Horizon'!")
 
 # Initialize detector and start backwards.
-VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 500, n=2, init_image=init, n_min=2, r=10, phi=1)
+VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 500, n=5, init_image=init, n_min=3, r=10, phi=1)#, camera_h=44.)
 # VB.camera_h = 25.
 
 for i in range(1,10):
-    VB.detect(db.getImage(frame=i).data, do_neighbours=False)
+    mask = VB.detect(rgb2gray(db.getImage(frame=i).data), do_neighbours=False)
 
 BS = BlobSegmentation(15, min_size=4)
-imgdata = VB.horizontal_equalisation(db.getImage(frame=0).data)
+imgdata = VB.horizontal_equalisation(rgb2gray(db.getImage(frame=0).data))
 
 print("Detecting Penguins of size ", object_area, VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
-AD = AreaDetector(object_area, object_number)#VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
+AD = AreaDetector(object_area, object_number, upper_limit=80, lower_limit=20)#VB.Penguin_Size*penguin_width*VB.Penguin_Size/penguin_height)
 print('Initialized')
 
 # Define ClickPoints Marker
@@ -174,33 +183,49 @@ db.setMeasurement = setMeasurement
 # Start Iteration over Images
 print('Starting Iteration')
 images = db.getImageIterator(start_frame=11)#start_frame=start_frame, end_frame=3)
+PredictionTimes = []
+SegmentationTimes = []
+DetectionTimes = []
+TrackingTimes = []
+TrackWritingTimes = []
 for image in images:
-
+    start = time()
     i = image.get_id()
     # Prediction step
     MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
+    PredictionTimes.append((time()-start))
+    print("Time for Prediction: %s"%PredictionTimes[-1])
+    start = time()
 
     # Segmentation step
-    SegMap = VB.detect(image.data, do_neighbours=False)
+    SegMap = VB.detect(rgb2gray(image.data), do_neighbours=False)
+
+    SegmentationTimes.append((time()-start))
+    print("Time for segmentation: %s"%SegmentationTimes[-1])
 
     # Setting Mask in ClickPoints
     db.setMask(image=image, data=(255*(~SegMap).astype(np.uint8)))
     print("Mask save")
 
-
+    start = time()
     SegMap = db.getMask(image=image).data
     Mask = ~SegMap.astype(bool)
 
     # Detection of regions with distinct areas
-    from skimage.morphology import binary_closing
+    from skimage.morphology import binary_opening
 
-    selem4 = np.array([[0, 1, 1, 1, 0],
-                       [0, 1, 1, 1, 0],
-                       [0, 1, 1, 1, 0],
-                       [0, 1, 1, 1, 0],
-                       [0, 1, 1, 1, 0]])
+    # selem4 = np.array([[0, 1, 1, 1, 0],
+    #                    [0, 1, 1, 1, 0],
+    #                    [0, 1, 1, 1, 0],
+    #                    [0, 1, 1, 1, 0],
+    #                    [0, 1, 1, 1, 0]])
 
-    Positions = AD.detect(binary_closing(Mask, selem=selem4))
+    # Positions = AD.detect(binary_closing(Mask, selem=selem4))
+    # Positions = AD.detect(~binary_opening(~Mask))
+    Positions = AD.detect(Mask)
+    DetectionTimes.append((time()-start))
+    print("Time for Detection: %s"%DetectionTimes[-1])
+    start = time()
     print("Found %s animals!"%len(Positions))
 
     # Project from log-scale map to ortho-map and rescale to metric coordinates
@@ -212,11 +237,15 @@ for image in images:
 
 
     if np.all(Positions != np.array([])):
+        print("Tracking")
         # Update Filter with new Detections
         try:
             MultiKal.update(z=Positions, i=i)
         except IndexError:
             continue
+        TrackingTimes.append((time()-start))
+        print("Time for tracking: %s"%TrackingTimes[-1])
+        start = time()
         # Get Tracks from Filters
         for k in MultiKal.ActiveFilters.keys():
             x = y = np.nan
@@ -269,14 +298,22 @@ for image in images:
 
                 # Save measurement in Database
                 db.setMeasurement(marker=track_marker, log=meas.Log_Probability, x=x, y=y)
-
+    TrackWritingTimes.append((time()-start))
+    print("Time for writing tracks: %s"%TrackWritingTimes[-1])
+    start = time()
     print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
 
 print('done with Tracking')
 
-os.system("cp ~/Desktop/TODO/%s_done.cdb %s "%(path[:-7], path[-7:-4]))
+# for track in db.getTracks(type=marker_type2):
+#     if len(db.getMarkers(track=track)) < 3:
+#         db.deleteTracks(id=track)
+db.deleteTracks(id=[track.id for track in db.getTracks() if len(db.getMarkers(track=track)) < 3])
 
-os.system("rm -r ~/Desktop/TODO/*")
+# print([[np.mean(t), np.std(t), np.amin(t), np.amax(t)] for t in PredictionTimes, SegmentationTimes, DetectionTimes, TrackingTimes, TrackWritingTimes])
+# os.system("cp ~/Desktop/TODO/%s_done.cdb %s "%(path[:-7], path[-7:-4]))
+
+# os.system("rm -r ~/Desktop/TODO/*")
 # track_length_table = np.asarray([[t.id, len(t.markers)] for t in db.getTracks(type=marker_type2)])
 # db.deleteTracks(id=track_length_table.T[0][track_length_table.T[1]<4])
 # print("Deleted shorter Tracks")
@@ -312,4 +349,3 @@ os.system("rm -r ~/Desktop/TODO/*")
 #     myfile.write("\n")
 #     myfile.write("Total RMS-Error: %s absolute, %s relative %%"%(total_rms_err, 100*total_rms_err/VB.Penguin_Size))
 #     myfile.write("\n")
-
