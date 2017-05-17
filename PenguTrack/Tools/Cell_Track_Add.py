@@ -16,6 +16,7 @@ from PenguTrack.Detectors import TresholdSegmentation, VarianceSegmentation
 from PenguTrack.Detectors import Measurement as PT_Measurement
 
 import scipy.stats as ss
+from scipy.ndimage.measurements import label
 
 import clickpoints
 
@@ -386,24 +387,62 @@ class PenguTrackWindow(QtWidgets.QWidget):
         index_data = db.getImage(frame=self.current_frame, layer=1).data
         index_data[mask] = np.zeros_like(index_data)[mask]
 
-        index_3d = np.zeros((np.amax(index_data),)+index_data.shape, dtype=np.uint16)
-        for z in range(np.amax(index_data)):
-            index_3d[z] = index_data == (z+1)
-        from skimage.measure import label
-        index_3d = label(index_3d, connectivity=3)
-        index_data2 = np.sum(index_3d, axis=0)
+        # index_3d = np.zeros((np.amax(index_data),)+index_data.shape, dtype=np.uint16)
+        # for z in range(np.amax(index_data)):
+        #     index_3d[z] = index_data == (z+1)
+        # from skimage.measure import label
+        # index_3d = label(index_3d, connectivity=3)
+        # index_data2 = np.sum(index_3d, axis=0)
+
+        j_max = np.amax(index_data)
+        stack = np.zeros((j_max, index_data.shape[0], index_data.shape[1]), dtype=np.bool)
+        for j in range(j_max):
+            stack[j, index_data == j] = True
+
+        labels, n = label(stack, structure=np.ones((3, 3, 3)))
+
+        index_data2 = np.zeros_like(index_data)
+        for l in labels:
+            index_data2[l > 0] = l[l > 0]
 
         Positions = self.Detector.detect(index_data2)
         # Positions = self.Detector.detect(~db.getMask(frame=self.current_frame, layer=0).data.astype(bool))
-
+        ####
+        Positions_cor = []
+        for i1, pos1 in enumerate(Positions):
+            x1 = pos1.PositionX
+            y1 = pos1.PositionY
+            z1 = index_data[int(x1), int(y1)] * 10.
+            inc = 0
+            for j1, pos2 in enumerate(Positions):
+                x2 = pos2.PositionX
+                y2 = pos2.PositionY
+                z2 = index_data[int(x2), int(y2)] * 10.
+                dist = np.sqrt((x1 - x2)**2. + (y1 - y2)**2.)
+                distz = np.abs(z1-z2)
+                if dist < 50 and dist !=0 and distz < 20:
+                    x3 = (x1+x2)/2.
+                    y3 = (y1+y2)/2.
+                    if [x3,y3] not in Positions_cor:
+                        Positions_cor.append([x3,y3])
+                        print ("Replaced")
+                    inc+=1
+            if inc == 0:
+                Positions_cor.append([x1,y1])
+        ####
         self.detect_button.setChecked(False)
         if False:#len(Positions) > self.object_number*10:
             pass
             #print("No update! Too many objects detected.")
         else:
             print("Found %s Objects!"%len(Positions))
-            for pos in Positions:
-                db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX, x=pos.PositionY, type=self.detection_marker_type)
+            # for pos in Positions:
+            #     db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX, x=pos.PositionY, type=self.detection_marker_type)
+            ####
+            print("Found %s Objects Cor!" % len(Positions_cor))
+            for pos in Positions_cor:
+                db.setMarker(frame=self.current_frame, layer=0, y=pos[0], x=pos[1], type=self.detection_marker_type)
+            ####
             com.ReloadMarker()
 
     def reload_mask(self):
@@ -469,24 +508,78 @@ class PenguTrackWindow(QtWidgets.QWidget):
                 index_data = db.getImage(frame=i, layer=1).data
                 index_data[mask] = np.zeros_like(index_data)[mask]
 
-                index_3d = np.zeros((np.amax(index_data),) + index_data.shape, dtype=np.uint16)
-                for z in range(np.amax(index_data)):
-                    index_3d[z] = index_data == (z + 1)
-                from skimage.measure import label
-                index_3d = label(index_3d, connectivity=3)
-                index_data2 = np.sum(index_3d, axis=0)
-                index_data2 = np.sum(label(index_3d, connectivity=3), axis=0)
+                # index_3d = np.zeros((np.amax(index_data),) + index_data.shape, dtype=np.uint16)
+                # for z in range(np.amax(index_data)):
+                #     index_3d[z] = index_data == (z + 1)
+                # from skimage.measure import label
+                # index_3d = label(index_3d, connectivity=3)
+                # index_data2 = np.sum(index_3d, axis=0)
+                # index_data2 = np.sum(label(index_3d, connectivity=3), axis=0)
+
+                j_max = np.amax(index_data)
+                stack = np.zeros((j_max, index_data.shape[0], index_data.shape[1]), dtype=np.bool)
+                for j in range(j_max):
+                    stack[j, index_data == j] = True
+
+                labels, n = label(stack, structure=np.ones((3, 3, 3)))
+
+                index_data2 = np.zeros_like(index_data)
+                for l in labels:
+                    index_data2[l > 0] = l[l > 0]
 
                 Positions2D = self.Detector.detect(index_data2)
                 # Positions2D = self.Detector.detect(~db.getMask(frame=i, layer=0).data.astype(bool))
+                ####
+                Positions2D_cor = []
+                for i1, pos1 in enumerate(Positions2D):
+                    Log_Probability1 = pos1.Log_Probability
+                    Track_Id1 = pos1.Track_Id
+                    Frame1 = pos1.Frame
+                    x1 = pos1.PositionX
+                    y1 = pos1.PositionY
+                    z1 = index_data[int(x1), int(y1)] * 10.
+                    PosZ1 = index_data[int(x1), int(y1)]
+                    inc = 0
+                    for j1, pos2 in enumerate(Positions2D):
+                        Log_Probability2 = pos2.Log_Probability
+                        Log_Probabilitymax = np.max([Log_Probability1,Log_Probability2])
+                        x2 = pos2.PositionX
+                        y2 = pos2.PositionY
+                        z2 = index_data[int(x2), int(y2)] * 10.
+                        PosZ2 = index_data[int(x2), int(y2)]
+                        PosZmax = np.max([PosZ1, PosZ2])
+                        dist = np.sqrt((x1 - x2) ** 2. + (y1 - y2) ** 2.)
+                        distz = np.abs(z1 - z2)
+                        if dist < 50 and dist != 0 and distz < 20:
+                            x3 = (x1 + x2) / 2.
+                            y3 = (y1 + y2) / 2.
+                            if [x3, y3, Log_Probabilitymax, PosZmax] not in Positions2D_cor:
+                                Positions2D_cor.append([x3, y3, Log_Probabilitymax, PosZmax])
+                                print("Replaced")
+                                print(x3)
+                                print(y3)
+                                print (Log_Probabilitymax)
+                                print(PosZmax)
+                                print('###')
+                            inc += 1
+                    if inc == 0:
+                        Positions2D_cor.append([x1, y1, Log_Probability1, PosZ1])
+                ####
 
                 Positions3D = []
-                for pos in Positions2D:
-                    posZ = Index_Image[int(pos.PositionX), int(pos.PositionY)]
-                    Positions3D.append(PT_Measurement(pos.Log_Probability,
-                                                      [pos.PositionX * res, pos.PositionY * res, posZ * 10],
-                                                      frame=pos.Frame,
-                                                      track_id=pos.Track_Id))
+                # for pos in Positions2D:
+                #     posZ = index_data[int(pos.PositionX), int(pos.PositionY)]  # war mal "Index_Image"
+                #     Positions3D.append(PT_Measurement(pos.Log_Probability,
+                #                                       [pos.PositionX * res, pos.PositionY * res, posZ * 10],
+                #                                       frame=pos.Frame,
+                #                                       track_id=pos.Track_Id))
+                ####
+                for pos in Positions2D_cor:
+                    # posZ = index_data[int(pos[0]), int(pos[1])]
+                    posZ = pos[3]
+                    Positions3D.append(PT_Measurement(pos[2],
+                                                      [pos[0] * res, pos[1] * res, posZ * 10]))
+                ####
                 Positions = Positions3D  # convenience
 
                 # Setting Mask in ClickPoints
@@ -541,7 +634,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
                                 track_marker = db.setMarker(frame=i, layer=0, type=self.track_marker_type,
                                                             track=(1000 + k),
                                                             x=x_img, y=y_img,
-                                                            text='Track %s, Prob %.2f' % ((1000 + k), prob))
+                                                            text='Track %s, Prob %.2f, Z-Position %s' % ((1000 + k), prob, z))
+
                                 print('Set Track(%s)-Marker at %s, %s' % ((1000 + k), x_img, y_img))
                             else:
                                 db.setTrack(self.track_marker_type, id=1000 + k, hidden=False)
@@ -552,7 +646,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
                                                             track=1000 + k,
                                                             x=x_img,
                                                             y=y_img,
-                                                            text='Track %s, Prob %.2f' % ((1000 + k), prob))
+                                                            text='Track %s, Prob %.2f, Z-Position %s' % ((1000 + k), prob, z))
                                 print('Set new Track %s and Track-Marker at %s, %s' % ((1000 + k), x_img, y_img))
 
                             # db.setMeasurement(marker=track_marker, log=prob, x=x, y=y, z=z)
