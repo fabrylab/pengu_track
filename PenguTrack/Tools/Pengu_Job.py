@@ -51,13 +51,7 @@ from PenguTrack.Detectors import Measurement as Pengu_Meas
 from PenguTrack.Detectors import SimpleAreaDetector as AreaDetector
 from PenguTrack.Detectors import BlobSegmentation
 from PenguTrack.Detectors import SiAdViBeSegmentation
-# from PenguTrack.Detectors import rgb2gray
-
-def rgb2gray(rgb):
-    # rgb = np.asarray(rgb)
-    dt = rgb.dtype
-    return np.dot(rgb[...,:3], [0.299, 0.587, 0.114]).astype(dt)
-
+from PenguTrack.Detectors import rgb2gray
 
 import scipy.stats as ss
 
@@ -211,18 +205,8 @@ for image in images:
     SegMap = db.getMask(image=image).data
     Mask = ~SegMap.astype(bool)
 
-    # Detection of regions with distinct areas
-    from skimage.morphology import binary_opening
-
-    # selem4 = np.array([[0, 1, 1, 1, 0],
-    #                    [0, 1, 1, 1, 0],
-    #                    [0, 1, 1, 1, 0],
-    #                    [0, 1, 1, 1, 0],
-    #                    [0, 1, 1, 1, 0]])
-
-    # Positions = AD.detect(binary_closing(Mask, selem=selem4))
-    # Positions = AD.detect(~binary_opening(~Mask))
     Positions = AD.detect(Mask)
+
     DetectionTimes.append((time()-start))
     print("Time for Detection: %s"%DetectionTimes[-1])
     start = time()
