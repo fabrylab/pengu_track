@@ -33,7 +33,7 @@ r = 1
 #
 # file_path = "/home/alex/Desktop/TODO/%s_done.cdb"%path[-7:-4]
 
-file_path = "/home/alex/Masterarbeit/770_PANA/test.cdb"
+file_path = "/home/user/Desktop/FullDayAnalysis/FullDay.cdb"
 global db
 db = clickpoints.DataFile(file_path)
 

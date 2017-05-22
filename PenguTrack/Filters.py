@@ -1036,7 +1036,7 @@ class MultiFilter(Filter):
         # probability_gain = probability_gain-norm #(probability_gain.T - np.log(norm)).T
         # print(probability_gain)
         self.Probability_Gain.update({i: np.array(probability_gain)})
-        self.CriticalIndex = gain_dict[np.nanargmax([np.sort(a)[-2]/np.sort(a)[-1] for a in probability_gain[:N]])]
+        # self.CriticalIndex = gain_dict[np.nanargmax([np.sort(a)[-2]/np.sort(a)[-1] for a in probability_gain[:N]])]
         x = {}
         x_err = {}
         from scipy.optimize import linear_sum_assignment
@@ -1062,10 +1062,10 @@ class MultiFilter(Filter):
         # print(probs[probs-MIN > LIMIT])
         print(probs[probs > -18])
         for j, k in enumerate(rows):
-            if not np.all(np.isnan(probability_gain)+np.isinf(probability_gain)):
-                k, m = np.unravel_index(np.nanargmax(probability_gain), probability_gain.shape)
-            else:
-                k, m = np.unravel_index(np.nanargmin(probability_gain), probability_gain.shape)
+            # if not np.all(np.isnan(probability_gain)+np.isinf(probability_gain)):
+            #     k, m = np.unravel_index(np.nanargmax(probability_gain), probability_gain.shape)
+            # else:
+            #     k, m = np.unravel_index(np.nanargmin(probability_gain), probability_gain.shape)
             k = rows[j]
             m = cols[j]
 
