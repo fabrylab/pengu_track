@@ -1,4 +1,5 @@
 syntax: glob
+*.pyc
 W12/
 adelie_data/
 analysis/auto-corrs/
