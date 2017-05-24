@@ -171,6 +171,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
         # Initialize Filter
         self.Tracker = MultiFilter(self.FilterType, self.model, np.diag(Q),
                                np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
+        self.Tracker.AssignmentProbabilityThreshold=0.
+        self.Tracker.MeasurementProbabilityThreshold=0.
 
         # Init_Background from Image_Median
         N = db.getImages(layer=0).count()
@@ -420,7 +422,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
                 z2 = index_data[int(x2), int(y2)] * 10.
                 dist = np.sqrt((x1 - x2)**2. + (y1 - y2)**2.)
                 distz = np.abs(z1-z2)
-                if dist < 50 and dist !=0 and distz < 20:
+                if dist < 10 and dist !=0 and distz < 20:
                     x3 = (x1+x2)/2.
                     y3 = (y1+y2)/2.
                     if [x3,y3] not in Positions_cor:
@@ -530,55 +532,55 @@ class PenguTrackWindow(QtWidgets.QWidget):
                 Positions2D = self.Detector.detect(index_data2)
                 # Positions2D = self.Detector.detect(~db.getMask(frame=i, layer=0).data.astype(bool))
                 ####
-                Positions2D_cor = []
-                for i1, pos1 in enumerate(Positions2D):
-                    Log_Probability1 = pos1.Log_Probability
-                    Track_Id1 = pos1.Track_Id
-                    Frame1 = pos1.Frame
-                    x1 = pos1.PositionX
-                    y1 = pos1.PositionY
-                    z1 = index_data[int(x1), int(y1)] * 10.
-                    PosZ1 = index_data[int(x1), int(y1)]
-                    inc = 0
-                    for j1, pos2 in enumerate(Positions2D):
-                        Log_Probability2 = pos2.Log_Probability
-                        Log_Probabilitymax = np.max([Log_Probability1,Log_Probability2])
-                        x2 = pos2.PositionX
-                        y2 = pos2.PositionY
-                        z2 = index_data[int(x2), int(y2)] * 10.
-                        PosZ2 = index_data[int(x2), int(y2)]
-                        PosZmax = np.max([PosZ1, PosZ2])
-                        dist = np.sqrt((x1 - x2) ** 2. + (y1 - y2) ** 2.)
-                        distz = np.abs(z1 - z2)
-                        if dist < 50 and dist != 0 and distz < 20:
-                            x3 = (x1 + x2) / 2.
-                            y3 = (y1 + y2) / 2.
-                            if [x3, y3, Log_Probabilitymax, PosZmax] not in Positions2D_cor:
-                                Positions2D_cor.append([x3, y3, Log_Probabilitymax, PosZmax])
-                                print("Replaced")
-                                print(x3)
-                                print(y3)
-                                print (Log_Probabilitymax)
-                                print(PosZmax)
-                                print('###')
-                            inc += 1
-                    if inc == 0:
-                        Positions2D_cor.append([x1, y1, Log_Probability1, PosZ1])
+                # Positions2D_cor = []
+                # for i1, pos1 in enumerate(Positions2D):
+                #     Log_Probability1 = pos1.Log_Probability
+                #     Track_Id1 = pos1.Track_Id
+                #     Frame1 = pos1.Frame
+                #     x1 = pos1.PositionX
+                #     y1 = pos1.PositionY
+                #     z1 = index_data[int(x1), int(y1)] * 10.
+                #     PosZ1 = index_data[int(x1), int(y1)]
+                #     inc = 0
+                #     for j1, pos2 in enumerate(Positions2D):
+                #         Log_Probability2 = pos2.Log_Probability
+                #         Log_Probabilitymax = np.max([Log_Probability1,Log_Probability2])
+                #         x2 = pos2.PositionX
+                #         y2 = pos2.PositionY
+                #         z2 = index_data[int(x2), int(y2)] * 10.
+                #         PosZ2 = index_data[int(x2), int(y2)]
+                #         PosZmax = np.max([PosZ1, PosZ2])
+                #         dist = np.sqrt((x1 - x2) ** 2. + (y1 - y2) ** 2.)
+                #         distz = np.abs(z1 - z2)
+                #         if dist < 10 and dist != 0 and distz < 20:
+                #             x3 = (x1 + x2) / 2.
+                #             y3 = (y1 + y2) / 2.
+                #             if [x3, y3, Log_Probabilitymax, PosZmax] not in Positions2D_cor:
+                #                 Positions2D_cor.append([x3, y3, Log_Probabilitymax, PosZmax])
+                #                 print("Replaced")
+                #                 print(x3)
+                #                 print(y3)
+                #                 print (Log_Probabilitymax)
+                #                 print(PosZmax)
+                #                 print('###')
+                #             inc += 1
+                #     if inc == 0:
+                #         Positions2D_cor.append([x1, y1, Log_Probability1, PosZ1])
                 ####
 
                 Positions3D = []
-                # for pos in Positions2D:
-                #     posZ = index_data[int(pos.PositionX), int(pos.PositionY)]  # war mal "Index_Image"
-                #     Positions3D.append(PT_Measurement(pos.Log_Probability,
-                #                                       [pos.PositionX * res, pos.PositionY * res, posZ * 10],
-                #                                       frame=pos.Frame,
-                #                                       track_id=pos.Track_Id))
+                for pos in Positions2D:
+                    posZ = index_data[int(pos.PositionX), int(pos.PositionY)]  # war mal "Index_Image"
+                    Positions3D.append(PT_Measurement(pos.Log_Probability,
+                                                      [pos.PositionX * res, pos.PositionY * res, posZ * 10],
+                                                      frame=pos.Frame,
+                                                      track_id=pos.Track_Id))
                 ####
-                for pos in Positions2D_cor:
-                    # posZ = index_data[int(pos[0]), int(pos[1])]
-                    posZ = pos[3]
-                    Positions3D.append(PT_Measurement(pos[2],
-                                                      [pos[0] * res, pos[1] * res, posZ * 10]))
+                # for pos in Positions2D_cor:
+                #     # posZ = index_data[int(pos[0]), int(pos[1])]
+                #     posZ = pos[3]
+                #     Positions3D.append(PT_Measurement(pos[2],
+                #                                       [pos[0] * res, pos[1] * res, posZ * 10]))
                 ####
                 Positions = Positions3D  # convenience
 
