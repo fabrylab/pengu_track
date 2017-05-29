@@ -43,13 +43,18 @@ class Stitcher(object):
     def stitch(self):
         pass
 
-    def save_tracks_to_db(self, path, type):
+    def save_tracks_to_db(self, path, type, function=None):
+        if function is None:
+            function = lambda x : x
         self.db = DataFileExtended(path)
+        self.db.deleteTracks(type=type)
         for track in self.Tracks:
-            self.db.deleteTracks(id=track)
+            # self.db.deleteTracks(id=track)
             db_track = self.db.setTrack(type=type, id=track)
-            for m in self.Tracks[track].X:
-                pos = self.Tracks[track].X[m]
+            for m in self.Tracks[track].Measurements:
+                meas = self.Tracks[track].Measurements[m]
+                pos = [meas.PositionX, meas.PositionY, meas.PositionZ]
+                pos = function(pos)
                 marker = self.db.setMarker(frame=m, x=pos[0], y=pos[1], track=track)
                 meas = self.Tracks[track].Measurements[m]
                 self.db.setMeasurement(marker=marker, log=meas.Log_Probability,
@@ -113,7 +118,7 @@ class Heublein_Stitcher(Stitcher):
         track2: object
             track object in the right format
         """
-        a1 = self.a1
+        a1 = self.a1/0.645
         a2 = self.a2
         a3 = self.a3
         a4 = self.a4
@@ -337,9 +342,9 @@ class Heublein_Stitcher(Stitcher):
             for group in matches:
                 start = H_Tracks[ids.index(group[1])]['start']
                 end = H_Tracks[ids.index(group[0])]['end']
+                track1 = self.Tracks[group[0]]
+                track2 = self.Tracks[group[1]]
                 if start == end:
-                    track1 = self.Tracks[group[0]]
-                    track2 = self.Tracks[group[1]]
                     # Reposition Marker
                     meas1 = track1.Measurements[end]
                     meas2 = track2.Measurements[start]
@@ -349,8 +354,6 @@ class Heublein_Stitcher(Stitcher):
                         track1.update(z = track2.Measurements[meas], i = meas)
                     # self.Tracks.pop(group[1])
                 elif start < end:
-                    track1 = self.Tracks[group[0]]
-                    track2 = self.Tracks[group[1]]
                     # Reposition Marker
                     for frame in track2.Measurements:
                         if track1.Measurements.has_key(frame):
@@ -372,7 +375,7 @@ class Heublein_Stitcher(Stitcher):
             limit += 1
 
         self.Delete_Tracks_with_length_1()
-        print ("-----------Done-----------")
+        print ("-----------Done with stitching-----------")
 
 
 
@@ -380,6 +383,12 @@ if __name__ == '__main__':
     import shutil
     shutil.copy("/home/user/CellTracking/layers_testing4.cdb",
                 "/home/user/CellTracking/layers_testing4_test.cdb")
+
+    def resulution_correction(pos):
+        x, y, z = pos
+        res = 6.45/10
+        return y/res, x/res, z/10.
+
     # stitcher1 = Stitcher(1,0.5,50,60,200,122,"PT_Track_Marker",
     #                      "/home/user/CellTracking/layers_testing4_test.cdb",
     #                      5)
@@ -387,8 +396,10 @@ if __name__ == '__main__':
     # stitcher1.load_ClickpointsDB("/home/user/CellTracking/layers_testing4_test.cdb", track_type="PT_Track_Marker")
     # stitcher1.load_txt("/home/user/CellTracking/tracks.csv")
     # stitcher1.stitch()
-    # stitcher1.write_ClickpointsDB()
+    # stitcher1.write_ClickpointsDB()<<
     stitcher = Heublein_Stitcher(1,0.5,50,60,200,5)
     stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_testing4_test.cdb", "PT_Track_Marker")
     stitcher.stitch()
-    stitcher.save_tracks_to_db("/home/user/CellTracking/layers_testing4_test.cdb", "PT_Track_Marker")
+    stitcher.save_tracks_to_db("/home/user/CellTracking/layers_testing4_test.cdb", "PT_Track_Marker", function=resulution_correction)
+    print ("-----------Written to DB-----------")
+
