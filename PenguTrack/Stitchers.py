@@ -1,8 +1,12 @@
 from __future__ import print_function, division
 import clickpoints
 import numpy as np
+from Detectors import Measurement
+from Filters import Filter
+from Models import VariableSpeed
+from DataFileExtended import DataFileExtended
 
-class Stitcher(object):
+class Heublein_Stitcher(object):
     """
     Class for Stitching Tracks
     """
@@ -267,15 +271,60 @@ class Stitcher(object):
         self.Delete_Tracks_with_length_1()
         print ("-----------Done-----------")
 
+
+class Stitcher(object):
+    def __init__(self):
+        self.Tracks = {}
+        self.db = None
+
+    def add_PT_Tracks(self, tracks):
+        for track in tracks:
+            if len(self.Tracks) == 0:
+                i = 0
+            else:
+                i = max(self.Tracks.keys()) + 1
+            self.Tracks.update({i: track})
+
+    def load_tracks_from_clickpoints(self, path, type):
+        self.db = DataFileExtended(path)
+        if self.db.getTracks(type=type)[0].markers[0].measurement is not None:
+            for track in self.db.getTracks(type=type):
+                self.Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
+                for m in track.markers:
+                    meas = Measurement(1., [m.measurement[0].x,
+                                            m.measurement[0].y,
+                                            m.measurement[0].z])
+                    self.Tracks[track.id].update(z=meas, i=m.image.sort_index)
+
+    def stitch(self):
+        pass
+
+    def save_tracks_to_db(self, path, type):
+        self.db = DataFileExtended(path)
+        for track in self.Tracks:
+            self.db.deleteTracks(id=track)
+            db_track = self.db.setTrack(type=type, id=track)
+            for m in self.Tracks[track].X:
+                pos = self.Tracks[track].X[m]
+                marker = self.db.setMarker(frame=m, x=pos[0], y=pos[1], track=track)
+                meas = self.Tracks[track].Measurements[m]
+                self.db.setMeasurement(marker=marker, log=meas.Log_Probability,
+                                       x=meas.PositionX, y=meas.PositionY, z=meas.PositionZ)
+
+
 if __name__ == '__main__':
     import shutil
     shutil.copy("/home/user/CellTracking/layers_testing4.cdb",
                 "/home/user/CellTracking/layers_testing4_test.cdb")
-    stitcher1 = Stitcher(1,0.5,50,60,200,122,"PT_Track_Marker",
-                         "/home/user/CellTracking/layers_testing4_test.cdb",
-                         5)
+    # stitcher1 = Stitcher(1,0.5,50,60,200,122,"PT_Track_Marker",
+    #                      "/home/user/CellTracking/layers_testing4_test.cdb",
+    #                      5)
     # stitcher1 = Stitcher(1,0.5,50,60,200,122)
     # stitcher1.load_ClickpointsDB("/home/user/CellTracking/layers_testing4_test.cdb", track_type="PT_Track_Marker")
     # stitcher1.load_txt("/home/user/CellTracking/tracks.csv")
-    stitcher1.stitch()
+    # stitcher1.stitch()
     # stitcher1.write_ClickpointsDB()
+    stitcher = Stitcher()
+    stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_testing4_test.cdb", "PT_Track_Marker")
+    stitcher.stitch()
+    stitcher.save_tracks_to_db("/home/user/CellTracking/layers_testing4_test.cdb", "PT_Track_Marker")

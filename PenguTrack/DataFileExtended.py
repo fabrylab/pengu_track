@@ -12,21 +12,22 @@ class DataFileExtended(clickpoints.DataFile):
                                             on_delete='CASCADE')  # reference to frame and track via marker!
             log = peewee.FloatField(default=0)
             x = peewee.FloatField()
-            y = peewee.FloatField()
+            y = peewee.FloatField(default=0)
+            z = peewee.FloatField(default=0)
 
         if "measurement" not in self.db.get_tables():
             Measurement.create_table()  # important to respect unique constraint
 
         self.table_measurement = Measurement  # for consistency
 
-    def setMeasurement(self, marker=None, log=None, x=None, y=None):
+    def setMeasurement(self, marker=None, log=None, x=None, y=None, z=None):
         assert not (marker is None), "Measurement must refer to a marker."
         try:
             item = self.table_measurement.get(marker=marker)
         except peewee.DoesNotExist:
             item = self.table_measurement()
 
-        dictionary = dict(marker=marker, log=log, x=x, y=y)
+        dictionary = dict(marker=marker, log=log, x=x, y=y, z=z)
         for key in dictionary:
             if dictionary[key] is not None:
                 setattr(item, key, dictionary[key])
