@@ -42,9 +42,11 @@ from skimage import img_as_uint
 
 from scipy import ndimage as ndi
 from scipy.special import lambertw
+from scipy.ndimage.measurements import label
 
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max
+
 
 # import theano
 # import theano.tensor as T
@@ -53,7 +55,7 @@ class Measurement(object):
     """
     Base Class for detection results.
     """
-    def __init__(self, log_probability, position, frame=None, track_id=None):
+    def __init__(self, log_probability, position, data=None, frame=None, track_id=None):
         """
         Base Class for detection results.
 
@@ -61,6 +63,8 @@ class Measurement(object):
             Estimated logarithmic probability of measurement.
         position: array_like
             Position of measurement
+        data: array_like
+            Additional data of the measurement, i.e. measurement errors
         frame: int, optional
             Number of Frame, on which the measurement took place.
         track_id: int, optional
@@ -86,6 +90,8 @@ class Measurement(object):
             self.Frame = int(frame)
         else:
             self.Frame = None
+
+        self.Data = data
 
 
 class Detector(object):
@@ -169,6 +175,175 @@ class BlobDetector(Detector):
         else:
             return []
 
+class SimpleAreaDetector2(Detector):
+    """
+    Detector classifying objects by area and number to be used with pengu-track modules.
+    """
+    def __init__(self, object_area, object_number, threshold=None, lower_limit=None, upper_limit=None, distxy_boundary = 10, distz_boundary = 21, pre_stitching = True):
+        """
+        Detector classifying objects by number and size, taking area-separation into account.
+
+        Parameters
+        ----------
+        object_size: non-zero int
+            Smallest diameter of an object to be detected.
+        object_number: non-zero int
+            If threshold in None, this number specifies the number of objects to track
+            in the first picture and sets the threshold accordingly.
+        threshold: float, optional
+            Threshold for binning the image.
+        """
+        super(SimpleAreaDetector2, self).__init__()
+        self.pre_stitching = pre_stitching
+        self.distxy_boundary = distxy_boundary
+        self.distz_boundary = distz_boundary
+        self.start_ObjectArea = int(object_area)
+        self.sample_size = 1
+        self.ObjectArea = int(object_area)
+        self.ObjectNumber = object_number
+        if lower_limit:
+            self.LowerLimit = int(lower_limit)
+        else:
+            self.LowerLimit = int(0.4*self.ObjectArea)
+        if upper_limit:
+            self.UpperLimit = int(upper_limit)
+        else:
+            self.UpperLimit = int(1.6*self.ObjectArea)
+
+        self.Threshold = threshold
+        self.Sigma = np.sqrt((self.UpperLimit-self.LowerLimit)/(4*np.log(1./0.95))) # self.ObjectArea/2.
+
+    def detect(self, image, mask, return_regions=False, get_all=False, return_labeled=False, only_for_detection=False):
+        """
+        Detection function. Parts the image into blob-regions with size according to their area.
+        Returns information about the regions.
+
+        Parameters
+        ----------
+        image: array_like
+            Image will be converted to uint8 Greyscale and then binnearized.
+        return_regions: bool, optional
+            If True, function will return skimage.measure.regionprops object,
+            else a list of the blob centroids and areas.
+
+        Returns
+        -------
+        regions: array_like
+            List of information about each blob of adequate size.
+        """
+        image[mask] = np.zeros_like(image)[mask]
+        j_max = np.amax(image)
+        stack = np.zeros((j_max, image.shape[0], image.shape[1]), dtype=np.bool)
+        for j in range(j_max):
+            stack[j, image == j] = True
+
+        labels, n = label(stack, structure=np.ones((3, 3, 3)))
+
+        index_data2 = np.zeros_like(image)
+        for l in labels:
+            index_data2[l > 0] = l[l > 0]
+
+        while len(index_data2.shape) > 2:
+            index_data2 = np.linalg.norm(index_data2, axis=-1)
+
+        labeled = skimage.measure.label(index_data2, connectivity=2)
+
+        # Filter the regions for area and convexity
+        if get_all:
+            regions_list = [prop for prop in skimage.measure.regionprops(labeled)]
+        else:
+            regions_list = [prop for prop in skimage.measure.regionprops(labeled, intensity_image=image)
+                       if (self.UpperLimit > prop.area > self.LowerLimit and prop.solidity > 0.5)]
+        if len(regions_list) <= 0:
+            return np.array([])
+
+        print("Object Area at ",self.ObjectArea, "pm", self.Sigma)
+
+        out = []
+        sigma = self.Sigma
+        mu = self.ObjectArea
+        for prop in regions_list:
+            prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
+                                                            prop.area - mu) / sigma) ** 2
+            if return_regions:
+                out.append(prop, prob)
+            else:
+                # prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
+                #                                                                         prop.area - mu) / sigma) ** 2
+                # print(prob)
+                # out.append(Measurement(prob, prop.centroid))
+                intensities = prop.intensity_image[prop.image]
+                mean_int = np.mean(intensities)
+                std_int = np.std(intensities)
+                out.append(Measurement(prob, [prop.centroid[0], prop.centroid[1], mean_int], data=std_int))
+        if return_regions:
+            if return_labeled:
+                return out, labeled
+            else:
+                return out
+        Positions2D = out
+        # Positions2D = self.Detector.detect(~db.getMask(frame=i, layer=0).data.astype(bool))
+        Positions2D_cor = []
+        for i1, pos1 in enumerate(Positions2D):
+            Log_Probability1 = pos1.Log_Probability
+            Track_Id1 = pos1.Track_Id
+            Frame1 = pos1.Frame
+            x1 = pos1.PositionX
+            y1 = pos1.PositionY
+            z1 = pos1.PositionZ
+            # z1 = index_data[int(x1), int(y1)] * 10.
+            # PosZ1 = index_data[int(x1), int(y1)]
+            inc = 0
+            for j1, pos2 in enumerate(Positions2D):
+                Log_Probability2 = pos2.Log_Probability
+                Log_Probability = (Log_Probability1 + Log_Probability2)/2.
+                # Log_Probabilitymax = np.max([Log_Probability1,Log_Probability2])
+                x2 = pos2.PositionX
+                y2 = pos2.PositionY
+                z2 = pos2.PositionZ
+                # z2 = index_data[int(x2), int(y2)] * 10.
+                # PosZ2 = index_data[int(x2), int(y2)]
+                PosZ = (z1 + z2)/2.
+                dist = np.sqrt((x1 - x2) ** 2. + (y1 - y2) ** 2.)
+                # distz = np.abs(z1 - z2)
+                distz = np.abs(z1 - z2)*10.
+                if dist < self.distxy_boundary and dist != 0 and distz < self.distz_boundary:
+                    x3 = (x1 + x2) / 2.
+                    y3 = (y1 + y2) / 2.
+                    if [x3, y3, Log_Probability, PosZ] not in Positions2D_cor:
+                        Positions2D_cor.append([x3, y3, Log_Probability, PosZ])
+                        print("Replaced")
+                        # print(x3)
+                        # print(y3)
+                        # print (Log_Probabilitymax)
+                        # print(PosZmax)
+                        # print('###')
+                    inc += 1
+            if inc == 0:
+                Positions2D_cor.append([x1, y1, Log_Probability1, z1])
+        if only_for_detection:
+            return Positions2D_cor
+        Positions3D = []
+        res = 6.45 / 10
+        if self.pre_stitching:
+            for pos in Positions2D_cor:
+                # posZ = index_data[int(pos[0]), int(pos[1])]
+                posZ = pos[3]
+                Positions3D.append(Measurement(pos[2], [pos[0] * res, pos[1] * res, posZ * 10]))
+            if return_labeled:
+                return Positions3D, labeled
+            else:
+                return Positions3D
+        # for pos in Positions2D:
+        #     posZ = pos.mean_int  # war mal "Index_Image"
+        #     Positions3D.append(Measurement(pos.Log_Probability,
+        #                                           [pos.PositionX * res, pos.PositionY * res, posZ * 10],
+        #                                           frame=pos.Frame,
+        #                                           track_id=pos.Track_Id))
+        # if return_labeled:
+        #     return Positions3D, labeled
+        # else:
+        #     return Positions3D
 
 class SimpleAreaDetector(Detector):
     """

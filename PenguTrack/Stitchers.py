@@ -51,6 +51,7 @@ class Stitcher(object):
         if function is None:
             function = lambda x : x
         self.db = DataFileExtended(path)
+<<<<<<< dest
         self.db.deleteTracks(type=type)
         with self.db.db.atomic() as transaction:
             for track in self.Tracks:
@@ -64,6 +65,21 @@ class Stitcher(object):
                     meas = self.Tracks[track].Measurements[m]
                     self.db.setMeasurement(marker=marker, log=meas.Log_Probability,
                                            x=meas.PositionX, y=meas.PositionY, z=meas.PositionZ)
+=======
+        with self.db.db.atomic() as transaction:
+            self.db.deleteTracks(type=type)
+            for track in self.Tracks:
+                # self.db.deleteTracks(id=track)
+                db_track = self.db.setTrack(type=type, id=track)
+                for m in self.Tracks[track].Measurements:
+                    meas = self.Tracks[track].Measurements[m]
+                    pos = [meas.PositionX, meas.PositionY, meas.PositionZ]
+                    pos = function(pos)
+                    marker = self.db.setMarker(frame=m, x=pos[0], y=pos[1], track=track)
+                    meas = self.Tracks[track].Measurements[m]
+                    self.db.setMeasurement(marker=marker, log=meas.Log_Probability,
+                                           x=meas.PositionX, y=meas.PositionY, z=meas.PositionZ)
+>>>>>>> source
 
 
 class Heublein_Stitcher(Stitcher):
@@ -291,8 +307,8 @@ class Heublein_Stitcher(Stitcher):
 
 if __name__ == '__main__':
     import shutil
-    shutil.copy("/home/user/CellTracking/layers_testing4.cdb",
-                "/home/user/CellTracking/layers_testing4_test.cdb")
+    shutil.copy("/home/user/CellTracking/layers_2017_05_30_MAM.cdb",
+                "/home/user/CellTracking/layers_2017_05_30_MAM_Stitched.cdb")
 
     def resulution_correction(pos):
         x, y, z = pos
@@ -307,9 +323,17 @@ if __name__ == '__main__':
     # stitcher1.load_txt("/home/user/CellTracking/tracks.csv")
     # stitcher1.stitch()
     # stitcher1.write_ClickpointsDB()<<
+<<<<<<< dest
     stitcher = Heublein_Stitcher(1/0.645,0.5,50,60,200,5)
     stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_testing4_test.cdb", "PT_Track_Marker")
     # stitcher.stitch()
     # stitcher.save_tracks_to_db("/home/user/CellTracking/layers_testing4_test.cdb", "PT_Track_Marker", function=resulution_correction)
     # print ("-----------Written to DB-----------")
+=======
+    stitcher = Heublein_Stitcher(2,0.5,20,30,100,10)
+    stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_2017_05_30_MAM_Stitched.cdb", "PT_Track_Marker")
+    stitcher.stitch()
+    stitcher.save_tracks_to_db("/home/user/CellTracking/layers_2017_05_30_MAM_Stitched.cdb", "PT_Track_Marker", function=resulution_correction)
+    print ("-----------Written to DB-----------")
+>>>>>>> source
 
