@@ -12,4 +12,4 @@ setup(name='PenguTrack',
       #            'PenguTrack.Tools.Correction','PenguTrack.Tools.Eval_Detections','PenguTrack.Tools.Example','PenguTrack.Tools.PlotDetectionEvaluation',
       #            'PenguTrack.Tools.Rotate', 'PenguTrack.Tools.rotateMarker'],
       install_requires=['numpy','clickpoints','scipy','scikit-image','matplotlib','peewee','pandas']
-        )
+      )

@@ -128,7 +128,7 @@ class Filter(object):
                 # Try recursive prediction from previous timesteps
                 if np.any([k < i for k in self.Predicted_X.keys()]):
                     print('Recursive Prediction, i = %s' % i)
-                    u, i = self.predict(u, i=i-1)
+                    u_, i_ = self.predict(u=u, i=i-1)
                     x = self.Predicted_X[i-1]
                 else:
                     raise KeyError("Nothing to predict from. Need initial value")

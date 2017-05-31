@@ -21,6 +21,10 @@ class Stitcher(object):
                 i = max(self.Tracks.keys()) + 1
             self.Tracks.update({i: track})
 
+    def add_PT_Tracks_from_Tracker(self, tracks):
+        for i in tracks:
+            self.Tracks.update({i: tracks[i]})
+
     def load_tracks_from_clickpoints(self, path, type):
         self.db = DataFileExtended(path)
         if self.db.getTracks(type=type)[0].markers[0].measurement is not None:
@@ -48,17 +52,18 @@ class Stitcher(object):
             function = lambda x : x
         self.db = DataFileExtended(path)
         self.db.deleteTracks(type=type)
-        for track in self.Tracks:
-            # self.db.deleteTracks(id=track)
-            db_track = self.db.setTrack(type=type, id=track)
-            for m in self.Tracks[track].Measurements:
-                meas = self.Tracks[track].Measurements[m]
-                pos = [meas.PositionX, meas.PositionY, meas.PositionZ]
-                pos = function(pos)
-                marker = self.db.setMarker(frame=m, x=pos[0], y=pos[1], track=track)
-                meas = self.Tracks[track].Measurements[m]
-                self.db.setMeasurement(marker=marker, log=meas.Log_Probability,
-                                       x=meas.PositionX, y=meas.PositionY, z=meas.PositionZ)
+        with self.db.db.atomic() as transaction:
+            for track in self.Tracks:
+                # self.db.deleteTracks(id=track)
+                db_track = self.db.setTrack(type=type, id=track)
+                for m in self.Tracks[track].Measurements:
+                    meas = self.Tracks[track].Measurements[m]
+                    pos = [meas.PositionX, meas.PositionY, meas.PositionZ]
+                    pos = function(pos)
+                    marker = self.db.setMarker(frame=m, x=pos[0], y=pos[1], track=track)
+                    meas = self.Tracks[track].Measurements[m]
+                    self.db.setMeasurement(marker=marker, log=meas.Log_Probability,
+                                           x=meas.PositionX, y=meas.PositionY, z=meas.PositionZ)
 
 
 class Heublein_Stitcher(Stitcher):
@@ -118,7 +123,7 @@ class Heublein_Stitcher(Stitcher):
         track2: object
             track object in the right format
         """
-        a1 = self.a1/0.645
+        a1 = self.a1
         a2 = self.a2
         a3 = self.a3
         a4 = self.a4
@@ -133,46 +138,12 @@ class Heublein_Stitcher(Stitcher):
             distxy = np.sqrt(np.sum((track2["start_pos"] - track1["end_pos"]) ** 2.))
             distz = np.abs(track2["z_start"] - track1["z_end"])
             dt = track2["start"] - track1["end"]
+            # print(distxy, distz, dt)
             if dt < 0:
                 x = 3 * (a1 * distxy + a2 * distz) / (-dt + 1) + a4 * (-dt)
             else:
                 x = (a1 * distxy + a2 * distz) / (dt + 1) + a3 * dt
         return x
-
-    # def getdb(self):
-    #     """
-    #     Returns database.
-    #     """
-    #     path = self.path
-    #     db = clickpoints.DataFile(path)
-    #     return db
-
-    # def getTracksFromClickpoints(self):
-    #     """
-    #     Returns the tracks in the right format.
-    #     """
-    #     db = self.db
-    #     track_type = self.track_type
-    #     Tracks = []
-    #     for track in db.getTracks(type=track_type)[:]:
-    #         index_data1 = db.getImage(frame=track.frames[0], layer=1).data
-    #         index_data2 = db.getImage(frame=track.frames[-1], layer=1).data
-    #         start = track.points_corrected[0]
-    #         end = track.points_corrected[-1]
-    #         z_1 = index_data1[int(start[1]), int(start[0])] * 10.
-    #         z_2 = index_data2[int(end[1]), int(end[0])] * 10.
-    #         Tracks.append(
-    #             {
-    #                 "id": track.id,
-    #                 "start": track.frames[0],
-    #                 "end": track.frames[-1],
-    #                 "start_pos": start,
-    #                 "end_pos": end,
-    #                 "z_start": z_1,
-    #                 "z_end": z_2
-    #             }
-    #         )
-    #     return Tracks
 
     def getHeubleinTracks(self):
         """
@@ -217,6 +188,8 @@ class Heublein_Stitcher(Stitcher):
                 distance_matrix[i, j] = distance
         matches = []  # Find the best Matches
         while True:
+            if np.all(np.isnan(distance_matrix)):
+                break
             [i, j] = self.__ndargmin__(distance_matrix)
             cost = distance_matrix[i, j]
 
@@ -230,81 +203,6 @@ class Heublein_Stitcher(Stitcher):
             else:
                 break
         return matches
-
-    # def write_in_db(self, matches, Tracks, ids):
-    #     """
-    #     Writes the stitched tracks in the database.
-    #
-    #             Parameters
-    #     ----------
-    #     matches: list
-    #
-    #     Tracks: list
-    #         list of tracks in the right format.
-    #     ids: list
-    #         list of track ids.
-    #     """
-    #     db = self.db
-    #     track_type = self.track_type
-    #     # ids = [x['id'] for x in Tracks]
-    #     with db.db.atomic() as transaction:
-    #         for group in matches:
-    #             start = Tracks[ids.index(group[1])]['start']
-    #             end = Tracks[ids.index(group[0])]['end']
-    #             if start == end:
-    #                 track1 = db.getTracks(type=track_type, id=group[0])
-    #                 track2 = db.getTracks(type=track_type, id=group[1])
-    #                 # Reposition Marker
-    #                 track1_pos = track1[0].points_corrected
-    #                 track2_pos = track2[0].points_corrected
-    #                 x = (track1_pos[-1][0] + track2_pos[0][0]) / 2.
-    #                 y = (track1_pos[-1][1] + track2_pos[0][1]) / 2.
-    #                 #
-    #                 track_frame = track2[0].frames[0]
-    #                 db.deleteMarkers(frame=track_frame, track=group[1])
-    #                 ##
-    #                 db.deleteMarkers(frame=track_frame, track=group[0])
-    #                 db.setMarkers(frame=track_frame, x=x, y=y, track=group[0])
-    #                 ##
-    #                 query = db.table_marker.update(track=group[0]).where(db.table_marker.track_id == group[1])
-    #                 print(query)
-    #                 query.execute()
-    #                 db.deleteTracks(id=group[1])
-    #             elif start < end:
-    #                 diff = np.abs(start - end)
-    #                 track1 = db.getTracks(type=self.track_type, id=group[0])
-    #                 track2 = db.getTracks(type=self.track_type, id=group[1])
-    #                 track_frame = track2[0].frames[0]
-    #                 for o in range(diff+1):
-    #                     marker_test1 = db.getMarkers(frame=track_frame, track=group[0])
-    #                     marker_test2 = db.getMarkers(frame=track_frame, track=group[1])
-    #                     if len(marker_test1) != 0 and len(marker_test2) != 0:
-    #                         x = (marker_test1[0].correctedXY()[0] + marker_test2[0].correctedXY()[0])/2.
-    #                         y = (marker_test1[0].correctedXY()[1] + marker_test2[0].correctedXY()[1])/2.
-    #                         db.deleteMarkers(frame=track_frame, track=group[1])
-    #                         db.deleteMarkers(frame=track_frame, track=group[0])
-    #                         db.setMarkers(frame=track_frame, x=x, y=y, track=group[0])
-    #                     elif len(marker_test1) == 0 and len(marker_test2) != 0:
-    #                         x = marker_test2[0].correctedXY()[0]
-    #                         y = marker_test2[0].correctedXY()[1]
-    #                         db.deleteMarkers(frame=track_frame, track=group[1])
-    #                         db.setMarkers(frame=track_frame, x=x, y=y, track=group[0])
-    #                     track_frame += 1
-    #                 query = db.table_marker.update(track=group[0]).where(db.table_marker.track_id == group[1])
-    #                 print(query)
-    #                 query.execute()
-    #                 db.table_track.update(style='{"color":"#f7ff00"}').where(db.table_track.id == group[0]).execute()
-    #                 db.deleteTracks(id=group[1])
-    #                 print("-------------")
-    #                 print(group)
-    #                 print(start-end)
-    #                 print("-------------")
-    #             else:
-    #                 query2 = db.table_marker.update(track=group[0]).where(db.table_marker.track_id == group[1])
-    #                 print(query2)
-    #                 query2.execute()
-    #                 db.table_track.update(style='{"color":"#FF8800"}').where(db.table_track.id == group[0]).execute()
-    #                 db.deleteTracks(id=group[1])
 
     def Delete_Tracks_with_length_1(self):
         """
@@ -359,10 +257,22 @@ class Heublein_Stitcher(Stitcher):
                         if track1.Measurements.has_key(frame):
                             meas1 = track1.Measurements[frame]
                             meas2 = track2.Measurements[frame]
-                            track1.update(z = self.average_Measurements(meas1, meas2), i = frame)
+                            try:
+                                track1.update(z = self.average_Measurements(meas1, meas2), i = frame)
+                            except KeyError:
+                                if not np.any([k<frame for k in track1.X.keys()]):
+                                    pass
+                                else:
+                                    raise
                             # track2.Measurements.pop(frame)
                         else:
-                            track1.update(z=track2.Measurements[frame], i=frame)
+                            try:
+                                track1.update(z=track2.Measurements[frame], i=frame)
+                            except KeyError:
+                                if not np.any([k<frame for k in track1.X.keys()]):
+                                    pass
+                                else:
+                                    raise
                     # self.Tracks.pop(group[1])
 
                 else:
@@ -397,9 +307,9 @@ if __name__ == '__main__':
     # stitcher1.load_txt("/home/user/CellTracking/tracks.csv")
     # stitcher1.stitch()
     # stitcher1.write_ClickpointsDB()<<
-    stitcher = Heublein_Stitcher(1,0.5,50,60,200,5)
+    stitcher = Heublein_Stitcher(1/0.645,0.5,50,60,200,5)
     stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_testing4_test.cdb", "PT_Track_Marker")
-    stitcher.stitch()
-    stitcher.save_tracks_to_db("/home/user/CellTracking/layers_testing4_test.cdb", "PT_Track_Marker", function=resulution_correction)
-    print ("-----------Written to DB-----------")
+    # stitcher.stitch()
+    # stitcher.save_tracks_to_db("/home/user/CellTracking/layers_testing4_test.cdb", "PT_Track_Marker", function=resulution_correction)
+    # print ("-----------Written to DB-----------")
 
