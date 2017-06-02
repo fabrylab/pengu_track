@@ -51,21 +51,7 @@ class Stitcher(object):
         if function is None:
             function = lambda x : x
         self.db = DataFileExtended(path)
-<<<<<<< dest
-        self.db.deleteTracks(type=type)
-        with self.db.db.atomic() as transaction:
-            for track in self.Tracks:
-                # self.db.deleteTracks(id=track)
-                db_track = self.db.setTrack(type=type, id=track)
-                for m in self.Tracks[track].Measurements:
-                    meas = self.Tracks[track].Measurements[m]
-                    pos = [meas.PositionX, meas.PositionY, meas.PositionZ]
-                    pos = function(pos)
-                    marker = self.db.setMarker(frame=m, x=pos[0], y=pos[1], track=track)
-                    meas = self.Tracks[track].Measurements[m]
-                    self.db.setMeasurement(marker=marker, log=meas.Log_Probability,
-                                           x=meas.PositionX, y=meas.PositionY, z=meas.PositionZ)
-=======
+
         with self.db.db.atomic() as transaction:
             self.db.deleteTracks(type=type)
             for track in self.Tracks:
@@ -79,9 +65,7 @@ class Stitcher(object):
                     meas = self.Tracks[track].Measurements[m]
                     self.db.setMeasurement(marker=marker, log=meas.Log_Probability,
                                            x=meas.PositionX, y=meas.PositionY, z=meas.PositionZ)
->>>>>>> source
-
-
+                    
 class Heublein_Stitcher(Stitcher):
     """
     Class for Stitching Tracks
