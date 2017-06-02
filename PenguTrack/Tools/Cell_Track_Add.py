@@ -184,6 +184,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
                                np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
         self.Tracker.AssignmentProbabilityThreshold=0.
         self.Tracker.MeasurementProbabilityThreshold=0.
+        self.Tracker.LogProbabilityThreshold=-30.
 
         # Init_Background from Image_Median
         N = db.getImages(layer=0).count()
@@ -478,7 +479,33 @@ class PenguTrackWindow(QtWidgets.QWidget):
         self.image_data = self.current_image.data
         # temp = db.getImage(frame=self.current_frame, layer=2).data.astype(np.float)
         # SegMap1 = self.Segmentation.segmentate(gaussian_filter(temp, 1.5))
-        SegMap1 = self.Segmentation.segmentate(db.getImage(frame=self.current_frame, layer=0).data)
+        #####
+        immin = db.getImage(frame=self.current_frame, layer=0).data
+        immin = 1.0 * np.asarray(immin)
+        immin -= np.min(immin)
+        immin = (immin / np.max(immin))
+        immin[immin > 1] = 1
+        immax = db.getImage(frame=self.current_frame, layer=2).data
+        immax = 1.0 * np.asarray(immax)
+        immax -= np.min(immax)
+        immax[immax < 0] = 0
+        immax = (immax / np.max(immax))
+        immax = 1 - immax
+        im = immin * immax
+        im = im - np.min(im)
+        im = im / np.max(im)
+        immin_ind = db.getImage(frame=self.current_frame, layer=1).data
+        immax_ind = db.getImage(frame=self.current_frame, layer=3).data
+        immin_ind = 1.0 * np.asarray(immin_ind)
+        immax_ind = 1.0 * np.asarray(immax_ind)
+        ind_diff = - immax_ind + immin_ind
+        ind_diff = np.abs(ind_diff - 5)
+        ind_diff = np.exp(-ind_diff / 2.)
+        ind_diff = gaussian_filter(ind_diff, 5)
+        imf = 1 - ((1 - im) * (ind_diff))
+        SegMap1 = self.Segmentation.segmentate(imf)
+        #####
+        # SegMap1 = self.Segmentation.segmentate(db.getImage(frame=self.current_frame, layer=0).data)
         #import matplotlib.pyplot as plt
         #plt.imshow(db.getImage(frame=self.current_frame, layer=2).data)
         #plt.figure()
@@ -524,10 +551,37 @@ class PenguTrackWindow(QtWidgets.QWidget):
                     print(i)
                     print(self.Tracker.X.keys())
                     raise
+                #####
+                immin = db.getImage(frame=i, layer=0).data
+                immin = 1.0 * np.asarray(immin)
+                immin -= np.min(immin)
+                immin = (immin / np.max(immin))
+                immin[immin > 1] = 1
+                immax = db.getImage(frame=i, layer=2).data
+                immax = 1.0 * np.asarray(immax)
+                immax -= np.min(immax)
+                immax[immax < 0] = 0
+                immax = (immax / np.max(immax))
+                immax = 1 - immax
+                im = immin * immax
+                im = im - np.min(im)
+                im = im / np.max(im)
+                immin_ind = db.getImage(frame=i, layer=1).data
+                immax_ind = db.getImage(frame=i, layer=3).data
+                immin_ind = 1.0 * np.asarray(immin_ind)
+                immax_ind = 1.0 * np.asarray(immax_ind)
+                ind_diff = - immax_ind + immin_ind
+                ind_diff = np.abs(ind_diff - 5)
+                ind_diff = np.exp(-ind_diff / 2.)
+                ind_diff = gaussian_filter(ind_diff, 5)
+                imf = 1 - ((1 - im) * (ind_diff))
+                SegMap1 = self.Segmentation.segmentate(imf)
+                #####
                 # Detection step
                 # temp = db.getImage(frame=i, layer=2).data.astype(np.float)
                 # SegMap1 = self.Segmentation.segmentate(gaussian_filter(temp, 1.5))
-                SegMap1 = self.Segmentation.segmentate(db.getImage(frame=i, layer=0).data)
+
+                # SegMap1 = self.Segmentation.segmentate(db.getImage(frame=i, layer=0).data)
                 SegMap2 = self.Segmentation2.detect(db.getImage(frame=i, layer=1).data) #image.data)
                 SegMap = ~SegMap1 #& SegMap2
                 db.setMask(frame=i, layer=0, data=((~SegMap).astype(np.uint8)))

@@ -75,7 +75,7 @@ class Stitcher(object):
                     meas = self.Tracks[track].Measurements[m]
                     pos = [meas.PositionX, meas.PositionY, meas.PositionZ]
                     pos = function(pos)
-                    marker = self.db.setMarker(frame=m, x=pos[0], y=pos[1], track=track)
+                    marker = self.db.setMarker(type=type, frame=m, x=pos[0], y=pos[1], track=track)
                     meas = self.Tracks[track].Measurements[m]
                     self.db.setMeasurement(marker=marker, log=meas.Log_Probability,
                                            x=meas.PositionX, y=meas.PositionY, z=meas.PositionZ)
@@ -307,8 +307,8 @@ class Heublein_Stitcher(Stitcher):
 
 if __name__ == '__main__':
     import shutil
-    shutil.copy("/home/user/CellTracking/layers_2017_05_30_MAM.cdb",
-                "/home/user/CellTracking/layers_2017_05_30_MAM_Stitched.cdb")
+    shutil.copy("/home/user/CellTracking/layers_2017_05_30_DIR.cdb",
+                "/home/user/CellTracking/layers_2017_05_30_DIR_Stitched.cdb")
 
     def resulution_correction(pos):
         x, y, z = pos
@@ -324,6 +324,7 @@ if __name__ == '__main__':
     # stitcher1.stitch()
     # stitcher1.write_ClickpointsDB()<<
 <<<<<<< dest
+<<<<<<< dest
     stitcher = Heublein_Stitcher(1/0.645,0.5,50,60,200,5)
     stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_testing4_test.cdb", "PT_Track_Marker")
     # stitcher.stitch()
@@ -332,8 +333,14 @@ if __name__ == '__main__':
 =======
     stitcher = Heublein_Stitcher(2,0.5,20,30,100,10)
     stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_2017_05_30_MAM_Stitched.cdb", "PT_Track_Marker")
+=======
+    stitcher = Heublein_Stitcher(3,0.5,20,30,100,10)
+    stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_2017_05_30_DIR_Stitched.cdb", "PT_Track_Marker")
+>>>>>>> source
     stitcher.stitch()
-    stitcher.save_tracks_to_db("/home/user/CellTracking/layers_2017_05_30_MAM_Stitched.cdb", "PT_Track_Marker", function=resulution_correction)
+    db = clickpoints.DataFile("/home/user/CellTracking/layers_2017_05_30_DIR_Stitched.cdb")
+    track_type = db.getMarkerType(name="PT_Track_Marker")
+    stitcher.save_tracks_to_db("/home/user/CellTracking/layers_2017_05_30_DIR_Stitched.cdb", track_type, function=resulution_correction)
     print ("-----------Written to DB-----------")
 >>>>>>> source
 

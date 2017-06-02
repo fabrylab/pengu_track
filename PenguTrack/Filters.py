@@ -256,7 +256,7 @@ class Filter(object):
                 try:
                     probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
                                                                                  - self.Model.measure(comparison))))
-                    probs += self.Measurements[i].Log_Probability
+                    # probs += self.Measurements[i].Log_Probability
                 except ValueError:
                     print(position.shape, position)
                     print(comparison.shape, comparison)
@@ -902,7 +902,7 @@ class MultiFilter(Filter):
         self.Filters = {}
         self.ActiveFilters = {}
         self.FilterThreshold = 3
-        self.LogProbabilityThreshold = 0.05#0.99#-200#-18.
+        self.LogProbabilityThreshold = -np.inf#0.99#-200#-18.
         self.MeasurementProbabilityThreshold = 0.05#0.99#-200#-18.
         self.AssignmentProbabilityThreshold = 0.02#0.99#-200#-18.
         self.filter_args = args
@@ -1082,7 +1082,11 @@ class MultiFilter(Filter):
             if probability_gain[k, m] > -1*np.inf  and gain_dict.has_key(k):
 =======
             # if probability_gain[k, m] > -18.  and gain_dict.has_key(k):
+<<<<<<< dest
             if probability_gain[k,m] > -100 and gain_dict.has_key(k):
+>>>>>>> source
+=======
+            if probability_gain[k,m] > self.LogProbabilityThreshold and gain_dict.has_key(k):
 >>>>>>> source
             # if probability_gain[k, m] - MIN > LIMIT and gain_dict.has_key(k):
                 self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
