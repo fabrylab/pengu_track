@@ -65,7 +65,7 @@ class Stitcher(object):
                     meas = self.Tracks[track].Measurements[m]
                     self.db.setMeasurement(marker=marker, log=meas.Log_Probability,
                                            x=meas.PositionX, y=meas.PositionY, z=meas.PositionZ)
-                    
+
 class Heublein_Stitcher(Stitcher):
     """
     Class for Stitching Tracks

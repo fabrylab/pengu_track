@@ -192,7 +192,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
         #                            for j in np.random.randint(0, N, 5)], axis=0), dtype=np.int)
 
         # Init Segmentation Module with Init_Image
-        self.Segmentation = TresholdSegmentation(treshold=int(self.slider_start[2]))
+        self.Segmentation = TresholdSegmentation(treshold=float(self.slider_start[2])/self.slider_min_max[2][1])
         self.Segmentation2 = VarianceSegmentation(int(self.slider_start[3]), int(np.ceil(self.object_size/2.)))
 
         # Init Detection Module
@@ -261,7 +261,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
     def pt_set_lum_treshold(self, value, name):
         self.texts[name].setText(name + ": " + self.formats[name] % (self.sliders[name].value()/self.min_max[name][1]))
-        self.luminance_treshold = int(value)/self.min_max[name][1]
+        self.luminance_treshold = float(value)/self.min_max[name][1]
         self.Segmentation.Treshold = self.luminance_treshold
         self.reload_mask()
         # self.reload_markers()
@@ -503,8 +503,14 @@ class PenguTrackWindow(QtWidgets.QWidget):
         ind_diff = np.exp(-ind_diff / 2.)
         ind_diff = gaussian_filter(ind_diff, 5)
         imf = 1 - ((1 - im) * (ind_diff))
+        print(self.Segmentation.Treshold)
         SegMap1 = self.Segmentation.segmentate(imf)
-        #####
+        # import matplotlib.pyplot as plt
+        # plt.imshow(SegMap1)
+        # plt.figure()
+        # plt.imshow(imf)
+        # plt.show()
+        ####
         # SegMap1 = self.Segmentation.segmentate(db.getImage(frame=self.current_frame, layer=0).data)
         #import matplotlib.pyplot as plt
         #plt.imshow(db.getImage(frame=self.current_frame, layer=2).data)

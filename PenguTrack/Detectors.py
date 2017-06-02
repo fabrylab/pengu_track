@@ -772,7 +772,7 @@ class TresholdSegmentation(Segmentation):
         self.width = None
         self.height = None
         self.SegMap = None
-        self.Treshold = int(treshold)
+        self.Treshold = float(treshold)
         self.Skale = None
 
     def segmentate(self, image):
@@ -786,8 +786,8 @@ class TresholdSegmentation(Segmentation):
             this_skale = self.Skale
         if self.Skale is None:
             self.Skale = this_skale
-
-        data = (data.astype(float)*(self.Skale/this_skale)).astype(np.int32)
+        dt = data.dtype
+        data = (data.astype(float)*(self.Skale/this_skale)).astype(dt)
 
         if self.SegMap is None:
             self.SegMap = np.ones((self.width, self.height), dtype=bool)
