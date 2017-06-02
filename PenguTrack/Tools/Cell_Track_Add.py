@@ -78,6 +78,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
         self.setLayout(self.layout)
         self.texts = {}
         self.formats = {}
+        self.min_max = {}
         self.functions = {}
         font = QtGui.QFont("", 11)
 
@@ -125,9 +126,9 @@ class PenguTrackWindow(QtWidgets.QWidget):
         self.sliders = {}
         self.slider_functions = [self.pt_set_q, self.pt_set_r, self.pt_set_lum_treshold, self.pt_set_var_treshold]
         self.slider_min_max = [[1, 10], [1, 10], [1, 2**12], [-100, 100]]
-        self.slider_start = [2, 1, 871, -7]
-        self.slider_formats = [" %3d", "    %3d", "    %3d", "    %3d"]
-        for i, name in enumerate(["Prediciton Error", "Detection Error", "Luminance Treshold", "Variance Treshold"]):
+        self.slider_start = [2, 1, 2**11, -7]
+        self.slider_formats = [" %3d", "    %3d", "    %.2f", "    %3d"]
+        for i, name in enumerate(["Prediciton Error", "Detection Error", "Luminance Threshold", "Variance Threshold"]):
             sublayout = QtWidgets.QHBoxLayout()
             sublayout.setContentsMargins(0, 0, 0, 0)
             slider = QtWidgets.QSlider(self)
@@ -142,8 +143,12 @@ class PenguTrackWindow(QtWidgets.QWidget):
             self.functions.update({name: self.slider_functions[i]})
             sublayout.addWidget(slider)
             text = QtWidgets.QLabel(self)
-            text.setText(name + ": " + self.slider_formats[i] % slider.value())
+            if name != "Luminance Threshold":
+                text.setText(name + ": " + self.slider_formats[i] % slider.value())
+            else:
+                text.setText(name + ": " + self.slider_formats[i] % (slider.value()/self.slider_min_max[i][1]))
             sublayout.addWidget(text)
+            self.min_max.update({name: self.slider_min_max[i]})
             self.formats.update({name: self.slider_formats[i]})
             self.texts.update({name: text})
             self.layout.addLayout(sublayout)
@@ -248,8 +253,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
         # pass
 
     def pt_set_lum_treshold(self, value, name):
-        self.texts[name].setText(name + ": " + self.formats[name] % self.sliders[name].value())
-        self.luminance_treshold = int(value)
+        self.texts[name].setText(name + ": " + self.formats[name] % (self.sliders[name].value()/self.min_max[name][1]))
+        self.luminance_treshold = int(value)/self.min_max[name][1]
         self.Segmentation.Treshold = self.luminance_treshold
         self.reload_mask()
         # self.reload_markers()

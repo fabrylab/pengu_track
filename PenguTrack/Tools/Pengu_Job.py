@@ -134,7 +134,7 @@ db.deleteTracks(type=marker_type4)
 
 # Start Iteration over Images
 print('Starting Iteration')
-images = db.getImageIterator(start_frame=10, end_frame=20)#start_frame=start_frame, end_frame=3)
+images = db.getImageIterator(start_frame=10)#start_frame=start_frame, end_frame=3)
 
 for image in images:
     start = time()
