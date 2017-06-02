@@ -315,32 +315,11 @@ if __name__ == '__main__':
         res = 6.45/10
         return y/res, x/res, z/10.
 
-    # stitcher1 = Stitcher(1,0.5,50,60,200,122,"PT_Track_Marker",
-    #                      "/home/user/CellTracking/layers_testing4_test.cdb",
-    #                      5)
-    # stitcher1 = Stitcher(1,0.5,50,60,200,122)
-    # stitcher1.load_ClickpointsDB("/home/user/CellTracking/layers_testing4_test.cdb", track_type="PT_Track_Marker")
-    # stitcher1.load_txt("/home/user/CellTracking/tracks.csv")
-    # stitcher1.stitch()
-    # stitcher1.write_ClickpointsDB()<<
-<<<<<<< dest
-<<<<<<< dest
-    stitcher = Heublein_Stitcher(1/0.645,0.5,50,60,200,5)
-    stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_testing4_test.cdb", "PT_Track_Marker")
-    # stitcher.stitch()
-    # stitcher.save_tracks_to_db("/home/user/CellTracking/layers_testing4_test.cdb", "PT_Track_Marker", function=resulution_correction)
-    # print ("-----------Written to DB-----------")
-=======
-    stitcher = Heublein_Stitcher(2,0.5,20,30,100,10)
-    stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_2017_05_30_MAM_Stitched.cdb", "PT_Track_Marker")
-=======
     stitcher = Heublein_Stitcher(3,0.5,20,30,100,10)
     stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_2017_05_30_DIR_Stitched.cdb", "PT_Track_Marker")
->>>>>>> source
     stitcher.stitch()
     db = clickpoints.DataFile("/home/user/CellTracking/layers_2017_05_30_DIR_Stitched.cdb")
     track_type = db.getMarkerType(name="PT_Track_Marker")
     stitcher.save_tracks_to_db("/home/user/CellTracking/layers_2017_05_30_DIR_Stitched.cdb", track_type, function=resulution_correction)
     print ("-----------Written to DB-----------")
->>>>>>> source
 

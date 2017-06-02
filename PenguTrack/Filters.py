@@ -1078,16 +1078,7 @@ class MultiFilter(Filter):
             # if (probability_gain[k, m] - np.amin(probability_gain) >=
             #     (self.LogProbabilityThreshold *(np.amax(probability_gain)-np.amin(probability_gain)))
             #     and gain_dict.has_key(k)):
-<<<<<<< dest
-            if probability_gain[k, m] > -1*np.inf  and gain_dict.has_key(k):
-=======
-            # if probability_gain[k, m] > -18.  and gain_dict.has_key(k):
-<<<<<<< dest
-            if probability_gain[k,m] > -100 and gain_dict.has_key(k):
->>>>>>> source
-=======
             if probability_gain[k,m] > self.LogProbabilityThreshold and gain_dict.has_key(k):
->>>>>>> source
             # if probability_gain[k, m] - MIN > LIMIT and gain_dict.has_key(k):
                 self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
