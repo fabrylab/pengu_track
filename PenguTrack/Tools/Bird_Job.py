@@ -18,8 +18,8 @@ from time import time
 # file_path = str(sys.argv[1])
 # q = float(sys.argv[2])
 # r = float(sys.argv[3])
-q = 100
-r = 3
+q = 200
+r = 300
 # if platform.system() != 'Linux':
 #     file_path = file_path.replace("/mnt/jobs", r"//131.188.117.98/shared/jobs")
 #path.normpath(file_path)
@@ -39,6 +39,7 @@ start_frame = 0
 
 # Import PenguTrack
 from PenguTrack.DataFileExtended import DataFileExtended
+from PenguTrack.Filters import Filter
 from PenguTrack.Filters import KalmanFilter
 from PenguTrack.Filters import MultiFilter
 from PenguTrack.Models import VariableSpeed
@@ -73,6 +74,7 @@ Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
 # Initialize Filter
 MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
                        np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
+# MultiKal = MultiFilter(Filter, model)
 
 # Init_Background from Image_Median
 N = db.getImages().count()
@@ -81,8 +83,8 @@ init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
 # Initialize segmentation with init_image and start updating the first 10 frames.
 VB = ViBeSegmentation(n=2, init_image=init, n_min=2, r=40, phi=1)
 
-for i in range(10295,10306):
-    mask = VB.detect(db.getImage(frame=i).data, do_neighbours=False)
+# for i in range(10295,10306):
+#     mask = VB.detect(db.getImage(frame=i).data, do_neighbours=False)
 print("Detecting!")
 import matplotlib.pyplot as plt
 # for i in range(10306,10311):
@@ -123,9 +125,13 @@ db.deleteMarkers(type=marker_type4)
 db.deleteTracks(type=marker_type2)
 db.deleteTracks(type=marker_type4)
 
+# SetMaskType
+PT_Mask_Type = db.setMaskType(name="PT_Mask_Type", color="#FF6633")
+
 # Start Iteration over Images
 print('Starting Iteration')
-images = db.getImageIterator(start_frame=10306, end_frame=10311)#start_frame=start_frame, end_frame=3)
+# images = db.getImageIterator(start_frame=10306, end_frame=10311)#start_frame=start_frame, end_frame=3)
+images = db.getImageIterator(start_frame=10272, end_frame=10311)#start_frame=start_frame, end_frame=3)
 
 for image in images:
     start = time()
@@ -133,6 +139,7 @@ for image in images:
 
     # Prediction step
     MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
+    # MultiKal.LogProbabilityThreshold = -300.
 
     # Segmentation step
     SegMap = VB.detect(image.data, do_neighbours=False)
@@ -141,7 +148,7 @@ for image in images:
     print(image.data.shape)
 
     # Setting Mask in ClickPoints
-    db.setMask(image=image, data=(255*(~SegMap).astype(np.uint8)))
+    db.setMask(image=image, data=(255*(~SegMap).astype(np.uint8)), type=PT_Mask_Type)
     print("Mask save")
 
     #
@@ -153,6 +160,13 @@ for image in images:
     #if np.all(Positions != np.array([])):
     if len(Positions)==0:
         continue
+
+    # for pos1 in Positions:
+    #     a = float(pos1.Log_Probability)
+    #     dists = [np.linalg.norm([pos1.PositionX-pos2.PositionX,
+    #                                                          pos1.PositionY - pos2.PositionY]) for pos2 in Positions]
+    #     pos1.Log_Probability -= np.log(np.mean(dists))
+    #     print(str(a), str(pos1.Log_Probability), str(a-pos1.Log_Probability))
     with db.db.atomic() as transaction:
         print("Tracking")
         # Update Filter with new Detections

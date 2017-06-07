@@ -1183,13 +1183,19 @@ class ViBeSegmentation(Segmentation):
         # self.update(out, image, do_neighbours=do_neighbours)
         # return out
 
-    def segmentate(self, image, do_neighbours=True):
+    def segmentate(self, image, do_neighbours=True, mask=None):
         super(ViBeSegmentation, self).segmentate(image)
         data = np.array(image, ndmin=2)
+        self.Mask = mask
 
         if self.width is None or self.height is None:
             self.width, self.height = data.shape[:2]
-        this_skale = np.mean((np.sum(data.astype(np.uint32)**2, axis=-1)**0.5))
+        if len(data.shape) == 3:
+            this_skale = np.mean(rgb2gray(data))
+        if len(data.shape) == 2:
+            this_skale = np.mean(data)
+        else:
+            raise ValueError('False format of data.')
 
         if this_skale == 0:
             this_skale = self.Skale
@@ -1210,6 +1216,10 @@ class ViBeSegmentation(Segmentation):
                            >= self.N_min).astype(bool)
         else:
             raise ValueError('False format of data.')
+        # self.SegMap[self.Mask] = False
+        # self.SegMap = self.SegMap & ~self.Mask
+        if self.Mask is not None and np.all(self.Mask.shape == self.SegMap.shape):
+            self.SegMap &= ~self.Mask
         return self.SegMap
 
     def update(self, mask, image, do_neighbours=True):
