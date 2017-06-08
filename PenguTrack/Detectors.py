@@ -766,7 +766,7 @@ class Segmentation(object):
 
 class TresholdSegmentation(Segmentation):
 
-    def __init__(self, treshold):
+    def __init__(self, treshold, reskale=True):
         super(TresholdSegmentation, self).__init__()
 
         self.width = None
@@ -774,13 +774,18 @@ class TresholdSegmentation(Segmentation):
         self.SegMap = None
         self.Treshold = float(treshold)
         self.Skale = None
+        self.reskale = reskale
 
     def segmentate(self, image):
         data = np.array(image, ndmin=2)
 
         if self.width is None or self.height is None:
             self.width, self.height = data.shape[:2]
-        this_skale = np.mean((np.sum(data.astype(np.uint32)**2, axis=-1)**0.5))
+
+        if self.reskale:
+            this_skale = np.mean((np.sum(data.astype(np.uint32)**2, axis=-1)**0.5))
+        else:
+            this_skale = 1.
 
         if this_skale == 0:
             this_skale = self.Skale

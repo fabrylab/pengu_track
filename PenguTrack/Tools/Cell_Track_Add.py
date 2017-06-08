@@ -184,7 +184,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
                                np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
         self.Tracker.AssignmentProbabilityThreshold=0.
         self.Tracker.MeasurementProbabilityThreshold=0.
-        self.Tracker.LogProbabilityThreshold=-30.
+        self.Tracker.LogProbabilityThreshold=-19.
 
         # Init_Background from Image_Median
         N = db.getImages(layer=0).count()
@@ -192,7 +192,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
         #                            for j in np.random.randint(0, N, 5)], axis=0), dtype=np.int)
 
         # Init Segmentation Module with Init_Image
-        self.Segmentation = TresholdSegmentation(treshold=float(self.slider_start[2])/self.slider_min_max[2][1])
+        self.Segmentation = TresholdSegmentation(treshold=float(self.slider_start[2])/self.slider_min_max[2][1],
+                                                 reskale=False)
         self.Segmentation2 = VarianceSegmentation(int(self.slider_start[3]), int(np.ceil(self.object_size/2.)))
 
         # Init Detection Module
@@ -482,14 +483,16 @@ class PenguTrackWindow(QtWidgets.QWidget):
         #####
         immin = db.getImage(frame=self.current_frame, layer=0).data
         immin = 1.0 * np.asarray(immin)
-        immin -= np.min(immin)
-        immin = (immin / np.max(immin))
+        immin -= np.percentile(immin, 0.01)
+        immin = (immin / np.percentile(immin, 99.99))
         immin[immin > 1] = 1
+        immin[immin < 0] = 0
         immax = db.getImage(frame=self.current_frame, layer=2).data
         immax = 1.0 * np.asarray(immax)
-        immax -= np.min(immax)
+        immax -= np.percentile(immax, 0.01)
+        immax = (immax / np.percentile(immax, 99.99))
+        immax[immax > 1] = 1
         immax[immax < 0] = 0
-        immax = (immax / np.max(immax))
         immax = 1 - immax
         im = immin * immax
         im = im - np.min(im)
@@ -560,14 +563,16 @@ class PenguTrackWindow(QtWidgets.QWidget):
                 #####
                 immin = db.getImage(frame=i, layer=0).data
                 immin = 1.0 * np.asarray(immin)
-                immin -= np.min(immin)
-                immin = (immin / np.max(immin))
+                immin -= np.percentile(immin,0.01)
+                immin = (immin / np.percentile(immin, 99.99))
                 immin[immin > 1] = 1
+                immin[immin < 0] = 0
                 immax = db.getImage(frame=i, layer=2).data
                 immax = 1.0 * np.asarray(immax)
-                immax -= np.min(immax)
+                immax -= np.percentile(immax, 0.01)
+                immax = (immax / np.percentile(immax, 99.99))
+                immax[immax > 1] = 1
                 immax[immax < 0] = 0
-                immax = (immax / np.max(immax))
                 immax = 1 - immax
                 im = immin * immax
                 im = im - np.min(im)
@@ -677,9 +682,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
                 Positions = self.Detector.detect(index_data, mask)
 
-                # Setting Mask in ClickPoints
-                m = db.setMask(frame=i, layer=0, data=(~SegMap).astype(np.uint8))
-                print("Mask save", m)
+                print("Mask save")
                 n = 1
                 if len(Positions) != 0:
                 # if np.all(Positions != np.array([])):
