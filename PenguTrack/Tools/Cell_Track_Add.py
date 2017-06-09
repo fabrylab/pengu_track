@@ -512,7 +512,7 @@ class PenguTrackWindow(QtWidgets.QWidget):
                                np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
         self.Tracker.AssignmentProbabilityThreshold=0.
         self.Tracker.MeasurementProbabilityThreshold=0.
-        self.Tracker.LogProbabilityThreshold=-19.
+        self.Tracker.LogProbabilityThreshold=-12.
 
         # Init_Background from Image_Median
         N = db.getImages(layer=0).count()
@@ -1010,6 +1010,11 @@ class PenguTrackWindow(QtWidgets.QWidget):
 
                 Positions = self.Detector.detect(index_data, mask)
 
+                # offx, offy = image.offset
+                # for pos in Positions:
+                #     pos.PositionX -= offx
+                #     pos.PositionY -= offy
+
                 print("Mask save")
                 n = 1
                 if len(Positions) != 0:
@@ -1028,8 +1033,8 @@ class PenguTrackWindow(QtWidgets.QWidget):
                         x = y = z = np.nan
                         if i in self.Tracker.Filters[k].Measurements.keys():
                             meas = self.Tracker.Filters[k].Measurements[i]
-                            x = meas.PositionX
-                            y = meas.PositionY
+                            x = meas.PositionX#+offx
+                            y = meas.PositionY#+offy
                             z = meas.PositionZ
                             prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
                         elif i in self.Tracker.Filters[k].X.keys():

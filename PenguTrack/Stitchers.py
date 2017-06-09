@@ -208,7 +208,7 @@ class Heublein_Stitcher(Stitcher):
         """
         Delets tracks with a length of 1.
         """
-        shorts = [track for track in self.Tracks if len(self.Tracks[track].Measurements)<=1]
+        shorts = [track for track in self.Tracks if len(self.Tracks[track].Measurements)<=2]
         for short in shorts:
             self.Tracks.pop(short)
         print(len(self.Tracks))
@@ -291,8 +291,8 @@ class Heublein_Stitcher(Stitcher):
 
 if __name__ == '__main__':
     import shutil
-    shutil.copy("/home/user/CellTracking/layers_db1_newtracktest.cdb",
-                "/home/user/CellTracking/layers_db1_newtracktest_stitch.cdb")
+    shutil.copy("/home/user/CellTracking/layers_2017_05_30_PEJ.cdb",
+                "/home/user/CellTracking/layers_2017_05_30_PEJ_stitched_test.cdb")
 
     def resulution_correction(pos):
         x, y, z = pos
@@ -300,10 +300,10 @@ if __name__ == '__main__':
         return y/res, x/res, z/10.
 
     stitcher = Heublein_Stitcher(3,0.5,20,30,100,10)
-    stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_db1_newtracktest_stitch.cdb", "PT_Track_Marker")
+    stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_2017_05_30_PEJ_stitched_test.cdb", "PT_Track_Marker")
     stitcher.stitch()
-    db = clickpoints.DataFile("/home/user/CellTracking/layers_db1_newtracktest_stitch.cdb")
+    db = clickpoints.DataFile("/home/user/CellTracking/layers_2017_05_30_PEJ_stitched_test.cdb")
     track_type = db.getMarkerType(name="PT_Track_Marker")
-    stitcher.save_tracks_to_db("/home/user/CellTracking/layers_db1_newtracktest_stitch.cdb", track_type, function=resulution_correction)
+    stitcher.save_tracks_to_db("/home/user/CellTracking/layers_2017_05_30_PEJ_stitched_test.cdb", track_type, function=resulution_correction)
     print ("-----------Written to DB-----------")
 

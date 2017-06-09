@@ -253,7 +253,7 @@ class SimpleAreaDetector2(Detector):
             regions_list = [prop for prop in skimage.measure.regionprops(labeled)]
         else:
             regions_list = [prop for prop in skimage.measure.regionprops(labeled, intensity_image=image)
-                       if (self.UpperLimit > prop.area > self.LowerLimit and prop.solidity > 0.5)]
+                       if (self.UpperLimit > prop.area > self.LowerLimit)]
         if len(regions_list) <= 0:
             return np.array([])
 
