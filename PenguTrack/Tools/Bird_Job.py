@@ -59,7 +59,7 @@ db = DataFileExtended(file_path)
 # Initialise PenguTrack
 object_size = 1  # Object diameter (smallest)
 object_number = 1  # Number of Objects in First Track
-object_area = 5
+object_area = 3
 
 # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
 model = VariableSpeed(1, 1, dim=2, timeconst=1.)
@@ -74,18 +74,21 @@ Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
 # Initialize Filter
 MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
                        np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
+# MultiKal.LogProbabilityThreshold = -300.
+MultiKal.MeasurementProbabilityThreshold = 0.
 # MultiKal = MultiFilter(Filter, model)
 
 # Init_Background from Image_Median
+# Initialize segmentation with init_image and start updating the first 10 frames.
 N = db.getImages().count()
 init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
-                           for j in np.arange(10275,10295)], axis=0), dtype=np.int)
-# Initialize segmentation with init_image and start updating the first 10 frames.
-VB = ViBeSegmentation(n=2, init_image=init, n_min=2, r=40, phi=1)
-
-# for i in range(10295,10306):
-#     mask = VB.detect(db.getImage(frame=i).data, do_neighbours=False)
+                           for j in np.arange(10252,10262)], axis=0), dtype=np.int)
+VB = ViBeSegmentation(n=2, init_image=init, n_min=2, r=30, phi=1)
+for i in range(10262,10272):
+    mask = VB.detect(db.getImage(frame=i).data, do_neighbours=False)
 print("Detecting!")
+
+
 import matplotlib.pyplot as plt
 # for i in range(10306,10311):
 #     mask = VB.detect(db.getImage(frame=i).data, do_neighbours=False)
@@ -95,8 +98,14 @@ import matplotlib.pyplot as plt
 #     plt.show()
 
 # Initialize Detector
-AD = AreaDetector(object_area, object_number, upper_limit=7, lower_limit=1)
+AD = AreaDetector(object_area, object_number, upper_limit=5, lower_limit=1)
 print('Initialized')
+
+# SetMaskType
+if db.getMaskType(name="PT_Mask_Type"):
+    PT_Mask_Type = db.getMaskType(name="PT_Mask_Type")
+else:
+    PT_Mask_Type = db.setMaskType(name="PT_Mask_Type", color="#FF6633")
 
 # Define ClickPoints Marker
 if db.getMarkerType(name="PT_Detection_Marker"):
@@ -125,8 +134,7 @@ db.deleteMarkers(type=marker_type4)
 db.deleteTracks(type=marker_type2)
 db.deleteTracks(type=marker_type4)
 
-# SetMaskType
-PT_Mask_Type = db.setMaskType(name="PT_Mask_Type", color="#FF6633")
+
 
 # Start Iteration over Images
 print('Starting Iteration')
@@ -139,7 +147,6 @@ for image in images:
 
     # Prediction step
     MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
-    # MultiKal.LogProbabilityThreshold = -300.
 
     # Segmentation step
     SegMap = VB.detect(image.data, do_neighbours=False)
@@ -148,7 +155,7 @@ for image in images:
     print(image.data.shape)
 
     # Setting Mask in ClickPoints
-    db.setMask(image=image, data=(255*(~SegMap).astype(np.uint8)), type=PT_Mask_Type)
+    db.setMask(image=image, data=(PT_Mask_Type.index*(~SegMap).astype(np.uint8)))
     print("Mask save")
 
     #

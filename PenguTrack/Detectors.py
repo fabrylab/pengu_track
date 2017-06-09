@@ -408,7 +408,7 @@ class SimpleAreaDetector(Detector):
             regions_list = [prop for prop in skimage.measure.regionprops(labeled)]
         else:
             regions_list = [prop for prop in skimage.measure.regionprops(labeled)
-                       if (self.UpperLimit > prop.area > self.LowerLimit and prop.solidity > 0.5)]
+                       if (self.UpperLimit >= prop.area >= self.LowerLimit and prop.solidity > 0.5)]
         if len(regions_list) <= 0:
             return np.array([])
 
@@ -1095,7 +1095,12 @@ class ViBeSegmentation(Segmentation):
 
             else:
                 raise ValueError('False format of data.')
-            self.Skale = np.mean((np.sum(np.mean(self.Samples, axis=0).astype(np.uint32)**2, axis=-1)**0.5))
+            if len(data.shape) == 3:
+                self.Skale = np.mean(rgb2gray(data))
+            elif len(data.shape) == 2:
+                self.Skale = np.mean(data)
+            else:
+                raise ValueError('False format of data.')
 
         self.SegMap = None
         self._Neighbour_Map = {0: [-1, -1],
@@ -1197,7 +1202,7 @@ class ViBeSegmentation(Segmentation):
             self.width, self.height = data.shape[:2]
         if len(data.shape) == 3:
             this_skale = np.mean(rgb2gray(data))
-        if len(data.shape) == 2:
+        elif len(data.shape) == 2:
             this_skale = np.mean(data)
         else:
             raise ValueError('False format of data.')
@@ -1233,7 +1238,13 @@ class ViBeSegmentation(Segmentation):
 
         if self.width is None or self.height is None:
             self.width, self.height = data.shape[:2]
-        this_skale = np.mean((np.sum(data.astype(np.uint32)**2, axis=-1)**0.5))
+
+        if len(data.shape) == 3:
+            this_skale = np.mean(rgb2gray(data))
+        elif len(data.shape) == 2:
+            this_skale = np.mean(data)
+        else:
+            raise ValueError('False format of data.')
 
         if this_skale == 0:
             this_skale = self.Skale

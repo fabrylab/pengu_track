@@ -1026,9 +1026,11 @@ class MultiFilter(Filter):
             # for m in range(M):
             #     probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: measurements[m]})
         probability_gain[np.isinf(probability_gain)] = np.nan
-        print(np.isnan(probability_gain))
-        print(np.all(np.isnan(probability_gain)))
         probability_gain[np.isnan(probability_gain)] = np.nanmin(probability_gain)
+        if self.LogProbabilityThreshold == -np.inf:
+            LogProbabilityThreshold = np.nanmin(probability_gain)
+        else:
+            LogProbabilityThreshold = self.LogProbabilityThreshold
 
         # print(np.mean(probability_gain), np.amin(probability_gain), np.amax(probability_gain))
         # print(probability_gain)
@@ -1042,27 +1044,8 @@ class MultiFilter(Filter):
         x = {}
         x_err = {}
         from scipy.optimize import linear_sum_assignment
-        # print("NEW SUPERDUPERTRACKER2!!!")
         rows, cols = linear_sum_assignment(-1*probability_gain)
-        probs = probability_gain[rows, cols]
-        print(probs)
-        # import matplotlib.pyplot as plt
-        # plt.figure()
-        # plt.hist(probs, bins=50)
-        # plt.draw()
-        # print(np.amax(probability_gain), np.amin(probability_gain), np.mean(probability_gain))
-        # print(self.AssignmentProbabilityThreshold*(np.amax(probability_gain)-np.amin(probability_gain)))
-        MIN = np.amin(probability_gain)
-        # LIMIT = self.LogProbabilityThreshold*(np.amax(probability_gain)-np.amin(probability_gain))
-        LIMIT = np.percentile(probs, self.AssignmentProbabilityThreshold*100)
-        print(LIMIT, np.amin(probs), np.mean(probs), np.amax(probs))
-        if LIMIT <= MIN:
-            LIMIT = np.nextafter(0.,1.)
-        else:
-            LIMIT = LIMIT - MIN
-        # for j in range(M):
-        # print(probs[probs-MIN > LIMIT])
-        print(probs[probs > -18])
+
         for j, k in enumerate(rows):
             # if not np.all(np.isnan(probability_gain)+np.isinf(probability_gain)):
             #     k, m = np.unravel_index(np.nanargmax(probability_gain), probability_gain.shape)
@@ -1078,7 +1061,7 @@ class MultiFilter(Filter):
             # if (probability_gain[k, m] - np.amin(probability_gain) >=
             #     (self.LogProbabilityThreshold *(np.amax(probability_gain)-np.amin(probability_gain)))
             #     and gain_dict.has_key(k)):
-            if probability_gain[k,m] > self.LogProbabilityThreshold and gain_dict.has_key(k):
+            if probability_gain[k,m] > LogProbabilityThreshold and gain_dict.has_key(k):
             # if probability_gain[k, m] - MIN > LIMIT and gain_dict.has_key(k):
                 self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
