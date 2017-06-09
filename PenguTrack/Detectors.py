@@ -1088,19 +1088,20 @@ class ViBeSegmentation(Segmentation):
 
         if init_image is not None:
             data = np.array(init_image, ndmin=2)
+            self.__dt__ = smallest_dtype(data)
             if len(data.shape) == 3:
-                self.Samples = np.tile(data, self.N).reshape(data.shape+(self.N,)).transpose((3, 0, 1, 2))
-            elif len(data.shape) == 2:
-                self.Samples = np.tile(data, (self.N, 1, 1,))
-
-            else:
-                raise ValueError('False format of data.')
-            if len(data.shape) == 3:
+                self.Samples = np.tile(data, self.N
+                                       ).astype(self.__dt__
+                                                            ).reshape(data.shape+(self.N,)
+                                                                      ).transpose((3, 0, 1, 2))
                 self.Skale = np.mean(rgb2gray(data))
             elif len(data.shape) == 2:
+                self.Samples = np.tile(data, (self.N, 1, 1,)).astype(self.__dt__)
                 self.Skale = np.mean(data)
             else:
                 raise ValueError('False format of data.')
+        else:
+            self.__dt__ = None
 
         self.SegMap = None
         self._Neighbour_Map = {0: [-1, -1],
@@ -1212,17 +1213,26 @@ class ViBeSegmentation(Segmentation):
         if self.Skale is None:
             self.Skale = this_skale
 
-        data = (data.astype(float)*(self.Skale/this_skale)).astype(np.int32)
+        if self.__dt__ is None:
+            self.__dt__ = smallest_dtype(data)
+
+        data = (data.astype(float)*(self.Skale/this_skale)).astype(self.__dt__)
         if self.Samples is None:
             self.Samples = np.tile(data, self.N).reshape((self.N,)+data.shape)
         if self.SegMap is None:
             self.SegMap = np.ones((self.width, self.height), dtype=bool)
 
         if len(data.shape) == 3:
-            self.SegMap = (np.sum((np.sum((self.Samples.astype(np.int32)-data)**2, axis=-1)**0.5/np.sqrt(data.shape[-1])
-                                   > self.R), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
+            # self.SegMap = (np.sum((np.sum((self.Samples.astype(np.int32)-data)**2, axis=-1)**0.5/np.sqrt(data.shape[-1])
+            #                        > self.R), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
+            diff = self.Samples.astype(next_dtype(-data))
+            diff = np.abs(rgb2gray(diff-data))
+            self.SegMap = (np.sum((diff
+                                   > self.R).astype(np.uint8), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
         elif len(data.shape) == 2:
-            self.SegMap = (np.sum((np.abs(self.Samples.astype(np.int32)-data) > self.R), axis=0, dtype=np.uint8)
+            diff = self.Samples.astype(next_dtype(data))
+            diff -= data
+            self.SegMap = (np.sum((np.abs(diff) > self.R).astype(np.uint8), axis=0, dtype=np.uint8)
                            >= self.N_min).astype(bool)
         else:
             raise ValueError('False format of data.')
@@ -1832,3 +1842,87 @@ def rgb2gray(rgb):
     # rgb = np.asarray(rgb)
     dt = rgb.dtype
     return np.dot(rgb[...,:3], [0.299, 0.587, 0.114]).astype(dt)
+
+def next_dtype(array):
+    dt = array.dtype
+
+    if dt == np.int and np.amin(array) >= 0:
+        a_max = np.amax(array)
+        if a_max < 2**8:
+            return np.uint16
+        elif a_max < 2**16:
+            return np.uint32
+        elif a_max < 2**32:
+            return np.uint64
+        elif a_max < 2**64:
+            return np.uint128
+        else:
+            return np.float
+    elif dt == np.int:
+        a_max = max(-np.amin(array), np.amax(array))
+        if a_max < 2**7:
+            return np.int16
+        elif a_max < 2**15:
+            return np.int32
+        elif a_max < 2**31:
+            return np.uint64
+        elif a_max < 2**63:
+            return np.uint128
+    if dt == np.uint8:
+        return np.uint16
+    elif dt == np.uint16:
+        return np.uint32
+    elif dt == np.uint32:
+        return np.uint64
+    elif dt == np.uint64:
+        return np.uint128
+    elif dt == np.int8:
+        return np.int16
+    elif dt == np.int16:
+        return np.int32
+    elif dt == np.int32:
+        return np.int64
+    elif dt == np.int64:
+        return np.int128
+    elif type(dt) == np.dtype:
+        return np.float
+    else:
+        raise ValueError("Input is not a numpy array")
+
+def smallest_dtype(array):
+    dt = array.dtype
+
+    if dt == np.int and np.amin(array) >= 0:
+        a_max = np.amax(array)
+        if a_max < 2**8:
+            return np.uint8
+        elif a_max < 2**16:
+            return np.uint16
+        elif a_max < 2**32:
+            return np.uint32
+        elif a_max < 2**64:
+            return np.uint64
+        elif a_max < 2**128:
+            return np.uint128
+        else:
+            return np.float
+    elif dt == np.int:
+        a_max = max(-np.amin(array), np.amax(array))
+        if a_max < 2**7:
+            return np.int8
+        elif a_max < 2**15:
+            return np.int16
+        elif a_max < 2**31:
+            return np.uint32
+        elif a_max < 2**63:
+            return np.uint64
+        elif a_max < 2**127:
+            return np.uint128
+    elif type(dt) == np.dtype:
+        return np.float
+    else:
+        raise ValueError("Input is not a numpy array")
+
+
+
+
