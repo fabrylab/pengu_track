@@ -1,0 +1,411 @@
+from __future__ import division, print_function
+
+# import cv2
+import numpy as np
+from scipy.ndimage.measurements import center_of_mass
+from skimage.morphology import binary_dilation
+import peewee
+import sys
+
+# import clickpoints
+import platform
+from os import path
+from time import time
+
+# Connect to database
+# for p in sys.argv:
+# 	print(p)
+# file_path = str(sys.argv[1])
+# q = float(sys.argv[2])
+# r = float(sys.argv[3])
+q = 200
+r = 300
+# if platform.system() != 'Linux':
+#     file_path = file_path.replace("/mnt/jobs", r"//131.188.117.98/shared/jobs")
+#path.normpath(file_path)
+
+# import os
+# # path = "/mnt/jobs/Pengu_Track_Evaluation/20150204/247.cdb"
+# path = str(file_path)
+# os.system("mkdir ~/Desktop/TODO")
+# os.system("cp %s ~/Desktop/TODO/%s_done.cdb"%(path, path[-7:-4]))
+# # os.system("cp -r %s/* ~/Desktop/TODO/"%path[:-7])
+#
+# file_path = "/home/alex/Desktop/TODO/%s_done.cdb"%path[-7:-4]
+
+
+
+start_frame = 0
+
+# Import PenguTrack
+from PenguTrack.DataFileExtended import DataFileExtended
+from PenguTrack.Filters import Filter
+from PenguTrack.Filters import KalmanFilter
+from PenguTrack.Filters import MultiFilter
+from PenguTrack.Models import VariableSpeed
+from PenguTrack.Detectors import ViBeSegmentation
+from PenguTrack.Detectors import Measurement as Pengu_Meas
+from PenguTrack.Detectors import SimpleAreaDetector as AreaDetector
+from PenguTrack.Detectors import rgb2gray
+from PenguTrack.Stitchers import Heublein_Stitcher
+
+import scipy.stats as ss
+
+# Load Database
+file_path = "/home/user/Desktop/Birdflight.cdb"
+global db
+db = DataFileExtended(file_path)
+
+# Initialise PenguTrack
+object_size = 1  # Object diameter (smallest)
+object_number = 1  # Number of Objects in First Track
+object_area = 3
+
+# Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
+model = VariableSpeed(1, 1, dim=2, timeconst=1.)
+
+X = np.zeros(4).T  # Initial Value for Position
+Q = np.diag([q*object_size, q*object_size])  # Prediction uncertainty
+R = np.diag([r*object_size, r*object_size])  # Measurement uncertainty
+
+State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filter
+Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
+
+# Initialize Filter
+MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
+                       np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
+# MultiKal.LogProbabilityThreshold = -300.
+MultiKal.MeasurementProbabilityThreshold = 0.
+# MultiKal = MultiFilter(Filter, model)
+print("Initialized Tracker")
+
+# Init_Background from Image_Median
+# Initialize segmentation with init_image and start updating the first 10 frames.
+N = db.getImages().count()
+init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
+                           for j in np.arange(0,10)], axis=0), dtype=np.int)
+# VB = ViBeSegmentation(n=2, init_image=init, n_min=2, r=25, phi=1)
+# n_multi = 2
+# width_multi = int(init.shape[1]/n_multi)
+# print(width_multi)
+# VBs = []
+# for i in range(n_multi):
+#     VBs.append(ViBeSegmentation(n=3, init_image=init[:,i*width_multi:(i+1)*width_multi], n_min=3, r=40, phi=1))
+VB = ViBeSegmentation(n=3, init_image=init, n_min=3, r=40, phi=1)
+print("Debug")
+# def seg(arg):
+#     i, image = arg
+#     return VBs[i].detect(image[:,i*width_multi:(i+1)*width_multi], do_neighbours=False)
+# from multiprocessing import Pool
+# segmentation_pool = Pool(n_multi)
+# detection_pool = Pool(n_multi)
+for i in range(10,20):
+    img = db.getImage(frame=i).data
+    # segmentation_pool.map(seg, [[j, img] for j in range(n_multi)])
+    mask = VB.detect(db.getImage(frame=i).data, do_neighbours=False)
+print("Detecting!")
+
+
+import matplotlib.pyplot as plt
+# for i in range(10306,10311):
+#     mask = VB.detect(db.getImage(frame=i).data, do_neighbours=False)
+#     fig, ax = plt.subplots(1)
+#     # ax.imshow(np.vstack((mask*2**8, db.getImage(frame=i).data)))
+#     ax.imshow(np.vstack((mask[:,16000:18000]*2**8, db.getImage(frame=i).data[:,16000:18000])))
+#     plt.show()
+
+# Initialize Detector
+AD = AreaDetector(object_area, object_number, upper_limit=10, lower_limit=1)
+print('Initialized')
+
+# SetMaskType
+if db.getMaskType(name="PT_Mask_Type"):
+    PT_Mask_Type = db.getMaskType(name="PT_Mask_Type")
+else:
+    PT_Mask_Type = db.setMaskType(name="PT_Mask_Type", color="#FF6633")
+
+# Define ClickPoints Marker
+if db.getMarkerType(name="PT_Detection_Marker"):
+    PT_Detection_Type = db.getMarkerType(name="PT_Detection_Marker")
+else:
+    PT_Detection_Type = db.setMarkerType(name="PT_Detection_Marker", color="#FFFF00", style='{"scale":0.8}')
+if db.getMarkerType(name="PT_Track_Marker"):
+    PT_Track_Type = db.getMarkerType(name="PT_Track_Marker")
+else:
+    PT_Track_Type = db.setMarkerType(name="PT_Track_Marker", color="#00FF00", mode=db.TYPE_Track)
+if db.getMarkerType(name="PT_Prediction_Marker"):
+    PT_Prediction_Type = db.getMarkerType(name= "PT_Prediction_Marker")
+else:
+    PT_Prediction_Type = db.setMarkerType(name="PT_Prediction_Marker", color="#0000FF")
+if db.getMarkerType(name="PT_Stitch_Marker"):
+    PT_Stitch_Type = db.getMarkerType(name="PT_Stitch_Marker")
+else:
+    PT_Stitch_Type = db.setMarkerType(name="PT_Stitch_Marker", color="#FF8800", mode=db.TYPE_Track)
+
+# Delete Old Tracks
+db.deleteMarkers(type=PT_Detection_Type)
+db.deleteMarkers(type=PT_Track_Type)
+db.deleteMarkers(type=PT_Prediction_Type)
+db.deleteMarkers(type=PT_Stitch_Type)
+
+db.deleteTracks(type=PT_Track_Type)
+db.deleteTracks(type=PT_Stitch_Type)
+
+
+
+# Start Iteration over Images
+print('Starting Iteration')
+images = db.getImageIterator(start_frame=20)#start_frame=start_frame, end_frame=3)
+# images = db.getImageIterator(start_frame=10272, end_frame=10311)#start_frame=start_frame, end_frame=3)
+
+from multiprocessing import Process,Queue,Pipe
+
+segmentation_queue = Queue(5)
+SegMap_write_queue = Queue(5)
+Detection_write_queue = Queue()
+Track_write_queue = Queue()
+
+# segmentation_pipe_in, segmentation_pipe_out = Pipe()
+detection_pipe_in, detection_pipe_out = Pipe()
+tracking_pipe_in, tracking_pipe_out = Pipe()
+# writing_pipe_in, writing_pipe_out = Pipe()
+
+def load(images):
+    # images = args
+    for i, img in enumerate(images):
+        # while True:
+        #     if not segmentation_pipe_out.poll():
+        #         segmentation_pipe_in.send([i, img.data])
+        #         break
+        while True:
+            if not segmentation_queue.full():
+                segmentation_queue.put([img.sort_index, img.data])
+                print("loaded image %s"%i)
+                break
+
+def segmentate():
+    while True:
+        i, img = segmentation_queue.get()
+        print("starting Segmentation %s"%i)
+        # i, img = segmentation_pipe_out.recv()
+        #  SegMap = segmentation_pool.map(seg, [[j, img] for j in range(n_multi)])
+        #  SegMap = np.hstack(SegMap)
+        SegMap = VB.detect(img, do_neighbours=False)
+        SegMap_write_queue.put([i, SegMap])
+        detection_pipe_in.send([i, SegMap])
+        print("Segmentated Image %s"%i)
+
+def detect():
+    while True:
+        # i, SegMap = detection_queue.get()
+        i, SegMap = detection_pipe_out.recv()
+        Positions = [pos for pos in AD.detect(SegMap) if np.sum(((pos.PositionX-X.T[0])**2+(pos.PositionY-X.T[1])**2)**0.5 < 200) < 10]
+        Detection_write_queue.put([i, Positions])
+        tracking_pipe_in.send([i, Positions])
+        print("Found %s animals!"%len(Positions))
+
+def track():
+    # i, Positions = tracking_queue.get()
+    while True:
+        i, Positions = tracking_pipe_out.recv()
+        MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
+        if len(Positions) > 0:
+            with db.db.atomic() as transaction:
+                print("Tracking %s"%i)
+                # Update Filter with new Detections
+                MultiKal.update(z=Positions, i=i)
+                Track_write_queue.put([i, MultiKal.ActiveFilters.keys()])
+                # writing_pipe_in.send([i, MultiKal.ActiveFilters.keys()])
+        print("Got %s Filters in frame %s" % (len(MultiKal.ActiveFilters.keys()), i))
+
+def mask_writing():
+    while True:
+        i, Mask = SegMap_write_queue.get()
+        db.setMask(frame=i, data=(PT_Mask_Type.index*(~Mask).astype(np.uint8)))
+        print("Set Mask %s!"%i)
+
+def detection_writing():
+    while True:
+        i, Positions = Detection_write_queue.get()
+        with db.db.atomic() as transaction:
+            for pos in Positions:
+                detection_marker = db.setMarker(frame=i,
+                                                x=pos.PositionY, y=pos.PositionX,
+                                                text="Detection %s" % (pos.Log_Probability),
+                                                type=PT_Detection_Type)
+                db.setMeasurement(marker=detection_marker, log=pos.Log_Probability, x=pos.PositionX, y=pos.PositionY)
+
+def track_writing():
+    while True:
+        i, track_keys = Track_write_queue.get()
+        with db.db.atomic() as transaction:
+            for k in track_keys:
+                if not db.getTrack(k+100):
+                    track = db.setTrack(type=PT_Track_Type, id=100+k)
+                else:
+                    track = db.getTrack(id=100+k)
+
+                if i in MultiKal.ActiveFilters[k].Measurements.keys():
+                    meas = MultiKal.ActiveFilters[k].Measurements[i]
+                    x = meas.PositionX
+                    y = meas.PositionY
+                    prob = MultiKal.ActiveFilters[k].log_prob(keys=[i], compare_bel=False)
+                    db.setMarker(frame=i, x=y, y=x,
+                                 track=track,
+                                 text="Track %s, Prob %.2f" % (k, meas.Log_Probability),
+                                 type=PT_Track_Type)
+
+                if i in MultiKal.ActiveFilters[k].Predicted_X.keys():
+                    pred_x, pred_y = MultiKal.Model.measure(MultiKal.ActiveFilters[k].Predicted_X[i])
+                    db.setMarker(frame=i, x=pred_y, y=pred_x,
+                                 text="Prediction %s" % (k),
+                                 type=PT_Track_Type)
+
+loading = Process(target=load, args=(images,))
+segmentation = Process(target=segmentate)
+detection = Process(target=detect)
+tracking = Process(target=track)
+writing_SegMaps = Process(target=mask_writing)
+writing_Detections = Process(target=detection_writing)
+writing_Tracks = Process(target=track_writing)
+
+loading.start()
+segmentation.start()
+detection.start()
+tracking.start()
+writing_SegMaps.start()
+writing_Detections.start()
+writing_Tracks.start()
+
+# loading.join()
+# segmentation.join()
+# detection.join()
+# tracking.join()
+
+start = time()
+while True:
+    i, keys = writing_pipe_out.recv()
+    print("Done with %s in %s s"%(i, time()-start))
+    start = time()
+# start = time()
+# for image in images:
+#     print(time()-start)
+#     start = time()
+#     i = image.get_id()
+#
+#     # Prediction step
+#     MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
+#
+#     # Segmentation step
+#     # SegMap = VB.detect(image.data, do_neighbours=False)
+#     SegMap = p.map(seg, [[i, image.data] for i in range(n_multi)])
+#     SegMap = np.hstack(SegMap)
+#     print(SegMap.shape)
+#
+#
+#     print(time()-start)
+#     start = time()
+
+    # print(SegMap.shape)
+    # print(image.data.shape)
+
+    # Setting Mask in ClickPoints
+    # db.setMask(image=image, data=(PT_Mask_Type.index*(~SegMap).astype(np.uint8)))
+    # print("Mask save")
+
+    #
+    # SegMap = db.getMask(image=image).data
+    # Mask = ~SegMap.astype(bool)
+    # Positions = AD.detect(Mask)
+    # # print("Found %s animals!"%len(Positions))
+    #
+    # X = np.asarray([[pos.PositionX, pos.PositionY] for pos in Positions])
+    # a=[]
+    # for pos in Positions:
+    #     dists = ((pos.PositionX-X.T[0])**2+(pos.PositionY-X.T[1])**2)**0.5
+    #     # print(np.sum([0 < dists < 200]))
+    #     a.append(np.sum(dists<200))
+    # try:
+    #     print(np.mean(a), np.std(a), np.amin(a), np.amax(a))
+    # except ValueError:
+    #     pass
+    # Positions = [pos for pos in Positions if np.sum(((pos.PositionX-X.T[0])**2+(pos.PositionY-X.T[1])**2)**0.5 < 200) < 10]
+    # print("Found %s animals!"%len(Positions))
+    #
+    # #if np.all(Positions != np.array([])):
+    # if len(Positions)==0:
+    #     continue
+    #
+    # # for pos1 in Positions:
+    # #     a = float(pos1.Log_Probability)
+    # #     dists = [np.linalg.norm([pos1.PositionX-pos2.PositionX,
+    # #                                                          pos1.PositionY - pos2.PositionY]) for pos2 in Positions]
+    # #     pos1.Log_Probability -= np.log(np.mean(dists))
+    # #     print(str(a), str(pos1.Log_Probability), str(a-pos1.Log_Probability))
+    # with db.db.atomic() as transaction:
+    #     print("Tracking")
+    #     # Update Filter with new Detections
+    #     MultiKal.update(z=Positions, i=i)
+    #     #
+    #     # # Get Tracks from Filters
+    #     # for k in MultiKal.ActiveFilters.keys():
+    #     #     x = y = np.nan
+    #     #     # Case 1: we tracked something in this filter
+    #     #     if i in MultiKal.ActiveFilters[k].Measurements.keys():
+    #     #         meas = MultiKal.ActiveFilters[k].Measurements[i]
+    #     #         x = meas.PositionX
+    #     #         y = meas.PositionY
+    #     #         prob = MultiKal.ActiveFilters[k].log_prob(keys=[i], compare_bel=False)
+    #     #
+    #     #     # Case 3: we want to see the prediction markers
+    #     #     if i in MultiKal.ActiveFilters[k].Predicted_X.keys():
+    #     #         pred_x, pred_y = MultiKal.Model.measure(MultiKal.ActiveFilters[k].Predicted_X[i])
+    #     #
+    #     #     # For debugging detection step we set markers at the log-scale detections
+    #     #     try:
+    #     #         db.setMarker(image=image, x=y, y=x, text="Detection %s, %s"%(k, meas.Log_Probability), type=marker_type)
+    #     #     except:
+    #     #         pass
+    #     #
+    #     #     # Write assigned tracks to ClickPoints DataBase
+    #     #     if i in MultiKal.ActiveFilters[k].Predicted_X.keys():
+    #     #         pred_marker = db.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
+    #     #                                type=marker_type3)
+    #     #
+    #     #     if np.isnan(x) or np.isnan(y):
+    #     #         pass
+    #     #     else:
+    #     #         if db.getTrack(k+100):
+    #     #             track_marker = db.setMarker(image=image, type=marker_type2, track=(100+k), x=y, y=x,
+    #     #                          text='Track %s, Prob %.2f' % ((100+k), prob))
+    #     #             # print('Set Track(%s)-Marker at %s, %s' % ((100+k), x, y))
+    #     #         else:
+    #     #             db.setTrack(marker_type2, id=100+k, hidden=False)
+    #     #             if k == MultiKal.CriticalIndex:
+    #     #                 db.setMarker(image=image, type=marker_type, x=y, y=x,
+    #     #                              text='Track %s, Prob %.2f, CRITICAL' % ((100+k), prob))
+    #     #             track_marker = db.setMarker(image=image, type=marker_type2, track=100+k, x=y, y=x,
+    #     #                          text='Track %s, Prob %.2f' % ((100+k), prob))
+    #     #             # print('Set new Track %s and Track-Marker at %s, %s' % ((100+k), x, y))
+    #     #
+    #     #         # Save measurement in Database
+    #     #         db.setMeasurement(marker=track_marker, log=meas.Log_Probability, x=x, y=y)
+    # print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
+
+print('done with Tracking')
+
+def trans_func(pos):
+    x, y, z = pos
+    return y, x, z
+
+# # Initialize Stitcher
+# stitcher = Heublein_Stitcher(25, 0., 50, 60, 200, 5)
+# stitcher.add_PT_Tracks_from_Tracker(MultiKal.Filters)
+# print("Initialized Stitcher")
+# stitcher.stitch()
+# stitcher.save_tracks_to_db(file_path, marker_type4, function=trans_func)
+# print("Written Stitched Tracks to DB")
+#
+# db.deleteTracks(id=[track.id for track in db.getTracks(type=marker_type4) if len(track.markers) < 3])
+# print("Deleted short tracks")
+

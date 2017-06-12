@@ -42,6 +42,7 @@ from PenguTrack.DataFileExtended import DataFileExtended
 from PenguTrack.Filters import Filter
 from PenguTrack.Filters import KalmanFilter
 from PenguTrack.Filters import MultiFilter
+# from PenguTrack.Filters import ThreadedMultiFilter as MultiFilter
 from PenguTrack.Models import VariableSpeed
 from PenguTrack.Detectors import ViBeSegmentation
 from PenguTrack.Detectors import Measurement as Pengu_Meas
@@ -77,14 +78,17 @@ MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
 # MultiKal.LogProbabilityThreshold = -300.
 MultiKal.MeasurementProbabilityThreshold = 0.
 # MultiKal = MultiFilter(Filter, model)
+print("Initialized Tracker")
 
 # Init_Background from Image_Median
 # Initialize segmentation with init_image and start updating the first 10 frames.
 N = db.getImages().count()
 init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
-                           for j in np.arange(10252,10262)], axis=0), dtype=np.int)
+                           for j in np.arange(0,10)], axis=0), dtype=np.int)
+# VB = ViBeSegmentation(n=2, init_image=init, n_min=2, r=25, phi=1)
 VB = ViBeSegmentation(n=3, init_image=init, n_min=3, r=40, phi=1)
-for i in range(10262,10272):
+print("Debug")
+for i in range(10,20):
     mask = VB.detect(db.getImage(frame=i).data, do_neighbours=False)
 print("Detecting!")
 
@@ -98,7 +102,7 @@ import matplotlib.pyplot as plt
 #     plt.show()
 
 # Initialize Detector
-AD = AreaDetector(object_area, object_number, upper_limit=5, lower_limit=1)
+AD = AreaDetector(object_area, object_number, upper_limit=10, lower_limit=1)
 print('Initialized')
 
 # SetMaskType
@@ -138,10 +142,12 @@ db.deleteTracks(type=marker_type4)
 
 # Start Iteration over Images
 print('Starting Iteration')
-# images = db.getImageIterator(start_frame=10306, end_frame=10311)#start_frame=start_frame, end_frame=3)
-images = db.getImageIterator(start_frame=10272, end_frame=10311)#start_frame=start_frame, end_frame=3)
+images = db.getImageIterator(start_frame=20)#start_frame=start_frame, end_frame=3)
+# images = db.getImageIterator(start_frame=10272, end_frame=10311)#start_frame=start_frame, end_frame=3)
 
+start = time()
 for image in images:
+    print(time()-start)
     start = time()
     i = image.get_id()
 
@@ -151,85 +157,88 @@ for image in images:
     # Segmentation step
     SegMap = VB.detect(image.data, do_neighbours=False)
 
-    print(SegMap.shape)
-    print(image.data.shape)
+    print(time()-start)
+    start = time()
+
+    # print(SegMap.shape)
+    # print(image.data.shape)
 
     # Setting Mask in ClickPoints
     db.setMask(image=image, data=(PT_Mask_Type.index*(~SegMap).astype(np.uint8)))
     print("Mask save")
-#
-#     #
-#     SegMap = db.getMask(image=image).data
-#     Mask = ~SegMap.astype(bool)
-#     Positions = AD.detect(Mask)
-#     print("Found %s animals!"%len(Positions))
-#
-#     #if np.all(Positions != np.array([])):
-#     if len(Positions)==0:
-#         continue
-#
-#     # for pos1 in Positions:
-#     #     a = float(pos1.Log_Probability)
-#     #     dists = [np.linalg.norm([pos1.PositionX-pos2.PositionX,
-#     #                                                          pos1.PositionY - pos2.PositionY]) for pos2 in Positions]
-#     #     pos1.Log_Probability -= np.log(np.mean(dists))
-#     #     print(str(a), str(pos1.Log_Probability), str(a-pos1.Log_Probability))
-#     with db.db.atomic() as transaction:
-#         print("Tracking")
-#         # Update Filter with new Detections
-#         MultiKal.update(z=Positions, i=i)
-#
-#         # Get Tracks from Filters
-#         for k in MultiKal.ActiveFilters.keys():
-#             x = y = np.nan
-#             # Case 1: we tracked something in this filter
-#             if i in MultiKal.ActiveFilters[k].Measurements.keys():
-#                 meas = MultiKal.ActiveFilters[k].Measurements[i]
-#                 x = meas.PositionX
-#                 y = meas.PositionY
-#                 prob = MultiKal.ActiveFilters[k].log_prob(keys=[i], compare_bel=False)
-#
-#             # Case 3: we want to see the prediction markers
-#             if i in MultiKal.ActiveFilters[k].Predicted_X.keys():
-#                 pred_x, pred_y = MultiKal.Model.measure(MultiKal.ActiveFilters[k].Predicted_X[i])
-#
-#             # For debugging detection step we set markers at the log-scale detections
-#             try:
-#                 db.setMarker(image=image, x=y, y=x, text="Detection %s, %s"%(k, meas.Log_Probability), type=marker_type)
-#             except:
-#                 pass
-#
-#             # Write assigned tracks to ClickPoints DataBase
-#             if i in MultiKal.ActiveFilters[k].Predicted_X.keys():
-#                 pred_marker = db.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
-#                                        type=marker_type3)
-#
-#             if np.isnan(x) or np.isnan(y):
-#                 pass
-#             else:
-#                 if db.getTrack(k+100):
-#                     track_marker = db.setMarker(image=image, type=marker_type2, track=(100+k), x=y, y=x,
-#                                  text='Track %s, Prob %.2f' % ((100+k), prob))
-#                     print('Set Track(%s)-Marker at %s, %s' % ((100+k), x, y))
-#                 else:
-#                     db.setTrack(marker_type2, id=100+k, hidden=False)
-#                     if k == MultiKal.CriticalIndex:
-#                         db.setMarker(image=image, type=marker_type, x=y, y=x,
-#                                      text='Track %s, Prob %.2f, CRITICAL' % ((100+k), prob))
-#                     track_marker = db.setMarker(image=image, type=marker_type2, track=100+k, x=y, y=x,
-#                                  text='Track %s, Prob %.2f' % ((100+k), prob))
-#                     print('Set new Track %s and Track-Marker at %s, %s' % ((100+k), x, y))
-#
-#                 # Save measurement in Database
-#                 db.setMeasurement(marker=track_marker, log=meas.Log_Probability, x=x, y=y)
-#     print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
-#
-# print('done with Tracking')
-#
-# def trans_func(pos):
-#     x, y, z = pos
-#     return y, x, z
-#
+
+
+    SegMap = db.getMask(image=image).data
+    Mask = ~SegMap.astype(bool)
+    Positions = AD.detect(Mask)
+    Positions = [pos for pos in Positions if np.sum(((pos.PositionX-X.T[0])**2+(pos.PositionY-X.T[1])**2)**0.5 < 200) < 10]
+    print("Found %s animals!"%len(Positions))
+
+    if len(Positions)==0:
+        continue
+
+    # for pos1 in Positions:
+    #     a = float(pos1.Log_Probability)
+    #     dists = [np.linalg.norm([pos1.PositionX-pos2.PositionX,
+    #                                                          pos1.PositionY - pos2.PositionY]) for pos2 in Positions]
+    #     pos1.Log_Probability -= np.log(np.mean(dists))
+    #     print(str(a), str(pos1.Log_Probability), str(a-pos1.Log_Probability))
+    with db.db.atomic() as transaction:
+        print("Tracking")
+        # Update Filter with new Detections
+        MultiKal.update(z=Positions, i=i)
+
+        # Get Tracks from Filters
+        for k in MultiKal.ActiveFilters.keys():
+            x = y = np.nan
+            # Case 1: we tracked something in this filter
+            if i in MultiKal.ActiveFilters[k].Measurements.keys():
+                meas = MultiKal.ActiveFilters[k].Measurements[i]
+                x = meas.PositionX
+                y = meas.PositionY
+                prob = MultiKal.ActiveFilters[k].log_prob(keys=[i], compare_bel=False)
+
+            # Case 3: we want to see the prediction markers
+            if i in MultiKal.ActiveFilters[k].Predicted_X.keys():
+                pred_x, pred_y = MultiKal.Model.measure(MultiKal.ActiveFilters[k].Predicted_X[i])
+
+            # For debugging detection step we set markers at the log-scale detections
+            try:
+                db.setMarker(image=image, x=y, y=x, text="Detection %s, %s"%(k, meas.Log_Probability), type=marker_type)
+            except:
+                pass
+
+            # Write assigned tracks to ClickPoints DataBase
+            if i in MultiKal.ActiveFilters[k].Predicted_X.keys():
+                pred_marker = db.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
+                                       type=marker_type3)
+
+            if np.isnan(x) or np.isnan(y):
+                pass
+            else:
+                if db.getTrack(k+100):
+                    track_marker = db.setMarker(image=image, type=marker_type2, track=(100+k), x=y, y=x,
+                                 text='Track %s, Prob %.2f' % ((100+k), prob))
+                    # print('Set Track(%s)-Marker at %s, %s' % ((100+k), x, y))
+                else:
+                    db.setTrack(marker_type2, id=100+k, hidden=False)
+                    if k == MultiKal.CriticalIndex:
+                        db.setMarker(image=image, type=marker_type, x=y, y=x,
+                                     text='Track %s, Prob %.2f, CRITICAL' % ((100+k), prob))
+                    track_marker = db.setMarker(image=image, type=marker_type2, track=100+k, x=y, y=x,
+                                 text='Track %s, Prob %.2f' % ((100+k), prob))
+                    # print('Set new Track %s and Track-Marker at %s, %s' % ((100+k), x, y))
+
+                # Save measurement in Database
+                db.setMeasurement(marker=track_marker, log=meas.Log_Probability, x=x, y=y)
+    print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
+
+print('done with Tracking')
+
+def trans_func(pos):
+    x, y, z = pos
+    return y, x, z
+
 # # Initialize Stitcher
 # stitcher = Heublein_Stitcher(25, 0., 50, 60, 200, 5)
 # stitcher.add_PT_Tracks_from_Tracker(MultiKal.Filters)

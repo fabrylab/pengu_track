@@ -753,9 +753,9 @@ class Segmentation(object):
     def __init__(self):
         super(Segmentation, self).__init__()
 
-    def detect(self, image):
-        out = self.segmentate(image)
-        self.update(out, image)
+    def detect(self, image, *args, **kwargs):
+        out = self.segmentate(image, *args, **kwargs)
+        self.update(out, image, *args, **kwargs)
         return out
 
     def update(self,mask, image):
@@ -1089,14 +1089,14 @@ class ViBeSegmentation(Segmentation):
         if init_image is not None:
             data = np.array(init_image, ndmin=2)
             self.__dt__ = smallest_dtype(data)
+            print(self.__dt__)
             if len(data.shape) == 3:
-                self.Samples = np.tile(data, self.N
-                                       ).astype(self.__dt__
-                                                            ).reshape(data.shape+(self.N,)
+                self.Samples = np.tile(data.astype(self.__dt__), self.N
+                                       ).reshape(data.shape+(self.N,)
                                                                       ).transpose((3, 0, 1, 2))
                 self.Skale = np.mean(rgb2gray(data))
             elif len(data.shape) == 2:
-                self.Samples = np.tile(data, (self.N, 1, 1,)).astype(self.__dt__)
+                self.Samples = np.tile(data.astype(self.__dt__), (self.N, 1, 1,))
                 self.Skale = np.mean(data)
             else:
                 raise ValueError('False format of data.')
@@ -1225,15 +1225,20 @@ class ViBeSegmentation(Segmentation):
         if len(data.shape) == 3:
             # self.SegMap = (np.sum((np.sum((self.Samples.astype(np.int32)-data)**2, axis=-1)**0.5/np.sqrt(data.shape[-1])
             #                        > self.R), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
-            diff = self.Samples.astype(next_dtype(-data))
+            diff = self.Samples.astype(next_dtype(-1*data))
             diff = np.abs(rgb2gray(diff-data))
             self.SegMap = (np.sum((diff
                                    > self.R).astype(np.uint8), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
         elif len(data.shape) == 2:
-            diff = self.Samples.astype(next_dtype(data))
-            diff -= data
-            self.SegMap = (np.sum((np.abs(diff) > self.R).astype(np.uint8), axis=0, dtype=np.uint8)
+            # diff = self.Samples
+            # diff[self.Samples>data] = (self.Samples -data)[self.Samples>data]
+            # diff[self.Samples<=data] = (data-self.Samples)[self.Samples<=data]
+            diff = np.asarray([np.amax([sample, data],axis=0)-np.amin([sample,data], axis=0) for sample in self.Samples])
+            self.SegMap = (np.sum((diff > self.R).astype(np.uint8), axis=0, dtype=np.uint8)
                            >= self.N_min).astype(bool)
+            # self.SegMap = (np.sum((np.abs(self.Samples.astype(next_dtype(-1*data))- data.astype(next_dtype(-1*data))
+            #                               ) > self.R).astype(np.uint8), axis=0, dtype=np.uint8)
+            #                >= self.N_min).astype(bool)
         else:
             raise ValueError('False format of data.')
         # self.SegMap[self.Mask] = False
@@ -1248,7 +1253,6 @@ class ViBeSegmentation(Segmentation):
 
         if self.width is None or self.height is None:
             self.width, self.height = data.shape[:2]
-
         if len(data.shape) == 3:
             this_skale = np.mean(rgb2gray(data))
         elif len(data.shape) == 2:
@@ -1261,13 +1265,20 @@ class ViBeSegmentation(Segmentation):
         if self.Skale is None:
             self.Skale = this_skale
 
-        data = (data.astype(float)*(self.Skale/this_skale)).astype(np.int32)
+        if self.__dt__ is None:
+            self.__dt__ = smallest_dtype(data)
 
+        data = (data.astype(float)*(self.Skale/this_skale)).astype(self.__dt__)
         image_mask = (np.random.rand(self.width, self.height)*self.Phi < 1) & mask
 
         sample_index = np.random.randint(0, self.N)
-        self.Samples[sample_index][image_mask] = (data[image_mask]).astype(np.uint8)
+        self.Samples[sample_index][image_mask] = (data[image_mask]).astype(self.__dt__)
 
+        do_neighbours=False
+        # if do_neighbours:
+        #     n= np.sum(image_mask)
+        # else:
+        #     n=0
         n = np.sum(image_mask)
         if n > 0 and do_neighbours:
             x, y = np.array(np.meshgrid(np.arange(self.width), np.arange(self.height))).T[image_mask].T
