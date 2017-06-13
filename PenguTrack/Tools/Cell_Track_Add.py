@@ -15,6 +15,7 @@ from PenguTrack.Models import RandomWalk
 from PenguTrack.Detectors import SimpleAreaDetector2 as AreaDetector
 from PenguTrack.Detectors import TresholdSegmentation, VarianceSegmentation
 from PenguTrack.Detectors import Measurement as PT_Measurement
+from PenguTrack.DataFileExtended import DataFileExtended
 
 import scipy.stats as ss
 from scipy.ndimage.measurements import label
@@ -25,50 +26,367 @@ import clickpoints
 # MaxI_db = clickpoints.DataFile("/home/alex/2017-03-10_Tzellen_microwells_bestdata/30sec/max_Indizes.cdb")
 res = 6.45/10
 
-__icon__ = "fa.coffee"
+# __icon__ = "fa.coffee"
 
 # Connect to database
-start_frame, database, port = clickpoints.GetCommandLineArgs()
-db = clickpoints.DataFile(database)
-com = clickpoints.Commands(port, catch_terminate_signal=True)
-# append Database if necessary
-import peewee
-
-class Measurement(db.base_model):
-    # full definition here - no need to use migrate
-    marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name="measurement", on_delete='CASCADE') # reference to frame and track via marker!
-    log = peewee.FloatField(default=0)
-    x = peewee.FloatField()
-    y = peewee.FloatField()
-    z = peewee.FloatField()
-
-if "measurement" not in db.db.get_tables():
-    try:
-        db.db.connect()
-    except peewee.OperationalError:
-        pass
-    Measurement.create_table()#  important to respect unique constraint
-
-db.table_measurement = Measurement   # for consistency
+# start_frame, database, port = clickpoints.GetCommandLineArgs()
+# db = clickpoints.DataFile(database)
+# db = DataFileExtended(database)
+# com = clickpoints.Commands(port, catch_terminate_signal=True)
 
 
-def setMeasurement(marker=None, log=None, x=None, y=None, z=None):
-    assert not (marker is None), "Measurement must refer to a marker."
-    try:
-        item = db.table_measurement.get(marker=marker)
-    except peewee.DoesNotExist:
-        item = db.table_measurement()
+class Addon(clickpoints.Addon):
+    def __init__(self, *args, **kwargs):
+        clickpoints.Addon.__init__(self, *args, **kwargs)
+        # super(Addon, self).__init__(self, database, command=None, name="")
+        # self.db
+        self.db = DataFileExtended(self.db.db.database)
 
-    dictionary = dict(marker=marker, x=x, y=y, z=z)
-    for key in dictionary:
-        if dictionary[key] is not None:
-            setattr(item, key, dictionary[key])
-    item.save()
-    return item
+        self.addOption(key="Min_Object_Size", display_name="min. Object Size", default=5, value_type="int",
+                       min_value=1, max_value=100,
+                       tooltip="Minimal size of areas in mask, that are accepted as an object.")
+        self.addOption(key="Max_Object_Size", display_name="max. Object Size", default=30, value_type="int",
+                       min_value=1, max_value=100,
+                       tooltip="Maximal size of areas in mask, that are accepted as an object.")
+        self.addOption(key="Object_Number", display_name="approximate Object Number", default=200, value_type="int",
+                       min_value=1, max_value=1000,
+                       tooltip="Approximate Number of objects to track in the image.")
+        self.addOption(key="Pre_Stitching_Dist_XY", display_name="Pre-Stitching Distance in XY (px)", default=10, value_type="int",
+                       min_value=1, max_value=1000,
+                       tooltip="Maximal distance allowed during pre-stitching (in XY-plane)")
+        self.addOption(key="Pre_Stitching_Dist_Z", display_name="Pre-Stitching Distance in Z (px)", default=21, value_type="int",
+                       min_value=1, max_value=1000,
+                       tooltip="Maximal distance allowed during pre-stitching (in Z-direction)")
+        self.addOption(key="Prediction_Error", display_name="Prediction unvertainty", default=2, value_type="int",
+                       min_value=1, max_value=10,
+                       tooltip="Uncertainty faktor, describing how many object-sizes the prediction is allowed to fail, while still allowing track-assignment")
+        self.addOption(key="Detection_Error", display_name="Detection Error", default=1, value_type="int",
+                       min_value=1, max_value=10,
+                       tooltip="Uncertainty faktor, describing how many object-sizes the detection can deviate from the actual object position")
+        self.addOption(key="Luminance_Threshold", display_name="Luminance Threshold", default=2**11, value_type="int",
+                       min_value=1, max_value=2**12,
+                       tooltip="Threshold for luminance segmentation of the image")
+        self.addOption(key="Variance_Threshold", display_name="Variance Threshold", default=-7, value_type="int",
+                       min_value=-100, max_value=100,
+                       tooltip="Threshold for variance segmentation of the image")
 
-db.setMeasurement = setMeasurement
-# # get the images
-# images = db.getImageIterator(start_frame=start_frame)
+        db = self.db
+        # Define ClickPoints Marker
+        marker_type = db.getMarkerType(name="PT_Detection_Marker")
+        if not marker_type:
+            marker_type = db.setMarkerType(name="PT_Detection_Marker", color="#FF0000", style='{"scale":1.2}')
+        db.deleteMarkers(type=marker_type)
+        self.detection_marker_type = marker_type
+
+        marker_type2 = db.getMarkerType(name="PT_Track_Marker")
+        if not marker_type2:
+            marker_type2 = db.setMarkerType(name="PT_Track_Marker", color="#00FF00", mode=db.TYPE_Track)
+        db.deleteMarkers(type=marker_type2)
+        self.track_marker_type = marker_type2
+
+        marker_type3 = db.getMarkerType(name="PT_Prediction_Marker")
+        if not marker_type3:
+            marker_type3 = db.setMarkerType(name="PT_Prediction_Marker", color="#0000FF")
+        db.deleteMarkers(type=marker_type3)
+        self.prediction_marker_type = marker_type3
+
+        if not db.getMaskType(name="PT_SegMask"):
+            self.mask_type = db.setMaskType(name="PT_SegMask", color="#FF59E3")
+        else:
+            self.mask_type = db.getMaskType(name="PT_SegMask")
+        self.mask_type_id = self.mask_type.id
+
+        # Delete Old Tracks
+        db.deleteTracks(type=self.track_marker_type)
+
+        # Initialize Pengutrack Framework
+        # Initialize physical model as 3d random walk with 1 Hz frame-rate
+        self.model = RandomWalk(dim=3)
+
+        # Set uncertainties
+        self.q = self.getOption("Detection_Error")
+        self.r = self.getOption("Prediction_Error")
+        self.object_number = self.getOption("Object_Number")
+        self.object_area = (self.getOption("Min_Object_Size")+self.getOption("Max_Object_Size"))/2
+        self.object_size = int(np.sqrt(self.object_area)/2.)
+        self.luminance_treshold = float(self.getOption("Luminance_Threshold"))/2**12
+        self.variance_treshold = 2**(float(self.getOption("Luminance_Threshold"))/10.)
+
+        Q = np.diag(
+            [self.q * self.object_size, self.q * self.object_size, self.q * self.object_size])  # Prediction uncertainty
+        R = np.diag([self.r * self.object_size, self.r * self.object_size,
+                     self.r * self.object_size])  # Measurement uncertainty
+        State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filter
+        Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
+
+        # Initialize Tracker
+        self.FilterType = KalmanFilter
+        self.Tracker = MultiFilter(self.FilterType, self.model, np.diag(Q),
+                                   np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
+        self.Tracker.AssignmentProbabilityThreshold = 0.
+        self.Tracker.MeasurementProbabilityThreshold = 0.
+        self.Tracker.LogProbabilityThreshold = -19.
+
+        # Init Segmentation Module with Init_Image
+        self.Segmentation = TresholdSegmentation(treshold=self.luminance_treshold,
+                                                 reskale=False)
+        self.Segmentation2 = VarianceSegmentation(self.variance_treshold, int(np.ceil(np.sqrt(self.object_area) / 2.)))
+
+        # Init Detection Module
+        self.Detector = AreaDetector(self.object_area, self.object_number)
+        self.Detector.LowerLimit = self.getOption("Min_Object_Size")
+        self.Detector.UpperLimit = self.getOption("Max_Object_Size")
+
+        self.cp.reloadTypes()
+        self.cp.reloadMarker()
+
+    def optionsChanged(self):
+        self.pt_set_lum_treshold(self.getOption(key="Luminance_Threshold"))
+        self.pt_set_var_treshold(self.getOption(key="Variance_Threshold"))
+        self.pt_set_distxy_boundary(self.getOption(key="Pre_Stitching_Dist_XY"))
+        self.pt_set_distz_boundary(self.getOption(key="Pre_Stitching_Dist_Z"))
+        self.pt_set_number(self.getOption(key="Object_Number"))
+        self.pt_set_minsize(self.getOption(key="Min_Object_Size"))
+        self.pt_set_maxsize(self.getOption(key="Max_Object_Size"))
+        self.pt_set_q(self.getOption(key="Prediction_Error"))
+        self.pt_set_r(self.getOption(key="Detection_Error"))
+
+        SegMap = self.segmentate()
+        self.db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
+        Positions = self.detect()
+        for pos in Positions:
+            self.db.setMarker(frame=self.current_frame, layer=0, y=pos[0], x=pos[1], type=self.detection_marker_type)
+
+
+    def pt_set_lum_treshold(self, value):
+        self.luminance_treshold = float(value)/2**12
+        self.Segmentation.Treshold = self.luminance_treshold
+
+    def pt_set_var_treshold(self, value):
+        self.variance_treshold = 2**(value/10)
+        self.Segmentation2.Treshold = self.variance_treshold
+
+    def pt_set_distxy_boundary(self, value):
+        self.Detector.distxy_boundary = int(value)
+
+    def pt_set_distz_boundary(self, value, name):
+        self.Detector.distz_boundary = int(value)
+
+    def pt_set_number(self, value):
+        self.object_number = int(value)
+        self.Detector.ObjectNumber = self.object_number
+
+    def pt_set_minsize(self, value):
+        self.Detector.LowerLimit = int((value/2.)**2*np.pi)
+        self.object_area = int((self.Detector.LowerLimit + self.Detector.UpperLimit)/2.)
+        self.object_size = int(np.sqrt(self.object_area)/2.)
+        self.Detector.ObjectArea = self.object_area
+        self._update_filter_params_()
+
+    def pt_set_maxsize(self, value):
+        self.Detector.UpperLimit = int((value/2.)**2*np.pi)
+        self.object_area = int((self.Detector.LowerLimit + self.Detector.UpperLimit)/2.)
+        self.object_size = int(np.sqrt(self.object_area)/2.)
+        self.Detector.ObjectArea = self.object_area
+        self._update_filter_params_()
+
+    def pt_set_q(self, value):
+        self.q = int(value)
+        self.update_filter_params()
+
+    def pt_set_r(self, value):
+        self.r = int(value)
+        self.update_filter_params()
+
+
+    def segmentate(self):
+        self.current_frame = self.cp.CurrentImage()
+        self.current_image = self.db.getImage(frame=self.current_frame, layer=self.current_layer)
+        self.image_data = self.current_image.data
+        # temp = db.getImage(frame=self.current_frame, layer=2).data.astype(np.float)
+        # SegMap1 = self.Segmentation.segmentate(gaussian_filter(temp, 1.5))
+        #####
+        db = self.db
+        immin = db.getImage(frame=self.current_frame, layer=0).data
+        immin = 1.0 * np.asarray(immin)
+        immin -= np.percentile(immin, 0.01)
+        immin = (immin / np.percentile(immin, 99.99))
+        immin[immin > 1] = 1
+        immin[immin < 0] = 0
+        immax = db.getImage(frame=self.current_frame, layer=2).data
+        immax = 1.0 * np.asarray(immax)
+        immax -= np.percentile(immax, 0.01)
+        immax = (immax / np.percentile(immax, 99.99))
+        immax[immax > 1] = 1
+        immax[immax < 0] = 0
+        immax = 1 - immax
+        im = immin * immax
+        im = im - np.min(im)
+        im = im / np.max(im)
+        immin_ind = db.getImage(frame=self.current_frame, layer=1).data
+        immax_ind = db.getImage(frame=self.current_frame, layer=3).data
+        immin_ind = 1.0 * np.asarray(immin_ind)
+        immax_ind = 1.0 * np.asarray(immax_ind)
+        ind_diff = - immax_ind + immin_ind
+        ind_diff = np.abs(ind_diff - 5)
+        ind_diff = np.exp(-ind_diff / 2.)
+        ind_diff = gaussian_filter(ind_diff, 5)
+        imf = 1 - ((1 - im) * (ind_diff))
+
+        SegMap1 = self.Segmentation.segmentate(imf)
+        SegMap2 = self.Segmentation2.segmentate(db.getImage(frame=self.current_frame, layer=1).data)
+
+        SegMap = ~SegMap1# & SegMap2
+
+        return SegMap
+
+        # db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
+        # cp.ReloadMask()
+        # return SegMap
+
+    def detect(self):
+        self.current_frame = com.CurrentImage()
+        self.current_image = db.getImage(frame=self.current_frame, layer=self.current_layer)
+        self.image_data = self.current_image.data
+
+        db = self.db
+        mask = db.getMask(frame=self.current_frame, layer=0).data.astype(bool)
+        index_data = db.getImage(frame=self.current_frame, layer=1).data
+        Positions = self.Detector.detect(index_data, mask, only_for_detection=True)
+
+        return Positions
+
+        # for pos in Positions:
+        #     db.setMarker(frame=self.current_frame, layer=0, y=pos[0], x=pos[1], type=self.detection_marker_type)
+        # com.ReloadMarker()
+
+    def _update_filter_params_(self):
+        Q = np.diag([self.q * self.object_size * res,
+                     self.q * self.object_size * res,
+                     self.q * self.object_size * res])  # Prediction uncertainty
+        R = np.diag([self.r * self.object_size * res,
+                     self.r * self.object_size * res,
+                     self.r * self.object_size * res])  # Measurement uncertainty
+
+        State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filter
+        Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
+
+        self.Tracker.filter_args = [np.diag(Q), np.diag(R)]
+        self.Tracker.filter_kwargs = {"meas_dist":Meas_Dist, "state_dist":State_Dist}
+        for f in self.Tracker.Filters:
+            obj = self.Tracker.Filters.pop(f)
+            del obj
+        for f in self.Tracker.ActiveFilters:
+            obj = self.Tracker.Filters.pop(f)
+            del obj
+
+        self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=self.current_frame)
+
+    # def _update_filter_params_(self, *args, **kwargs):
+    #     self.Tracker.filter_args = args
+    #     self.Tracker.filter_kwargs = kwargs
+    #     for f in self.Tracker.Filters:
+    #         obj = self.Tracker.Filters.pop(f)
+    #         del obj
+    #     for f in self.Tracker.ActiveFilters:
+    #         obj = self.Tracker.Filters.pop(f)
+    #         del obj
+    #     self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=self.current_frame)
+
+    def run(self, start_frame=0):
+        images = self.db.getImageIterator(start_frame=start_frame)
+        db = self.db
+        for image in images:
+            i = image.sort_index
+            print("Doing Frame %s" % i)
+            # i = image.get_id()
+
+            Index_Image = db.getImage(frame=i, layer=1).data
+
+            # Prediction step
+            self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=i)
+
+            SegMap = self.segmentate()
+            self.db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
+            Positions = self.detect()
+            for pos in Positions:
+                self.db.setMarker(frame=self.current_frame, layer=0, y=pos[0], x=pos[1],
+                                  type=self.detection_marker_type)
+
+            if len(Positions) != 0:
+                # if np.all(Positions != np.array([])):
+
+                # Update Filter with new Detections
+                try:
+                    self.Tracker.update(z=Positions, i=i)
+                except TypeError:
+                    print(self.Tracker.filter_args)
+                    print(self.Tracker.filter_kwargs)
+                    raise
+
+                # Get Tracks from Filter (a little dirty)
+                for k in self.Tracker.Filters.keys():
+                    x = y = z = np.nan
+                    if i in self.Tracker.Filters[k].Measurements.keys():
+                        meas = self.Tracker.Filters[k].Measurements[i]
+                        x = meas.PositionX
+                        y = meas.PositionY
+                        z = meas.PositionZ
+                        prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
+                    elif i in self.Tracker.Filters[k].X.keys():
+                        meas = None
+                        x, y, z = self.Tracker.Model.measure(self.Tracker.Filters[k].X[i])
+                        prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
+
+                    if i in self.Tracker.Filters[k].Measurements.keys():
+                        pred_x, pred_y, pred_z = self.Tracker.Model.measure(self.Tracker.Filters[k].Predicted_X[i])
+                        prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
+
+                    x_img = y / res
+                    y_img = x / res
+                    pred_x_img = pred_y / res
+                    pred_y_img = pred_x / res
+                    try:
+                        db.setMarker(frame=i, layer=0, x=x_img, y=y_img, text="Detection %s" % k,
+                                     type=self.detection_marker_type)
+                    except:
+                        pass
+                    # Write assigned tracks to ClickPoints DataBase
+                    if np.isnan(x) or np.isnan(y):
+                        pass
+                    else:
+                        pred_marker = db.setMarker(frame=i, layer=0, x=pred_x_img, y=pred_y_img,
+                                                   text="Track %s" % (1000 + k), type=self.prediction_marker_type)
+                        if db.getTrack(k + 1000):
+                            track_marker = db.setMarker(frame=i, layer=0, type=self.track_marker_type,
+                                                        track=(1000 + k),
+                                                        x=x_img, y=y_img,
+                                                        text='Track %s, Prob %.2f, Z-Position %s' % (
+                                                        (1000 + k), prob, z))
+
+                            print('Set Track(%s)-Marker at %s, %s' % ((1000 + k), x_img, y_img))
+                        else:
+                            db.setTrack(self.track_marker_type, id=1000 + k, hidden=False)
+                            if k == self.Tracker.CriticalIndex:
+                                db.setMarker(image=i, layer=0, type=self.track_marker_type, x=x_img, y=y_img,
+                                             text='Track %s, Prob %.2f, CRITICAL' % ((1000 + k), prob))
+                            track_marker = db.setMarker(image=image, type=self.track_marker_type,
+                                                        track=1000 + k,
+                                                        x=x_img,
+                                                        y=y_img,
+                                                        text='Track %s, Prob %.2f, Z-Position %s' % (
+                                                        (1000 + k), prob, z))
+                            print('Set new Track %s and Track-Marker at %s, %s' % ((1000 + k), x_img, y_img))
+
+                        # db.setMeasurement(marker=track_marker, log=prob, x=x, y=y, z=z)
+                        try:
+                            db.db.connect()
+                        except peewee.OperationalError:
+                            pass
+                        meas_entry = Measurement(marker=track_marker, log=prob, x=x, y=y, z=z)
+                        meas_entry.save()
+
+
 
 class PenguTrackWindow(QtWidgets.QWidget):
 
@@ -764,12 +1082,12 @@ class PenguTrackWindow(QtWidgets.QWidget):
                 if not self.start_button.isChecked():
                     break
 
-
-# create qt application
-app = QtWidgets.QApplication(sys.argv)
-
-# start window
-window = PenguTrackWindow()
-window.show()
-app.exec_()
+#
+# # create qt application
+# app = QtWidgets.QApplication(sys.argv)
+#
+# # start window
+# window = PenguTrackWindow()
+# window.show()
+# app.exec_()
 
