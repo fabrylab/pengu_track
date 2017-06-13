@@ -171,6 +171,7 @@ for image in images:
     SegMap = db.getMask(image=image).data
     Mask = ~SegMap.astype(bool)
     Positions = AD.detect(Mask)
+    X = np.asarray([[pos.PositionX, pos.PositionY] for pos in Positions])
     Positions = [pos for pos in Positions if np.sum(((pos.PositionX-X.T[0])**2+(pos.PositionY-X.T[1])**2)**0.5 < 200) < 10]
     print("Found %s animals!"%len(Positions))
 
