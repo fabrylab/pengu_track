@@ -71,6 +71,11 @@ class Addon(clickpoints.Addon):
                        tooltip="Threshold for variance segmentation of the image")
 
         db = self.db
+
+        self.current_frame = self.cp.window.data_file.get_current_image()
+        self.current_layer = self.cp.window.data_file.get_current_layer()
+        self.current_image = self.db.getImage(frame=self.current_frame, layer=self.current_layer)
+
         # Define ClickPoints Marker
         marker_type = db.getMarkerType(name="PT_Detection_Marker")
         if not marker_type:
@@ -200,7 +205,8 @@ class Addon(clickpoints.Addon):
 
 
     def segmentate(self):
-        self.current_frame = self.cp.CurrentImage()
+        self.current_frame = self.cp.window.data_file.get_current_image()
+        self.current_layer = self.cp.window.data_file.get_current_layer()
         self.current_image = self.db.getImage(frame=self.current_frame, layer=self.current_layer)
         self.image_data = self.current_image.data
         # temp = db.getImage(frame=self.current_frame, layer=2).data.astype(np.float)
@@ -245,14 +251,14 @@ class Addon(clickpoints.Addon):
         # return SegMap
 
     def detect(self):
-        self.current_frame = com.CurrentImage()
-        self.current_image = db.getImage(frame=self.current_frame, layer=self.current_layer)
-        self.image_data = self.current_image.data
+        self.current_frame = self.cp.window.data_file.get_current_image()
+        self.current_layer = self.cp.window.data_file.get_current_layer()
+        self.current_image = self.db.getImage(frame=self.current_frame, layer=self.current_layer)
 
         db = self.db
         mask = db.getMask(frame=self.current_frame, layer=0).data.astype(bool)
         index_data = db.getImage(frame=self.current_frame, layer=1).data
-        Positions = self.Detector.detect(index_data, mask, only_for_detection=True)
+        Positions = self.Detector.detect(index_data, mask)#, only_for_detection=True)
 
         return Positions
 
@@ -310,7 +316,7 @@ class Addon(clickpoints.Addon):
             self.db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
             Positions = self.detect()
             for pos in Positions:
-                self.db.setMarker(frame=self.current_frame, layer=0, y=pos[0], x=pos[1],
+                self.db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX, x=pos.PositionY,
                                   type=self.detection_marker_type)
 
             if len(Positions) != 0:
@@ -383,8 +389,13 @@ class Addon(clickpoints.Addon):
                             db.db.connect()
                         except peewee.OperationalError:
                             pass
-                        meas_entry = Measurement(marker=track_marker, log=prob, x=x, y=y, z=z)
+                        meas_entry = self.db.setMeasurement(marker=track_marker, log=prob, x=x, y=y, z=z)
                         meas_entry.save()
+            # check if we should terminate
+            if self.cp.hasTerminateSignal():
+                print("Cancelled Tracking")
+                return
+
 
 
 
