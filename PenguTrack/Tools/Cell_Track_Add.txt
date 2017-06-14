@@ -1,0 +1,4 @@
+[addon]
+name=Cell_Track_Add
+file=Cell_Track_Add.py
+icon=fa.coffee
