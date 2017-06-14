@@ -71,7 +71,7 @@ class Heublein_Stitcher(Stitcher):
     Class for Stitching Tracks
     """
 
-    def __init__(self, a1, a2, a3, a4, max_cost, limiter):
+    def __init__(self, a1, a2, a3, a4, a5, max_cost, limiter):
         """
         Stitcher for connecting shorter tracks to longer ones depending on geometric and time-based differences.
 
@@ -89,6 +89,8 @@ class Heublein_Stitcher(Stitcher):
             Parameter for cost function track1 end_frame track2 start_frame distance.
         a4: float
             Parameter for cost function Frame distance for negative distances.
+        a5: float
+            Parameter for cost function extra cost for xy,z-distance for negative distances.
         max_cost: int
             Parameter for cost function.
         limiter: int
@@ -105,6 +107,7 @@ class Heublein_Stitcher(Stitcher):
         self.a2 = float(a2)
         self.a3 = float(a3)
         self.a4 = float(a4)
+        self.a5 = float(a5)
 
     def __ndargmin__(self,array):
         """
@@ -127,6 +130,7 @@ class Heublein_Stitcher(Stitcher):
         a2 = self.a2
         a3 = self.a3
         a4 = self.a4
+        a5 = self.a5
         # end_frame = self.end_frame
         end_frame = max([max(track.Measurements) for track in self.Tracks.values()])
         default = np.nan
@@ -140,7 +144,7 @@ class Heublein_Stitcher(Stitcher):
             dt = track2["start"] - track1["end"]
             # print(distxy, distz, dt)
             if dt < 0:
-                x = 3 * (a1 * distxy + a2 * distz) / (-dt + 1) + a4 * (-dt)
+                x = a5 * (a1 * distxy + a2 * distz) / (-dt + 1) + a4 * (-dt)
             else:
                 x = (a1 * distxy + a2 * distz) / (dt + 1) + a3 * dt
         return x
@@ -278,7 +282,6 @@ class Heublein_Stitcher(Stitcher):
                 else:
                     for frame in track2.Measurements:
                         track1.update(z=track2.Measurements[frame], i=frame)
-
                 self.Tracks.pop(group[1])
 
             len_test2 = len(self.Tracks)
@@ -291,19 +294,19 @@ class Heublein_Stitcher(Stitcher):
 
 if __name__ == '__main__':
     import shutil
-    shutil.copy("/home/user/CellTracking/layers_2017_05_30_PEJ.cdb",
-                "/home/user/CellTracking/layers_2017_05_30_PEJ_stitched_test.cdb")
+    shutil.copy("/home/user/CellTracking/layers_2017_06_07_SCA_stitched.cdb",
+                "/home/user/CellTracking/layers_2017_06_07_SCA_stitched_test.cdb")
 
     def resulution_correction(pos):
         x, y, z = pos
         res = 6.45/10
         return y/res, x/res, z/10.
 
-    stitcher = Heublein_Stitcher(3,0.5,20,30,100,10)
-    stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_2017_05_30_PEJ_stitched_test.cdb", "PT_Track_Marker")
+    stitcher = Heublein_Stitcher(5,2,20,30,100,10,10)
+    stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_2017_06_07_SCA_stitched_test.cdb", "PT_Track_Marker")
     stitcher.stitch()
-    db = clickpoints.DataFile("/home/user/CellTracking/layers_2017_05_30_PEJ_stitched_test.cdb")
+    db = clickpoints.DataFile("/home/user/CellTracking/layers_2017_06_07_SCA_stitched_test.cdb")
     track_type = db.getMarkerType(name="PT_Track_Marker")
-    stitcher.save_tracks_to_db("/home/user/CellTracking/layers_2017_05_30_PEJ_stitched_test.cdb", track_type, function=resulution_correction)
+    stitcher.save_tracks_to_db("/home/user/CellTracking/layers_2017_06_07_SCA_stitched_test.cdb", track_type, function=resulution_correction)
     print ("-----------Written to DB-----------")
 
