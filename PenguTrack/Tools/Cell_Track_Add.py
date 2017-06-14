@@ -37,10 +37,9 @@ res = 6.45/10
 
 class Addon(clickpoints.Addon):
     def __init__(self, *args, **kwargs):
-        clickpoints.Addon.__init__(self, *args, **kwargs)
+        clickpoints.Addon.__init__(self, database_class=DataFileExtended, *args, **kwargs)
         # super(Addon, self).__init__(self, database, command=None, name="")
         # self.db
-        self.db = DataFileExtended(self.db.db.database)
 
         self.addOption(key="Min_Object_Size", display_name="min. Object Size", default=5, value_type="int",
                        min_value=1, max_value=100,
