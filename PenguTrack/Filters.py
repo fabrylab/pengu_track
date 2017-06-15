@@ -948,7 +948,7 @@ class MultiFilter(Filter):
     def initial_update(self, z, i):
         print("Initial Filter Update")
 
-        if len(z)<=1:
+        if len(z)<1:
             raise ValueError("No Measurements found!")
         measurements = list(z)
         try:

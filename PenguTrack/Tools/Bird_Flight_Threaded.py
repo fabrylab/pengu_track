@@ -82,8 +82,10 @@ print("Initialized Tracker")
 # Init_Background from Image_Median
 # Initialize segmentation with init_image and start updating the first 10 frames.
 N = db.getImages().count()
+# init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
+#                            for j in np.arange(0,10)], axis=0), dtype=np.int)
 init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
-                           for j in np.arange(0,10)], axis=0), dtype=np.int)
+                           for j in np.arange(10252,10262)], axis=0), dtype=np.int)
 # VB = ViBeSegmentation(n=2, init_image=init, n_min=2, r=25, phi=1)
 # n_multi = 2
 # width_multi = int(init.shape[1]/n_multi)
@@ -99,7 +101,7 @@ print("Debug")
 # from multiprocessing import Pool
 # segmentation_pool = Pool(n_multi)
 # detection_pool = Pool(n_multi)
-for i in range(10,20):
+for i in range(10262,10272):
     img = db.getImage(frame=i).data
     # segmentation_pool.map(seg, [[j, img] for j in range(n_multi)])
     mask = VB.detect(db.getImage(frame=i).data, do_neighbours=False)
@@ -157,11 +159,12 @@ db.deleteTracks(type=PT_Stitch_Type)
 print('Starting Iteration')
 # images = db.getImageIterator(start_frame=20, end_frame=30)#start_frame=start_frame, end_frame=3)
 images = db.getImageIterator(start_frame=10272, end_frame=10311)#start_frame=start_frame, end_frame=3)
+# images = db.getImageIterator(start_frame=10272, end_frame=10279)#start_frame=start_frame, end_frame=3)
 
 from multiprocessing import Process,Queue,Pipe
 
-segmentation_queue = Queue(5)
-SegMap_write_queue = Queue(5)
+segmentation_queue = Queue(10)
+SegMap_write_queue = Queue()
 Detection_write_queue = Queue()
 Track_write_queue = Queue()
 
@@ -170,6 +173,10 @@ detection_pipe_in, detection_pipe_out = Pipe()
 tracking_pipe_in, tracking_pipe_out = Pipe()
 # writing_pipe_in, writing_pipe_out = Pipe()
 
+Timer_in = Queue()
+Timer_out = Queue()
+
+
 def load(images):
     # images = args
     for i, img in enumerate(images):
@@ -177,11 +184,18 @@ def load(images):
         #     if not segmentation_pipe_out.poll():
         #         segmentation_pipe_in.send([i, img.data])
         #         break
-        while True:
-            if not segmentation_queue.full():
-                segmentation_queue.put([img.sort_index, img.data])
-                print("loaded image %s"%i)
-                break
+        segmentation_queue.put([img.sort_index, img.data])
+        Timer_in.put([img.sort_index, time()])
+        print("loaded image %s" % img.sort_index)
+        # while True:
+        #     if not segmentation_queue.full():
+        #         segmentation_queue.put()
+        #         segmentation_queue.put([img.sort_index, img.data])
+        #         Timer_in.put([img.sort_index, time()])
+        #         print("loaded image %s"%img.sort_index)
+        #         # print(Timer_in.keys())
+        #         break
+
 
 def segmentate():
     while True:
@@ -191,9 +205,14 @@ def segmentate():
         #  SegMap = segmentation_pool.map(seg, [[j, img] for j in range(n_multi)])
         #  SegMap = np.hstack(SegMap)
         SegMap = VB.detect(img, do_neighbours=False)
-        SegMap_write_queue.put([i, SegMap])
+        # SegMap_write_queue.put([i, SegMap])
         detection_pipe_in.send([i, SegMap])
         print("Segmentated Image %s"%i)
+
+
+        # if segmentation_queue.empty() and not loading.is_alive():
+        #     break
+
 
 def detect():
     while True:
@@ -202,9 +221,13 @@ def detect():
         Positions = AD.detect(SegMap)
         X = np.asarray([[pos.PositionX, pos.PositionY] for pos in Positions])
         Positions = [pos for pos in Positions if np.sum(((pos.PositionX-X.T[0])**2+(pos.PositionY-X.T[1])**2)**0.5 < 200) < 10]
-        Detection_write_queue.put([i, Positions])
+        # Detection_write_queue.put([i, Positions])
         tracking_pipe_in.send([i, Positions])
-        print("Found %s animals!"%len(Positions))
+        print("Found %s animals in %s!"%(len(Positions), i))
+
+        # if not detection_pipe_out.poll(1) and not segmentation.is_alive():
+        #     break
+
 
 def track():
     # i, Positions = tracking_queue.get()
@@ -212,29 +235,93 @@ def track():
         i, Positions = tracking_pipe_out.recv()
         MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
         if len(Positions) > 0:
-            with db.db.atomic() as transaction:
-                print("Tracking %s"%i)
-                # Update Filter with new Detections
-                MultiKal.update(z=Positions, i=i)
-                Track_write_queue.put([i, MultiKal.ActiveFilters])
+            print("Tracking %s"%i)
+            # Update Filter with new Detections
+            MultiKal.update(z=Positions, i=i)
+            Track_write_queue.put([i, MultiKal.ActiveFilters])
+        else:
+            Track_write_queue.put([i,{}])
+
                 # writing_pipe_in.send([i, MultiKal.ActiveFilters.keys()])
         print("Got %s Filters in frame %s" % (len(MultiKal.ActiveFilters.keys()), i))
+        # if not tracking_pipe_in.poll(1) and not detection.is_alive():
+        #     break
 
-def mask_writing():
+
+# def mask_writing():
+#     while True:
+#         try:
+#             with db.db.atomic() as transaction:
+#                 while not SegMap_write_queue.empty():
+#                     i, Mask = SegMap_write_queue.get()
+#                     db.setMask(frame=i, data=(PT_Mask_Type.index*(~Mask).astype(np.uint8)))
+#                     print("Masks set! %s"%i)
+#         except peewee.OperationalError:
+#             pass
+#         # if SegMap_write_queue.empty() and not segmentation.is_alive():
+#         #     break
+#
+#
+# def detection_writing():
+#     while True:
+#         try:
+#             with db.db.atomic() as transaction:
+#                 while not Detection_write_queue.empty():
+#                     i, Positions = Detection_write_queue.get()
+#                     for pos in Positions:
+#                         detection_marker = db.setMarker(frame=i,
+#                                                 x=pos.PositionY, y=pos.PositionX,
+#                                                 text="Detection  %.2f" % (pos.Log_Probability),
+#                                                 type=PT_Detection_Type)
+#                         db.setMeasurement(marker=detection_marker, log=pos.Log_Probability, x=pos.PositionX, y=pos.PositionY)
+#                     print("Detections written! %s"%i)
+#         except peewee.OperationalError:
+#             pass
+#         # if Detection_write_queue.empty() and not detection.is_alive():
+#         #     break
+#
+#
+# def track_writing():
+#     while True:
+#         try:
+#             with db.db.atomic() as transaction:
+#             # for kkk in range(1):
+#                 while not Track_write_queue.empty():
+#                 # for kk in range(1):
+#                     i, ActiveFilters = Track_write_queue.get()
+#                     for k in ActiveFilters:
+#                         if not db.getTrack(k+100):
+#                             track = db.setTrack(type=PT_Track_Type, id=100+k)
+#                         else:
+#                             track = db.getTrack(id=100+k)
+#                         if ActiveFilters[k].Measurements.has_key(i):
+#                             meas = ActiveFilters[k].Measurements[i]
+#                             x = meas.PositionX
+#                             y = meas.PositionY
+#                             prob = ActiveFilters[k].log_prob(keys=[i], compare_bel=False)
+#                             db.setMarker(frame=i, x=y, y=x,
+#                                          track=track,
+#                                          text="Track %s, Prob %.2f" % (k, prob),
+#                                          type=PT_Track_Type)
+#                         if ActiveFilters[k].Predicted_X.has_key(i):
+#                             pred_x, pred_y = MultiKal.Model.measure(ActiveFilters[k].Predicted_X[i])
+#                             db.setMarker(frame=i, x=pred_y, y=pred_x,
+#                                          text="Prediction %s" % (k),
+#                                          type=PT_Prediction_Type)
+#                     Timer_out.put([i, time()])
+#                     print("Tracks written! %s"%i)
+#         except peewee.OperationalError:
+#             pass
+        # if Track_write_queue.empty() and not tracking.is_alive():
+        #     break
+def DB_write():
     while True:
         try:
             with db.db.atomic() as transaction:
                 while not SegMap_write_queue.empty():
                     i, Mask = SegMap_write_queue.get()
-                    db.setMask(frame=i, data=(PT_Mask_Type.index*(~Mask).astype(np.uint8)))
-                    print("Masks set!")
-        except peewee.OperationalError:
-            pass
-
-def detection_writing():
-    while True:
-        try:
-            with db.db.atomic() as transaction:
+                    db.setMask(frame=i, data=(PT_Mask_Type.index * (~Mask).astype(np.uint8)))
+                    print("Masks set! %s" % i)
                 while not Detection_write_queue.empty():
                     i, Positions = Detection_write_queue.get()
                     for pos in Positions:
@@ -243,14 +330,7 @@ def detection_writing():
                                                 text="Detection  %.2f" % (pos.Log_Probability),
                                                 type=PT_Detection_Type)
                         db.setMeasurement(marker=detection_marker, log=pos.Log_Probability, x=pos.PositionX, y=pos.PositionY)
-                    print("Detections written!")
-        except peewee.OperationalError:
-            pass
-
-def track_writing():
-    while True:
-        try:
-            with db.db.atomic() as transaction:
+                    print("Detections written! %s"%i)
                 while not Track_write_queue.empty():
                     i, ActiveFilters = Track_write_queue.get()
                     for k in ActiveFilters:
@@ -273,28 +353,110 @@ def track_writing():
                             db.setMarker(frame=i, x=pred_y, y=pred_x,
                                          text="Prediction %s" % (k),
                                          type=PT_Prediction_Type)
-                    print("Tracks written!")
+                    Timer_out.put([i, time()])
+                    print("Tracks written! %s"%i)
+
         except peewee.OperationalError:
             pass
+
 
 loading = Process(target=load, args=(images,))
 segmentation = Process(target=segmentate)
 detection = Process(target=detect)
 tracking = Process(target=track)
-writing_SegMaps = Process(target=mask_writing)
-writing_Detections = Process(target=detection_writing)
-writing_Tracks = Process(target=track_writing)
+# writing_SegMaps = Process(target=mask_writing)
+# writing_Detections = Process(target=detection_writing)
+# writing_Tracks = Process(target=track_writing)
+writind_DB = Process(target=DB_write)
 
 loading.start()
 segmentation.start()
 detection.start()
 tracking.start()
-writing_SegMaps.start()
-writing_Detections.start()
-writing_Tracks.start()
+# writing_SegMaps.start()
+# writing_Detections.start()
+# writing_Tracks.start()
+writind_DB.start()
 
-while not (SegMap_write_queue.empty() and Detection_write_queue.empty() and Detection_write_queue.empty() and detection_pipe_out.poll()):
-    pass
+times1 = {}
+times2 = {}
+start = time()
+while True:
+    if not Timer_in.empty():
+        i, value = Timer_in.get()
+        times1.update({i: value})
+
+    if not Timer_out.empty():
+        i, value = Timer_out.get()
+        times2.update({i: value})
+        for i in times2:
+            if times1.has_key(i):
+                print("Time for image %s is %s seconds!"%(i, times2[i]-times1[i]))
+            else:
+                print("DAMN!!")
+
+    if np.all([times2.has_key(k) for k in range(10272, 10311)]):
+        full_time=time()-start
+        print(full_time/len(times2.keys()))
+        break
+
+print(times1.keys())
+print(times2.keys())
+
+loading.terminate()
+segmentation.terminate()
+detection.terminate()
+tracking.terminate()
+# writing_SegMaps.terminate()
+# writing_Detections.terminate()
+# writing_Tracks.terminate()
+writind_DB.terminate()
+
+
+# while True:
+    # print(np.sum([segmentation_queue.empty(),
+    #       SegMap_write_queue.empty(),
+    #       Detection_write_queue.empty(),
+    #       Track_write_queue.empty(),
+    #       not detection_pipe_in.poll(),
+    #       not detection_pipe_out.poll(),
+    #       not tracking_pipe_in.poll(),
+    #       not tracking_pipe_out.poll()]) < 8)
+    # pass
+# loading.terminate()
+# segmentation.terminate()
+# detection.terminate()
+# detection.terminate()
+# tracking.terminate()
+# writing_SegMaps.terminate()
+# writing_Detections.terminate()
+# writing_Tracks.terminate()
+
+    # print(segmentation_queue.empty(),
+    #       SegMap_write_queue.empty(),
+    #       Detection_write_queue.empty(),
+    #       Track_write_queue.empty(),
+    #       not detection_pipe_in.poll(),
+    #       not detection_pipe_out.poll(),
+    #       not tracking_pipe_in.poll(),
+    #       not tracking_pipe_out.poll())
+    # print(loading.is_alive(),
+    #       segmentation.is_alive(),
+    #       detection.is_alive(),
+    #       tracking.is_alive(),
+    #       writing_SegMaps.is_alive(),
+    #       writing_Detections.is_alive(),
+    #       writing_Tracks.is_alive())
+    # print("---------%s-----------"%np.sum([segmentation_queue.empty(),
+    #       SegMap_write_queue.empty(),
+    #       Detection_write_queue.empty(),
+    #       Track_write_queue.empty(),
+    #       not detection_pipe_in.poll(),
+    #       not detection_pipe_out.poll(),
+    #       not tracking_pipe_in.poll(),
+    #       not tracking_pipe_out.poll()]))
+    #
+    # pass
 # loading.join()
 # segmentation.join()
 # detection.join()
