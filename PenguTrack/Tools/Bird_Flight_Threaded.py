@@ -84,8 +84,10 @@ print("Initialized Tracker")
 N = db.getImages().count()
 # init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
 #                            for j in np.arange(0,10)], axis=0), dtype=np.int)
+# init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
+#                            for j in np.arange(10252,10262)], axis=0), dtype=np.int)
 init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
-                           for j in np.arange(10252,10262)], axis=0), dtype=np.int)
+                           for j in np.arange(8980,8990)], axis=0), dtype=np.int)
 # VB = ViBeSegmentation(n=2, init_image=init, n_min=2, r=25, phi=1)
 # n_multi = 2
 # width_multi = int(init.shape[1]/n_multi)
@@ -101,7 +103,7 @@ print("Debug")
 # from multiprocessing import Pool
 # segmentation_pool = Pool(n_multi)
 # detection_pool = Pool(n_multi)
-for i in range(10262,10272):
+for i in range(8990,9000):
     img = db.getImage(frame=i).data
     # segmentation_pool.map(seg, [[j, img] for j in range(n_multi)])
     mask = VB.detect(db.getImage(frame=i).data, do_neighbours=False)
@@ -120,45 +122,48 @@ import matplotlib.pyplot as plt
 AD = AreaDetector(object_area, object_number, upper_limit=10, lower_limit=1)
 print('Initialized')
 
-# SetMaskType
-if db.getMaskType(name="PT_Mask_Type"):
-    PT_Mask_Type = db.getMaskType(name="PT_Mask_Type")
-else:
-    PT_Mask_Type = db.setMaskType(name="PT_Mask_Type", color="#FF6633")
+# with db.db.atomic() as transaction:
+for i in range(1):
+    # Set Mask Type
+    if db.getMaskType(name="PT_Mask_Type"):
+        PT_Mask_Type = db.getMaskType(name="PT_Mask_Type")
+    else:
+        PT_Mask_Type = db.setMaskType(name="PT_Mask_Type", color="#FF6633")
+    # Define ClickPoints Marker
+    if db.getMarkerType(name="PT_Detection_Marker"):
+        PT_Detection_Type = db.getMarkerType(name="PT_Detection_Marker")
+    else:
+        PT_Detection_Type = db.setMarkerType(name="PT_Detection_Marker", color="#FFFF00", style='{"scale":0.8}')
+    if db.getMarkerType(name="PT_Track_Marker"):
+        PT_Track_Type = db.getMarkerType(name="PT_Track_Marker")
+    else:
+        PT_Track_Type = db.setMarkerType(name="PT_Track_Marker", color="#00FF00", mode=db.TYPE_Track)
+    if db.getMarkerType(name="PT_Prediction_Marker"):
+        PT_Prediction_Type = db.getMarkerType(name= "PT_Prediction_Marker")
+    else:
+        PT_Prediction_Type = db.setMarkerType(name="PT_Prediction_Marker", color="#0000FF")
+    if db.getMarkerType(name="PT_Stitch_Marker"):
+        PT_Stitch_Type = db.getMarkerType(name="PT_Stitch_Marker")
+    else:
+        PT_Stitch_Type = db.setMarkerType(name="PT_Stitch_Marker", color="#FF8800", mode=db.TYPE_Track)
 
-# Define ClickPoints Marker
-if db.getMarkerType(name="PT_Detection_Marker"):
-    PT_Detection_Type = db.getMarkerType(name="PT_Detection_Marker")
-else:
-    PT_Detection_Type = db.setMarkerType(name="PT_Detection_Marker", color="#FFFF00", style='{"scale":0.8}')
-if db.getMarkerType(name="PT_Track_Marker"):
-    PT_Track_Type = db.getMarkerType(name="PT_Track_Marker")
-else:
-    PT_Track_Type = db.setMarkerType(name="PT_Track_Marker", color="#00FF00", mode=db.TYPE_Track)
-if db.getMarkerType(name="PT_Prediction_Marker"):
-    PT_Prediction_Type = db.getMarkerType(name= "PT_Prediction_Marker")
-else:
-    PT_Prediction_Type = db.setMarkerType(name="PT_Prediction_Marker", color="#0000FF")
-if db.getMarkerType(name="PT_Stitch_Marker"):
-    PT_Stitch_Type = db.getMarkerType(name="PT_Stitch_Marker")
-else:
-    PT_Stitch_Type = db.setMarkerType(name="PT_Stitch_Marker", color="#FF8800", mode=db.TYPE_Track)
+    # Delete Old Tracks
+    db.deleteMarkers(type=PT_Detection_Type)
+    db.deleteMarkers(type=PT_Track_Type)
+    db.deleteMarkers(type=PT_Prediction_Type)
+    db.deleteMarkers(type=PT_Stitch_Type)
 
-# Delete Old Tracks
-db.deleteMarkers(type=PT_Detection_Type)
-db.deleteMarkers(type=PT_Track_Type)
-db.deleteMarkers(type=PT_Prediction_Type)
-db.deleteMarkers(type=PT_Stitch_Type)
+    db.deleteTracks(type=PT_Track_Type)
+    db.deleteTracks(type=PT_Stitch_Type)
 
-db.deleteTracks(type=PT_Track_Type)
-db.deleteTracks(type=PT_Stitch_Type)
 
 
 
 # Start Iteration over Images
 print('Starting Iteration')
 # images = db.getImageIterator(start_frame=20, end_frame=30)#start_frame=start_frame, end_frame=3)
-images = db.getImageIterator(start_frame=10272, end_frame=10311)#start_frame=start_frame, end_frame=3)
+# images = db.getImageIterator(start_frame=10272, end_frame=10311)#start_frame=start_frame, end_frame=3)
+images = db.getImageIterator(start_frame=9000, end_frame=10800)#start_frame=start_frame, end_frame=3)
 # images = db.getImageIterator(start_frame=10272, end_frame=10279)#start_frame=start_frame, end_frame=3)
 
 from multiprocessing import Process,Queue,Pipe
@@ -179,11 +184,13 @@ Timer_out = Queue()
 
 def load(images):
     # images = args
+    # for i, img in enumerate(images):
     for i, img in enumerate(images):
         # while True:
         #     if not segmentation_pipe_out.poll():
         #         segmentation_pipe_in.send([i, img.data])
         #         break
+        # img = db.getImage(frame=i)
         segmentation_queue.put([img.sort_index, img.data])
         Timer_in.put([img.sort_index, time()])
         print("loaded image %s" % img.sort_index)
@@ -205,7 +212,7 @@ def segmentate():
         #  SegMap = segmentation_pool.map(seg, [[j, img] for j in range(n_multi)])
         #  SegMap = np.hstack(SegMap)
         SegMap = VB.detect(img, do_neighbours=False)
-        # SegMap_write_queue.put([i, SegMap])
+        SegMap_write_queue.put([i, SegMap])
         detection_pipe_in.send([i, SegMap])
         print("Segmentated Image %s"%i)
 
@@ -220,8 +227,8 @@ def detect():
         i, SegMap = detection_pipe_out.recv()
         Positions = AD.detect(SegMap)
         X = np.asarray([[pos.PositionX, pos.PositionY] for pos in Positions])
-        Positions = [pos for pos in Positions if np.sum(((pos.PositionX-X.T[0])**2+(pos.PositionY-X.T[1])**2)**0.5 < 200) < 10]
-        # Detection_write_queue.put([i, Positions])
+        Positions = [pos for pos in Positions if np.sum(((pos.PositionX-X.T[0])**2+(pos.PositionY-X.T[1])**2)**0.5 < 200) < 3]
+        Detection_write_queue.put([i, Positions])
         tracking_pipe_in.send([i, Positions])
         print("Found %s animals in %s!"%(len(Positions), i))
 
@@ -232,20 +239,21 @@ def detect():
 def track():
     # i, Positions = tracking_queue.get()
     while True:
-        i, Positions = tracking_pipe_out.recv()
-        MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
-        if len(Positions) > 0:
-            print("Tracking %s"%i)
-            # Update Filter with new Detections
-            MultiKal.update(z=Positions, i=i)
-            Track_write_queue.put([i, MultiKal.ActiveFilters])
-        else:
-            Track_write_queue.put([i,{}])
+        with np.errstate(all="raise"):
+            i, Positions = tracking_pipe_out.recv()
+            MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
+            if len(Positions) > 2:
+                print("Tracking %s" % i)
+                # Update Filter with new Detections
+                MultiKal.update(z=Positions, i=i)
+                Track_write_queue.put([i, MultiKal.ActiveFilters])
+            else:
+                Track_write_queue.put([i, {}])
 
                 # writing_pipe_in.send([i, MultiKal.ActiveFilters.keys()])
-        print("Got %s Filters in frame %s" % (len(MultiKal.ActiveFilters.keys()), i))
-        # if not tracking_pipe_in.poll(1) and not detection.is_alive():
-        #     break
+            print("Got %s Filters in frame %s" % (len(MultiKal.ActiveFilters.keys()), i))
+            # if not tracking_pipe_in.poll(1) and not detection.is_alive():
+            #     break
 
 
 # def mask_writing():
@@ -367,7 +375,7 @@ tracking = Process(target=track)
 # writing_SegMaps = Process(target=mask_writing)
 # writing_Detections = Process(target=detection_writing)
 # writing_Tracks = Process(target=track_writing)
-writind_DB = Process(target=DB_write)
+writing_DB = Process(target=DB_write)
 
 loading.start()
 segmentation.start()
@@ -376,7 +384,7 @@ tracking.start()
 # writing_SegMaps.start()
 # writing_Detections.start()
 # writing_Tracks.start()
-writind_DB.start()
+writing_DB.start()
 
 times1 = {}
 times2 = {}
@@ -391,11 +399,13 @@ while True:
         times2.update({i: value})
         for i in times2:
             if times1.has_key(i):
-                print("Time for image %s is %s seconds!"%(i, times2[i]-times1[i]))
+                pass
+                # print("Time for image %s is %s seconds!"%(i, times2[i]-times1[i]))
             else:
                 print("DAMN!!")
+        print("Needed %s s per frame"%((time()-start)/len(times2.keys())))
 
-    if np.all([times2.has_key(k) for k in range(10272, 10311)]):
+    if np.all([times2.has_key(k) for k in range(9000, 10800)]):
         full_time=time()-start
         print(full_time/len(times2.keys()))
         break
@@ -410,7 +420,7 @@ tracking.terminate()
 # writing_SegMaps.terminate()
 # writing_Detections.terminate()
 # writing_Tracks.terminate()
-writind_DB.terminate()
+writing_DB.terminate()
 
 
 # while True:

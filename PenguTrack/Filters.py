@@ -254,9 +254,11 @@ class Filter(object):
                 # print(integral)
 
                 try:
-                    probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
-                                                                                 - self.Model.measure(comparison))))
-                    # probs += self.Measurements[i].Log_Probability
+                    # probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
+                    #                                                              - self.Model.measure(comparison))))
+                    probs += np.linalg.norm(self.Measurement_Distribution.logpdf(position
+                                                                                 - self.Model.measure(comparison)))
+                    probs += self.Measurements[i].Log_Probability
                 except ValueError:
                     print(position.shape, position)
                     print(comparison.shape, comparison)
@@ -286,8 +288,13 @@ class Filter(object):
                                                measurements[i].PositionY])
                     except (ValueError, AttributeError):
                         position = np.asarray([measurements[i].PositionX])
-                probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
-                                                                                 - self.Model.measure(comparison))))
+                # try:
+                    # probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
+                    #                                                              - self.Model.measure(comparison))))
+                probs += np.linalg.norm(self.Measurement_Distribution.logpdf(position - self.Model.measure(comparison)))
+                probs += measurements[i].Log_Probability
+                # except RuntimeWarning:
+                #     probs = -np.inf
         return probs
 
     def downfilter(self, t=None):
@@ -1018,7 +1025,7 @@ class MultiFilter(Filter):
             return measurements, i
 
         gain_dict = {}
-        probability_gain = np.ones((max(M, N), M))/0.#*self.LogProbabilityThreshold
+        probability_gain = np.ones((max(M, N), M)) * -np.inf#*self.LogProbabilityThreshold
 
         for j, k in enumerate(self.ActiveFilters.keys()):
             gain_dict.update({j: k})
@@ -1027,7 +1034,10 @@ class MultiFilter(Filter):
             # for m in range(M):
             #     probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: measurements[m]})
         probability_gain[np.isinf(probability_gain)] = np.nan
-        probability_gain[np.isnan(probability_gain)] = np.nanmin(probability_gain)
+        if np.all(np.isnan(probability_gain)):
+            probability_gain[:] = -np.inf
+        else:
+            probability_gain[np.isnan(probability_gain)] = np.nanmin(probability_gain)
         if self.LogProbabilityThreshold == -np.inf:
             LogProbabilityThreshold = np.nanmin(probability_gain)
         else:
@@ -1045,7 +1055,18 @@ class MultiFilter(Filter):
         x = {}
         x_err = {}
         from scipy.optimize import linear_sum_assignment
-        rows, cols = linear_sum_assignment(-1*probability_gain)
+
+        rows, cols = linear_sum_assignment(-1 * probability_gain)
+        # if M >2:
+        #     rows, cols = linear_sum_assignment(-1*probability_gain)
+        # elif M==2:
+        #     rows = [0, 1]
+        #     cols = [0, 1]
+        # elif M==1:
+        #     rows=[0]
+        #     cols=[0]
+        # else:
+        #     raise ValueError
 
         for j, k in enumerate(rows):
             # if not np.all(np.isnan(probability_gain)+np.isinf(probability_gain)):
