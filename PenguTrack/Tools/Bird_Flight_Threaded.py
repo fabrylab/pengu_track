@@ -18,8 +18,10 @@ from time import time
 # file_path = str(sys.argv[1])
 # q = float(sys.argv[2])
 # r = float(sys.argv[3])
-q = 200
-r = 300
+# q = 200
+# r = 300
+q = 2
+r = 3
 # if platform.system() != 'Linux':
 #     file_path = file_path.replace("/mnt/jobs", r"//131.188.117.98/shared/jobs")
 #path.normpath(file_path)
@@ -29,7 +31,7 @@ r = 300
 # path = str(file_path)
 # os.system("mkdir ~/Desktop/TODO")
 # os.system("cp %s ~/Desktop/TODO/%s_done.cdb"%(path, path[-7:-4]))
-# # os.system("cp -r %s/* ~/Desktop/TODO/"%path[:-7])
+# # os.system("cp -r %s/* t~/Desktop/TODO/"%path[:-7])
 #
 # file_path = "/home/alex/Desktop/TODO/%s_done.cdb"%path[-7:-4]
 
@@ -74,8 +76,9 @@ Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
 # Initialize Filter
 MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
                        np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
-# MultiKal.LogProbabilityThreshold = -300.
+MultiKal.LogProbabilityThreshold = -20000.
 MultiKal.MeasurementProbabilityThreshold = 0.
+MultiKal.AssignmentProbabilityThreshold = 0.
 # MultiKal = MultiFilter(Filter, model)
 print("Initialized Tracker")
 
@@ -104,6 +107,7 @@ print("Debug")
 # segmentation_pool = Pool(n_multi)
 # detection_pool = Pool(n_multi)
 for i in range(8990,9000):
+# for i in range(10262,10272):
     img = db.getImage(frame=i).data
     # segmentation_pool.map(seg, [[j, img] for j in range(n_multi)])
     mask = VB.detect(db.getImage(frame=i).data, do_neighbours=False)
@@ -328,41 +332,53 @@ def DB_write():
             with db.db.atomic() as transaction:
                 while not SegMap_write_queue.empty():
                     i, Mask = SegMap_write_queue.get()
-                    db.setMask(frame=i, data=(PT_Mask_Type.index * (~Mask).astype(np.uint8)))
-                    print("Masks set! %s" % i)
+                    try:
+                        db.setMask(frame=i, data=(PT_Mask_Type.index * (~Mask).astype(np.uint8)))
+                        print("Masks set! %s" % i)
+                    except peewee.DatabaseError:
+                        SegMap_write_queue.put([i, Mask])
+            with db.db.atomic() as transaction:
                 while not Detection_write_queue.empty():
                     i, Positions = Detection_write_queue.get()
-                    for pos in Positions:
-                        detection_marker = db.setMarker(frame=i,
-                                                x=pos.PositionY, y=pos.PositionX,
-                                                text="Detection  %.2f" % (pos.Log_Probability),
-                                                type=PT_Detection_Type)
-                        db.setMeasurement(marker=detection_marker, log=pos.Log_Probability, x=pos.PositionX, y=pos.PositionY)
-                    print("Detections written! %s"%i)
+                    try:
+                        for pos in Positions:
+                            detection_marker = db.setMarker(frame=i,
+                                                            x=pos.PositionY, y=pos.PositionX,
+                                                            text="Detection  %.2f" % (pos.Log_Probability),
+                                                            type=PT_Detection_Type)
+                            db.setMeasurement(marker=detection_marker, log=pos.Log_Probability, x=pos.PositionX,
+                                              y=pos.PositionY)
+                        print("Detections written! %s" % i)
+                    except peewee.DatabaseError:
+                        Detection_write_queue.put([i, Positions])
+            with db.db.atomic() as transaction:
                 while not Track_write_queue.empty():
                     i, ActiveFilters = Track_write_queue.get()
-                    for k in ActiveFilters:
-                        if not db.getTrack(k+100):
-                            track = db.setTrack(type=PT_Track_Type, id=100+k)
-                        else:
-                            track = db.getTrack(id=100+k)
+                    try:
+                        for k in ActiveFilters:
+                            if not db.getTrack(k + 100):
+                                track = db.setTrack(type=PT_Track_Type, id=100 + k)
+                            else:
+                                track = db.getTrack(id=100 + k)
 
-                        if ActiveFilters[k].Measurements.has_key(i):
-                            meas = ActiveFilters[k].Measurements[i]
-                            x = meas.PositionX
-                            y = meas.PositionY
-                            prob = ActiveFilters[k].log_prob(keys=[i], compare_bel=False)
-                            db.setMarker(frame=i, x=y, y=x,
-                                         track=track,
-                                         text="Track %s, Prob %.2f" % (k, prob),
-                                         type=PT_Track_Type)
-                        if ActiveFilters[k].Predicted_X.has_key(i):
-                            pred_x, pred_y = MultiKal.Model.measure(ActiveFilters[k].Predicted_X[i])
-                            db.setMarker(frame=i, x=pred_y, y=pred_x,
-                                         text="Prediction %s" % (k),
-                                         type=PT_Prediction_Type)
-                    Timer_out.put([i, time()])
-                    print("Tracks written! %s"%i)
+                            if ActiveFilters[k].Measurements.has_key(i):
+                                meas = ActiveFilters[k].Measurements[i]
+                                x = meas.PositionX
+                                y = meas.PositionY
+                                prob = ActiveFilters[k].log_prob(keys=[i], compare_bel=False)
+                                db.setMarker(frame=i, x=y, y=x,
+                                             track=track,
+                                             text="Track %s, Prob %.2f" % (k, prob),
+                                             type=PT_Track_Type)
+                            if ActiveFilters[k].Predicted_X.has_key(i):
+                                pred_x, pred_y = MultiKal.Model.measure(ActiveFilters[k].Predicted_X[i])
+                                db.setMarker(frame=i, x=pred_y, y=pred_x,
+                                             text="Prediction %s" % (k),
+                                             type=PT_Prediction_Type)
+                        Timer_out.put([i, time()])
+                        print("Tracks written! %s" % i)
+                    except peewee.DatabaseError:
+                        Track_write_queue.put([i, ActiveFilters])
 
         except peewee.OperationalError:
             pass
@@ -405,7 +421,8 @@ while True:
                 print("DAMN!!")
         print("Needed %s s per frame"%((time()-start)/len(times2.keys())))
 
-    if np.all([times2.has_key(k) for k in range(9000, 10800)]):
+    # if np.all([times2.has_key(k) for k in range(9000, 10800)]):
+    if np.all([times2.has_key(k) for k in range(10272, 10311)]):
         full_time=time()-start
         print(full_time/len(times2.keys()))
         break

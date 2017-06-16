@@ -256,9 +256,12 @@ class Filter(object):
                 try:
                     # probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
                     #                                                              - self.Model.measure(comparison))))
-                    probs += np.linalg.norm(self.Measurement_Distribution.logpdf(position
-                                                                                 - self.Model.measure(comparison)))
-                    probs += self.Measurements[i].Log_Probability
+                    probs += self.Measurement_Distribution.logpdf(position - self.Model.measure(comparison))
+                    # print("----------")
+                    # print(self.Measurement_Distribution.logpdf(position - self.Model.measure(comparison)))
+                    # print(np.log(self.Measurement_Distribution.pdf(position - self.Model.measure(comparison))))
+                    # print("----------")
+                    # probs += self.Measurements[i].Log_Probability
                 except ValueError:
                     print(position.shape, position)
                     print(comparison.shape, comparison)
@@ -291,8 +294,12 @@ class Filter(object):
                 # try:
                     # probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
                     #                                                              - self.Model.measure(comparison))))
-                probs += np.linalg.norm(self.Measurement_Distribution.logpdf(position - self.Model.measure(comparison)))
-                probs += measurements[i].Log_Probability
+                probs += self.Measurement_Distribution.logpdf(position - self.Model.measure(comparison))
+                # print("----------")
+                # print(self.Measurement_Distribution.logpdf(position - self.Model.measure(comparison)))
+                # print(np.log(self.Measurement_Distribution.pdf(position - self.Model.measure(comparison))))
+                # print("----------")
+                # probs += measurements[i].Log_Probability
                 # except RuntimeWarning:
                 #     probs = -np.inf
         return probs
