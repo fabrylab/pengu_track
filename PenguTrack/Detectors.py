@@ -43,6 +43,7 @@ from skimage import img_as_uint
 from scipy import ndimage as ndi
 from scipy.special import lambertw
 from scipy.ndimage.measurements import label
+from scipy import stats
 
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max
@@ -431,6 +432,89 @@ class SimpleAreaDetector(Detector):
             return out, labeled
         else:
             return out
+
+
+class RegionFilter(object):
+    def __init__(self, prop, value, var=None, lower_limit=None, upper_limit=None, dist=None):
+        super(RegionFilter, self).__init__()
+        self.prop = str(prop)
+
+        self.value = np.asarray(value, dtype=float)
+        if self.value.ndim == 1:
+            self.dim = self.value.shape[0]
+        elif self.value.ndim == 0:
+            self.dim = 1
+        else:
+            raise ValueError("Maximal Values of Vektor Shape allowed!")
+
+        if var is not None:
+            var = np.asarray(var, dtype=float)
+            if len(var.shape) == 2:
+                assert var.shape[0]==self.dim and var.shape[1]==self.dim
+                self.var = var
+            elif len(var.shape)==1:
+                assert len(var) == self.dim
+                self.var = np.diag(var)
+            elif var.shape == ():
+                self.var = np.diag(np.ones(self.dim))*var
+            else:
+                raise ValueError("False shape for variance parameter!")
+        else:
+            self.var = np.diag(np.ones(self.dim))
+
+        if lower_limit is not None:
+            self.lower_limit = np.ones(self.dim)*-np.inf
+        if upper_limit is not None:
+            self.upper_limit = np.ones(self.dim)*np.inf
+
+        if dist is not None:
+            self.dist = dist
+        else:
+            if self.dim == 1:
+                self.dist = stats.norm()
+            else:
+                self.dist = stats.multivariate_normal(mean=self.value, cov = np.sqrt(self.var))
+
+    def filter(self, regions):
+        return [self.logprob(region.__getattribute__(self.prop)) for region in regions]
+
+    def logprob(self, test_value):
+        if self.lower_limit < test_value < self.upper_limit:
+            return self.dist.logpdf(test_value)
+        else:
+            return -np.inf
+
+    @classmethod
+    def from_dict(cls, dictionary):
+        prop = dictionary.get("prop")
+        value = dictionary.get("value")
+        var = dictionary.get("var", None)
+        lower_limit = dictionary.get("lower_limit", None)
+        upper_limit = dictionary.get("upper_limit", None)
+        dist = dictionary.get("dist", None)
+        return cls(prop, value, var=var, lower_limit=lower_limit, upper_limit=upper_limit, dist=dist)
+
+
+class RegionPropDetector(Detector):
+    def __init__(self, RegionFilters):
+        super(RegionPropDetector, self).__init__()
+        self.Filters = []
+        for filter in RegionFilters:
+            if type(filter)==RegionFilter:
+                self.Filters.append(filter)
+            elif type(filter)==dict:
+                self.Filters.append(RegionFilter.from_dict(filter))
+            else:
+                raise ValueError("Filter must be of type RegionFilter or dictionary, not %s"%type(filter))
+
+    def detect(self, image, intensity_image=None):
+
+        regions = skimage.measure.regionprops(skimage.measure.label(image), intensity_image=intensity_image)
+
+        return [Measurement(
+            np.sum([filter.filter([region]) for filter in self.Filters]),
+            region.centroid)
+            for region in regions]
 
 
 class AreaDetector(Detector):

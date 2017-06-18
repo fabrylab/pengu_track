@@ -61,7 +61,7 @@ db = DataFileExtended(file_path)
 # Initialise PenguTrack
 object_size = 1  # Object diameter (smallest)
 object_number = 1  # Number of Objects in First Track
-object_area = 3
+object_area = 5
 
 # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
 model = VariableSpeed(1, 1, dim=2, timeconst=1.)
@@ -123,13 +123,13 @@ import matplotlib.pyplot as plt
 #     plt.show()
 
 # Initialize Detector
-AD = AreaDetector(object_area, object_number, upper_limit=10, lower_limit=1)
+AD = AreaDetector(object_area, object_number, upper_limit=20, lower_limit=1)
 print('Initialized')
 
 # with db.db.atomic() as transaction:
 for i in range(1):
     # Set Mask Type
-    if db.getMaskType(name="PT_Mask_Type"):
+    if db.getMaskType(name="PT_Mask_Type"):bi
         PT_Mask_Type = db.getMaskType(name="PT_Mask_Type")
     else:
         PT_Mask_Type = db.setMaskType(name="PT_Mask_Type", color="#FF6633")
@@ -170,6 +170,8 @@ print('Starting Iteration')
 images = db.getImageIterator(start_frame=9000, end_frame=10800)#start_frame=start_frame, end_frame=3)
 # images = db.getImageIterator(start_frame=10272, end_frame=10279)#start_frame=start_frame, end_frame=3)
 
+ids = [img.id for img in images]
+
 from multiprocessing import Process,Queue,Pipe
 
 segmentation_queue = Queue(10)
@@ -186,18 +188,28 @@ Timer_in = Queue()
 Timer_out = Queue()
 
 
-def load(images):
+def load(image_ids):
     # images = args
     # for i, img in enumerate(images):
-    for i, img in enumerate(images):
+    for i, img_id in enumerate(image_ids):
         # while True:
         #     if not segmentation_pipe_out.poll():
         #         segmentation_pipe_in.send([i, img.data])
         #         break
         # img = db.getImage(frame=i)
-        segmentation_queue.put([img.sort_index, img.data])
-        Timer_in.put([img.sort_index, time()])
-        print("loaded image %s" % img.sort_index)
+        while True:
+            try:
+                with db.db.atomic() as transaction:
+                    img = db.getImage(id=img_id)
+                    segmentation_queue.put([img.sort_index, img.data])
+                    Timer_in.put([img.sort_index, time()])
+                    print("loaded image %s" % img.sort_index)
+                break
+            except peewee.OperationalError:
+                pass
+            except peewee.DatabaseError:
+                pass
+
         # while True:
         #     if not segmentation_queue.full():
         #         segmentation_queue.put()
@@ -384,7 +396,7 @@ def DB_write():
             pass
 
 
-loading = Process(target=load, args=(images,))
+loading = Process(target=load, args=(ids,))
 segmentation = Process(target=segmentate)
 detection = Process(target=detect)
 tracking = Process(target=track)
