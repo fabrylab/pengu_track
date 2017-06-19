@@ -462,10 +462,23 @@ class RegionFilter(object):
         else:
             self.var = np.diag(np.ones(self.dim))
 
-        if lower_limit is not None:
+        if lower_limit is None:
             self.lower_limit = np.ones(self.dim)*-np.inf
-        if upper_limit is not None:
+        elif np.asarray(lower_limit).shape ==1:
+            self.lower_limit = np.asarray(lower_limit, dtype=float)
+        elif np.asarray(lower_limit).shape == ():
+            self.lower_limit = np.ones(self.dim)*lower_limit
+        else:
+            raise ValueError("False shape for lower limit parameter!")
+
+        if upper_limit is None:
             self.upper_limit = np.ones(self.dim)*np.inf
+        elif np.asarray(upper_limit).shape ==1:
+            self.upper_limit = np.asarray(upper_limit, dtype=float)
+        elif np.asarray(upper_limit).shape == ():
+            self.upper_limit = np.ones(self.dim)*upper_limit
+        else:
+            raise ValueError("False shape for upper limit parameter!")
 
         if dist is not None:
             self.dist = dist

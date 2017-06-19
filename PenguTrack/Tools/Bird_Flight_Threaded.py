@@ -123,13 +123,16 @@ import matplotlib.pyplot as plt
 #     plt.show()
 
 # Initialize Detector
-AD = AreaDetector(object_area, object_number, upper_limit=20, lower_limit=1)
+# AD = AreaDetector(object_area, object_number, upper_limit=20, lower_limit=1)
+from PenguTrack.Detectors import RegionFilter, RegionPropDetector
+rf = RegionFilter("area",object_area,upper_limit=20, lower_limit=1)
+AD = RegionPropDetector([rf])
 print('Initialized')
 
 # with db.db.atomic() as transaction:
 for i in range(1):
     # Set Mask Type
-    if db.getMaskType(name="PT_Mask_Type"):bi
+    if db.getMaskType(name="PT_Mask_Type"):
         PT_Mask_Type = db.getMaskType(name="PT_Mask_Type")
     else:
         PT_Mask_Type = db.setMaskType(name="PT_Mask_Type", color="#FF6633")

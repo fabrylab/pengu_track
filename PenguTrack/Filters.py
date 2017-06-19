@@ -1020,9 +1020,14 @@ class MultiFilter(Filter):
                 z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
         # print(np.mean(meas_logp), np.amin(meas_logp), np.amax(meas_logp))
         print(len(z))
-        z = z[meas_logp - np.amin(meas_logp) >= (self.MeasurementProbabilityThreshold * (np.amax(meas_logp)-np.amin(meas_logp)))]
-        measurements = list(np.asarray(measurements)[meas_logp - np.amin(meas_logp) >= (self.MeasurementProbabilityThreshold *
-                                                                  (np.amax(meas_logp)-np.amin(meas_logp)))])
+
+        mask = ~np.isneginf(meas_logp)
+        meas_logp[~mask] = np.nanmin(meas_logp[mask])
+        mask = mask & (meas_logp - np.nanmin(meas_logp) >=
+                       (self.MeasurementProbabilityThreshold * (np.nanmax(meas_logp)-np.nanmin(meas_logp))))
+        z = z[mask]
+        measurements = list(np.asarray(measurements)[mask])
+
         print(len(z))
         M = z.shape[0]
         N = len(self.ActiveFilters.keys())
