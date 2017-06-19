@@ -1022,11 +1022,15 @@ class MultiFilter(Filter):
         print(len(z))
 
         mask = ~np.isneginf(meas_logp)
-        meas_logp[~mask] = np.nanmin(meas_logp[mask])
-        mask = mask & (meas_logp - np.nanmin(meas_logp) >=
-                       (self.MeasurementProbabilityThreshold * (np.nanmax(meas_logp)-np.nanmin(meas_logp))))
-        z = z[mask]
-        measurements = list(np.asarray(measurements)[mask])
+        if not np.all(~mask):
+            meas_logp[~mask] = np.nanmin(meas_logp[mask])
+            mask = mask & (meas_logp - np.nanmin(meas_logp) >=
+                           (self.MeasurementProbabilityThreshold * (np.nanmax(meas_logp) - np.nanmin(meas_logp))))
+            z = z[mask]
+            measurements = list(np.asarray(measurements)[mask])
+        else:
+            self.Measurements.pop(i, None)
+            return measurements, i
 
         print(len(z))
         M = z.shape[0]
