@@ -248,6 +248,7 @@ class SimpleAreaDetector2(Detector):
             index_data2 = np.linalg.norm(index_data2, axis=-1)
 
         labeled = skimage.measure.label(index_data2, connectivity=2)
+        # labeled = skimage.measure.label(~mask, connectivity=2)
 
         # Filter the regions for area and convexity
         if get_all:

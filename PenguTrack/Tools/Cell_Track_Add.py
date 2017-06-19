@@ -158,6 +158,7 @@ class Addon(clickpoints.Addon):
         SegMap = self.segmentate()
         self.db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
         Positions = self.detect()
+        self.db.deleteMarkers(frame=self.current_frame, type=self.detection_marker_type)
         for pos in Positions:
             self.db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX / res, x=pos.PositionY / res, type=self.detection_marker_type)
 
