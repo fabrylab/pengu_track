@@ -159,7 +159,7 @@ class Addon(clickpoints.Addon):
         self.db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
         Positions = self.detect()
         for pos in Positions:
-            self.db.setMarker(frame=self.current_frame, layer=0, y=pos[0], x=pos[1], type=self.detection_marker_type)
+            self.db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX / res, x=pos.PositionY / res, type=self.detection_marker_type)
 
 
     def pt_set_lum_treshold(self, value):
@@ -173,7 +173,7 @@ class Addon(clickpoints.Addon):
     def pt_set_distxy_boundary(self, value):
         self.Detector.distxy_boundary = int(value)
 
-    def pt_set_distz_boundary(self, value, name):
+    def pt_set_distz_boundary(self, value):
         self.Detector.distz_boundary = int(value)
 
     def pt_set_number(self, value):
@@ -196,11 +196,11 @@ class Addon(clickpoints.Addon):
 
     def pt_set_q(self, value):
         self.q = int(value)
-        self.update_filter_params()
+        self._update_filter_params_()
 
     def pt_set_r(self, value):
         self.r = int(value)
-        self.update_filter_params()
+        self._update_filter_params_()
 
 
     def segmentate(self):
