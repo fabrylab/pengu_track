@@ -2033,5 +2033,3 @@ def smallest_dtype(array):
         raise ValueError("Input is not a numpy array")
 
 
-
-
