@@ -1,7 +1,9 @@
+import numpy as np
+
 
 class HorizonEqualisation():
     # Define Warp Function
-    def __init__(self, horizonmarkers, f, sensor_size, pengu_markers, h_p, max_dist):
+    def __init__(self, horizonmarkers, f, sensor_size, pengu_markers, h_p, max_dist, img_shape,  camera_h=None, log=False):
 
         self.Horizonmarkers = horizonmarkers
         self.Pengu_Markers = pengu_markers
@@ -10,8 +12,8 @@ class HorizonEqualisation():
         self.h_p = h_p
         self.Max_Dist = max_dist
 
-        self.height = data.shape[0]
-        self.width = data.shape[1]
+        self.height, self.width  = img_shape
+
 
         x, y = self.Horizonmarkers
         m, t = np.polyfit(x, y, 1)  # linear fit for camera role
@@ -195,7 +197,7 @@ class HorizonEqualisation():
         yy_ = self.height - np.log((self.height - yy_)*(self.Res/self.y_min[1]))*(self.height/np.log(self.Max_Dist/self.y_min[1]))
         return xx_, yy_
 
-    def horizontal_equalisation(self, image):
+    def horizon_equalisation(self, image):
         """
         Parameters:
         ----------
