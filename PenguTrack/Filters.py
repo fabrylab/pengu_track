@@ -923,6 +923,7 @@ class MultiFilter(Filter):
         self.filter_kwargs = kwargs
         self.CriticalIndex = None
         self.Probability_Gain = {}
+        self.Probability_Gain_Dicts = {}
 
     def predict(self, u=None, i=None):
         """
@@ -1047,6 +1048,7 @@ class MultiFilter(Filter):
             gain_dict.update({j: k})
             for m, meas in enumerate(measurements):
                 probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas})
+        self.Probability_Gain_Dicts.update({i: gain_dict})
             # for m in range(M):
             #     probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: measurements[m]})
         probability_gain[np.isinf(probability_gain)] = np.nan
@@ -1067,12 +1069,26 @@ class MultiFilter(Filter):
         # probability_gain = probability_gain-norm #(probability_gain.T - np.log(norm)).T
         # print(probability_gain)
         self.Probability_Gain.update({i: np.array(probability_gain)})
+        import pickle
+        with open("/home/birdflight/Desktop/ProbabilityGains.pkl", "w") as myfile:
+            pickle.dump(self.Probability_Gain, myfile, pickle.HIGHEST_PROTOCOL)
+        with open("/home/birdflight/Desktop/Measurements.pkl", "w") as myfile:
+            pickle.dump(self.Measurements, myfile, pickle.HIGHEST_PROTOCOL)
+        with open("/home/birdflight/Desktop/GainDicts.pkl", "w") as myfile:
+            pickle.dump(self.Probability_Gain_Dicts, myfile, pickle.HIGHEST_PROTOCOL)
         # self.CriticalIndex = gain_dict[np.nanargmax([np.sort(a)[-2]/np.sort(a)[-1] for a in probability_gain[:N]])]
         x = {}
         x_err = {}
         from scipy.optimize import linear_sum_assignment
 
-        rows, cols = linear_sum_assignment(-1 * probability_gain)
+        # rows, cols = linear_sum_assignment(-1 * probability_gain)
+        cost_matrix = np.copy(probability_gain)
+        cost_matrix[cost_matrix<-360]=-360
+        cost_matrix = -1*np.exp(cost_matrix)
+        # cost_matrix = -1 * np.exp((probability_gain - np.amin(probability_gain)) * -360. / (
+        # np.amax(probability_gain) - np.amin(probability_gain)))
+
+        rows, cols = linear_sum_assignment(cost_matrix)
         # if M >2:
         #     rows, cols = linear_sum_assignment(-1*probability_gain)
         # elif M==2:
@@ -1106,7 +1122,10 @@ class MultiFilter(Filter):
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
 
             else:
-                print("DEPRECATED TRACK WITH PROB %s IN FRAME %s" % (probability_gain[k, m], i))
+                if gain_dict.has_key(k):
+                    print("DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (k, probability_gain[k, m], i))
+                else:
+                    print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
                 try:
                     n = len(self.ActiveFilters[gain_dict[k]].X.keys())
                 except KeyError:
