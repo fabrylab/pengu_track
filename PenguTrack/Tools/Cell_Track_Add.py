@@ -316,7 +316,7 @@ class Addon(clickpoints.Addon):
             self.db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
             Positions = self.detect()
             for pos in Positions:
-                self.db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX, x=pos.PositionY,
+                self.db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX / res, x=pos.PositionY / res,
                                   type=self.detection_marker_type)
 
             if len(Positions) != 0:
@@ -330,67 +330,66 @@ class Addon(clickpoints.Addon):
                     print(self.Tracker.filter_kwargs)
                     raise
 
-                # Get Tracks from Filter (a little dirty)
-                for k in self.Tracker.Filters.keys():
-                    x = y = z = np.nan
-                    if i in self.Tracker.Filters[k].Measurements.keys():
-                        meas = self.Tracker.Filters[k].Measurements[i]
-                        x = meas.PositionX
-                        y = meas.PositionY
-                        z = meas.PositionZ
-                        prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
-                    elif i in self.Tracker.Filters[k].X.keys():
-                        meas = None
-                        x, y, z = self.Tracker.Model.measure(self.Tracker.Filters[k].X[i])
-                        prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
+                # Do all DB-writing as atomic transaction (at once)
+                with self.db.db.atomic() as transaction:
 
-                    if i in self.Tracker.Filters[k].Measurements.keys():
-                        pred_x, pred_y, pred_z = self.Tracker.Model.measure(self.Tracker.Filters[k].Predicted_X[i])
-                        prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
-
-                    x_img = y / res
-                    y_img = x / res
-                    pred_x_img = pred_y / res
-                    pred_y_img = pred_x / res
-                    try:
-                        db.setMarker(frame=i, layer=0, x=x_img, y=y_img, text="Detection %s" % k,
-                                     type=self.detection_marker_type)
-                    except:
-                        pass
-                    # Write assigned tracks to ClickPoints DataBase
-                    if np.isnan(x) or np.isnan(y):
-                        pass
-                    else:
-                        pred_marker = db.setMarker(frame=i, layer=0, x=pred_x_img, y=pred_y_img,
-                                                   text="Track %s" % (1000 + k), type=self.prediction_marker_type)
-                        if db.getTrack(k + 1000):
-                            track_marker = db.setMarker(frame=i, layer=0, type=self.track_marker_type,
-                                                        track=(1000 + k),
-                                                        x=x_img, y=y_img,
-                                                        text='Track %s, Prob %.2f, Z-Position %s' % (
-                                                        (1000 + k), prob, z))
-
-                            print('Set Track(%s)-Marker at %s, %s' % ((1000 + k), x_img, y_img))
+                    # Get Tracks from Filter
+                    for k in self.Tracker.Filters.keys():
+                        if i in self.Tracker.Filters[k].Measurements.keys():
+                            meas = self.Tracker.Filters[k].Measurements[i]
+                            x = meas.PositionX
+                            y = meas.PositionY
+                            z = meas.PositionZ
+                            prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
                         else:
-                            db.setTrack(self.track_marker_type, id=1000 + k, hidden=False)
-                            if k == self.Tracker.CriticalIndex:
-                                db.setMarker(image=i, layer=0, type=self.track_marker_type, x=x_img, y=y_img,
-                                             text='Track %s, Prob %.2f, CRITICAL' % ((1000 + k), prob))
-                            track_marker = db.setMarker(image=image, type=self.track_marker_type,
-                                                        track=1000 + k,
-                                                        x=x_img,
-                                                        y=y_img,
-                                                        text='Track %s, Prob %.2f, Z-Position %s' % (
-                                                        (1000 + k), prob, z))
-                            print('Set new Track %s and Track-Marker at %s, %s' % ((1000 + k), x_img, y_img))
+                            x = y = z = np.nan
+                            prob = np.nan
 
-                        # db.setMeasurement(marker=track_marker, log=prob, x=x, y=y, z=z)
-                        try:
-                            db.db.connect()
-                        except peewee.OperationalError:
+                        # Write predictions to Database
+                        if i in self.Tracker.Filters[k].Predicted_X.keys():
+                            pred_x, pred_y, pred_z = self.Tracker.Model.measure(self.Tracker.Filters[k].Predicted_X[i])
+                            prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
+
+                            pred_x_img = pred_y / res
+                            pred_y_img = pred_x / res
+
+                            pred_marker = db.setMarker(frame=i, layer=0, x=pred_x_img, y=pred_y_img,
+                                                       text="Track %s" % (1000 + k), type=self.prediction_marker_type)
+
+                        x_img = y / res
+                        y_img = x / res
+                        # Write assigned tracks to ClickPoints DataBase
+                        if np.isnan(x) or np.isnan(y):
                             pass
-                        meas_entry = self.db.setMeasurement(marker=track_marker, log=prob, x=x, y=y, z=z)
-                        meas_entry.save()
+                        else:
+                            if db.getTrack(k + 1000):
+                                track_marker = db.setMarker(frame=i, layer=0, type=self.track_marker_type,
+                                                            track=(1000 + k),
+                                                            x=x_img, y=y_img,
+                                                            text='Track %s, Prob %.2f, Z-Position %s' % (
+                                                            (1000 + k), prob, z))
+
+                                print('Set Track(%s)-Marker at %s, %s' % ((1000 + k), x_img, y_img))
+                            else:
+                                db.setTrack(self.track_marker_type, id=1000 + k, hidden=False)
+                                if k == self.Tracker.CriticalIndex:
+                                    db.setMarker(image=i, layer=0, type=self.track_marker_type, x=x_img, y=y_img,
+                                                 text='Track %s, Prob %.2f, CRITICAL' % ((1000 + k), prob))
+                                track_marker = db.setMarker(image=image, type=self.track_marker_type,
+                                                            track=1000 + k,
+                                                            x=x_img,
+                                                            y=y_img,
+                                                            text='Track %s, Prob %.2f, Z-Position %s' % (
+                                                            (1000 + k), prob, z))
+                                print('Set new Track %s and Track-Marker at %s, %s' % ((1000 + k), x_img, y_img))
+
+                            # try:
+                            #     db.db.connect()
+                            # except peewee.OperationalError:
+                            #     pass
+                            meas_entry = self.db.setMeasurement(marker=track_marker, log=prob, x=x, y=y, z=z)
+                            meas_entry.save()
+
             # check if we should terminate
             if self.cp.hasTerminateSignal():
                 print("Cancelled Tracking")
