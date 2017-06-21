@@ -227,22 +227,25 @@ class Addon(clickpoints.Addon):
         self.r = int(value)
         self._update_filter_params_()
 
-    def segmentate(self):
+    def segmentate(self, frame=None):
         self.current_frame = self.cp.window.data_file.get_current_image()
         self.current_layer = self.cp.window.data_file.get_current_layer()
-        self.current_image = self.db.getImage(frame=self.current_frame, layer=self.current_layer)
+        if frame is None:
+            frame = self.current_frame
+        self.current_image = self.db.getImage(frame=frame, layer=self.current_layer)
         self.image_data = self.current_image.data
-        # temp = db.getImage(frame=self.current_frame, layer=2).data.astype(np.float)
+
+        # temp = db.getImage(frame=frame, layer=2).data.astype(np.float)
         # SegMap1 = self.Segmentation.segmentate(gaussian_filter(temp, 1.5))
         #####
         db = self.db
-        immin = db.getImage(frame=self.current_frame, layer=0).data
+        immin = db.getImage(frame=frame, layer=0).data
         immin = 1.0 * np.asarray(immin)
         immin -= np.percentile(immin, 0.01)
         immin = (immin / np.percentile(immin, 99.99))
         immin[immin > 1] = 1
         immin[immin < 0] = 0
-        immax = db.getImage(frame=self.current_frame, layer=2).data
+        immax = db.getImage(frame=frame, layer=2).data
         immax = 1.0 * np.asarray(immax)
         immax -= np.percentile(immax, 0.01)
         immax = (immax / np.percentile(immax, 99.99))
@@ -252,8 +255,8 @@ class Addon(clickpoints.Addon):
         im = immin * immax
         im = im - np.min(im)
         im = im / np.max(im)
-        immin_ind = db.getImage(frame=self.current_frame, layer=1).data
-        immax_ind = db.getImage(frame=self.current_frame, layer=3).data
+        immin_ind = db.getImage(frame=frame, layer=1).data
+        immax_ind = db.getImage(frame=frame, layer=3).data
         immin_ind = 1.0 * np.asarray(immin_ind)
         immax_ind = 1.0 * np.asarray(immax_ind)
         ind_diff = - immax_ind + immin_ind
@@ -262,30 +265,32 @@ class Addon(clickpoints.Addon):
         ind_diff = gaussian_filter(ind_diff, 5)
         imf = 1 - ((1 - im) * (ind_diff))
         SegMap1 = self.Segmentation.segmentate(imf)
-        SegMap2 = self.Segmentation2.segmentate(db.getImage(frame=self.current_frame, layer=1).data)
+        SegMap2 = self.Segmentation2.segmentate(db.getImage(frame=frame, layer=1).data)
 
         SegMap = ~SegMap1# & SegMap2
 
         return SegMap
 
-        # db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
+        # db.setMask(frame=frame, layer=0, data=((~SegMap).astype(np.uint8)))
         # cp.ReloadMask()
         # return SegMap
 
-    def detect(self):
+    def detect(self, frame=None):
         self.current_frame = self.cp.window.data_file.get_current_image()
         self.current_layer = self.cp.window.data_file.get_current_layer()
+        if frame is None:
+            frame= self.current_frame
         self.current_image = self.db.getImage(frame=self.current_frame, layer=self.current_layer)
 
         db = self.db
-        mask = db.getMask(frame=self.current_frame, layer=0).data.astype(bool)
-        index_data = db.getImage(frame=self.current_frame, layer=1).data
+        mask = db.getMask(frame=frame, layer=0).data.astype(bool)
+        index_data = db.getImage(frame=frame, layer=1).data
         Positions = self.Detector.detect(index_data, mask)#, only_for_detection=True)
 
         return Positions
 
         # for pos in Positions:
-        #     db.setMarker(frame=self.current_frame, layer=0, y=pos[0], x=pos[1], type=self.detection_marker_type)
+        #     db.setMarker(frame=frame, layer=0, y=pos[0], x=pos[1], type=self.detection_marker_type)
         # com.ReloadMarker()
 
     def _update_filter_params_(self):
@@ -308,7 +313,7 @@ class Addon(clickpoints.Addon):
             obj = self.Tracker.Filters.pop(f)
             del obj
 
-        self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=self.current_frame)
+        self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=frame)
 
     # def _update_filter_params_(self, *args, **kwargs):
     #     self.Tracker.filter_args = args
@@ -319,7 +324,7 @@ class Addon(clickpoints.Addon):
     #     for f in self.Tracker.ActiveFilters:
     #         obj = self.Tracker.Filters.pop(f)
     #         del obj
-    #     self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=self.current_frame)
+    #     self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=frame)
 
     def run(self, start_frame=0):
         # Delete Old Tracks
@@ -337,15 +342,15 @@ class Addon(clickpoints.Addon):
             # Prediction step
             self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=i)
 
-            SegMap = self.segmentate()
+            SegMap = self.segmentate(frame=i)
             self.db.setMask(frame=i, layer=0, data=((~SegMap).astype(np.uint8)))
-            Positions = self.detect()
+            Positions = self.detect(frame=i)
 
             #
             # minIndices = db.getImage(frame=i, layer=1)
             # minProj = db.getImage(frame=i, layer=0)
             # Positions, mask = TCellDetector().detect(minProj,minIndices)
-            # self.db.setMask(frame=self.current_frame, layer=0, data=(~mask).astype(np.uint8))
+            # self.db.setMask(frame=i, layer=0, data=(~mask).astype(np.uint8))
             #
 
             for pos in Positions:
