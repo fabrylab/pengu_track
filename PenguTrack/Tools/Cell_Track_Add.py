@@ -13,6 +13,7 @@ from PenguTrack.Filters import MultiFilter
 from PenguTrack.Models import RandomWalk
 # from PenguTrack.Detectors import SimpleAreaDetector as AreaDetector
 from PenguTrack.Detectors import SimpleAreaDetector2 as AreaDetector
+from PenguTrack.Detectors import TCellDetector
 from PenguTrack.Detectors import TresholdSegmentation, VarianceSegmentation
 from PenguTrack.Detectors import Measurement as PT_Measurement
 from PenguTrack.DataFileExtended import DataFileExtended
@@ -20,6 +21,7 @@ from PenguTrack.DataFileExtended import DataFileExtended
 import scipy.stats as ss
 from scipy.ndimage.measurements import label
 from scipy.ndimage.filters import gaussian_filter
+from skimage.filters import threshold_niblack
 
 import clickpoints
 
@@ -160,6 +162,31 @@ class Addon(clickpoints.Addon):
             self.db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX / res, x=pos.PositionY / res, type=self.detection_marker_type)
 
 
+    # def optionsChanged(self):
+    #     self.pt_set_lum_treshold(self.getOption(key="Luminance_Threshold"))
+    #     self.pt_set_var_treshold(self.getOption(key="Variance_Threshold"))
+    #     self.pt_set_distxy_boundary(self.getOption(key="Pre_Stitching_Dist_XY"))
+    #     self.pt_set_distz_boundary(self.getOption(key="Pre_Stitching_Dist_Z"))
+    #     self.pt_set_number(self.getOption(key="Object_Number"))
+    #     self.pt_set_minsize(self.getOption(key="Min_Object_Size"))
+    #     self.pt_set_maxsize(self.getOption(key="Max_Object_Size"))
+    #     self.pt_set_q(self.getOption(key="Prediction_Error"))
+    #     self.pt_set_r(self.getOption(key="Detection_Error"))
+    #
+    #     self.current_frame = self.cp.window.data_file.get_current_image()
+    #     self.current_layer = self.cp.window.data_file.get_current_layer()
+    #     self.current_image = self.db.getImage(frame=self.current_frame, layer=self.current_layer)
+    #
+    #     db = self.db
+    #
+    #     minProj = db.getImage(frame=self.current_frame, layer=0)
+    #     minIndices = db.getImage(frame=self.current_frame, layer=1)
+    #     Positions, mask = TCellDetector().detect(minProj, minIndices)
+    #     self.db.setMask(frame=self.current_frame, layer=0, data=(~mask).astype(np.uint8))
+    #     self.db.deleteMarkers(frame=self.current_frame, type=self.detection_marker_type)
+    #     for pos in Positions:
+    #         self.db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX / res, x=pos.PositionY / res, type=self.detection_marker_type)
+
     def pt_set_lum_treshold(self, value):
         self.luminance_treshold = float(value)/2**12
         self.Segmentation.Treshold = self.luminance_treshold
@@ -200,7 +227,6 @@ class Addon(clickpoints.Addon):
         self.r = int(value)
         self._update_filter_params_()
 
-
     def segmentate(self):
         self.current_frame = self.cp.window.data_file.get_current_image()
         self.current_layer = self.cp.window.data_file.get_current_layer()
@@ -235,7 +261,6 @@ class Addon(clickpoints.Addon):
         ind_diff = np.exp(-ind_diff / 2.)
         ind_diff = gaussian_filter(ind_diff, 5)
         imf = 1 - ((1 - im) * (ind_diff))
-
         SegMap1 = self.Segmentation.segmentate(imf)
         SegMap2 = self.Segmentation2.segmentate(db.getImage(frame=self.current_frame, layer=1).data)
 
@@ -315,8 +340,20 @@ class Addon(clickpoints.Addon):
             SegMap = self.segmentate()
             self.db.setMask(frame=i, layer=0, data=((~SegMap).astype(np.uint8)))
             Positions = self.detect()
+
+            #
+            # minIndices = db.getImage(frame=i, layer=1)
+            # minProj = db.getImage(frame=i, layer=0)
+            # Positions, mask = TCellDetector().detect(minProj,minIndices)
+            # self.db.setMask(frame=self.current_frame, layer=0, data=(~mask).astype(np.uint8))
+            #
+
             for pos in Positions:
+<<<<<<< dest
                 self.db.setMarker(frame=i, layer=0, y=pos.PositionX / res, x=pos.PositionY / res,
+=======
+                self.db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX / res, x=pos.PositionY / res,
+>>>>>>> source
                                   type=self.detection_marker_type)
 
             if len(Positions) != 0:

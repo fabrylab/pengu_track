@@ -39,11 +39,15 @@ from skimage import transform
 from scipy.ndimage.interpolation import map_coordinates
 from scipy.ndimage.interpolation import shift
 from skimage import img_as_uint
+from skimage.filters import threshold_otsu, threshold_niblack
+from skimage.morphology import remove_small_objects, binary_erosion
+from skimage.measure import regionprops
 
 from scipy import ndimage as ndi
 from scipy.special import lambertw
 from scipy.ndimage.measurements import label
 from scipy import stats
+from scipy.ndimage.filters import gaussian_filter
 
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max
@@ -176,6 +180,91 @@ class BlobDetector(Detector):
         else:
             return []
 
+class TCellDetector(Detector):
+    """
+    Detector classifying objects by area and number to be used with pengu-track modules.
+    """
+    def __init__(self):
+        super(TCellDetector, self).__init__()
+
+    def enhance(self, image, percentile):
+        image = image.astype(np.float)
+
+        bgd = threshold_niblack(image, 51)
+        image = image / bgd
+
+        image -= np.percentile(image, percentile)
+        image /= np.percentile(image, 100. - percentile)
+        image[image < 0.] = 0.
+        image[image > 1.] = 1.
+        return image
+
+    def detect(self, minProj, minIndices):
+        """
+        Detection function. Parts the image into blob-regions with size according to their area.
+        Returns information about the regions.
+
+        Parameters
+        ----------
+        image: array_like
+            Image will be converted to uint8 Greyscale and then binnearized.
+        return_regions: bool, optional
+            If True, function will return skimage.measure.regionprops object,
+            else a list of the blob centroids and areas.
+
+        Returns
+        -------
+        regions: array_like
+            List of information about each blob of adequate size.
+        """
+        minProj2 = self.enhance(minProj.data, 0.1)
+        thres = threshold_otsu(minProj2)
+        mask = minProj2 < thres
+
+        mask = binary_erosion(mask)
+        # mask = remove_small_objects(mask, 24)
+
+        maskedMinIndices = minIndices.data.copy() + 1
+        # maskedMinIndices = minIndices.data[:] + 1
+        maskedMinIndices = np.round(gaussian_filter(maskedMinIndices, 2)).astype(np.int)
+        maskedMinIndices[~mask] = 0
+        j_max = np.amax(maskedMinIndices)
+        stack = np.zeros((j_max, minProj.data.shape[0], minProj.data.shape[1]), dtype=np.bool)
+        for j in range(j_max):
+            stack[j, maskedMinIndices == j] = True
+
+        labels3D, n = label(stack, structure=np.ones((3, 3, 3)))
+        labels2D = np.sum(labels3D, axis=0) - 1
+        # labels2D = remove_small_objects(labels2D, 24)
+
+        regions = regionprops(labels2D, maskedMinIndices)
+        areas = np.array([r.area for r in regions])
+        area_thres = threshold_otsu(areas) * 0.8
+        if area_thres > 100:
+            area_thres = 38.0
+        regions = [r for r in regions if r.area >= area_thres]
+        #centroids = np.array([r.centroid for r in regions]).T
+
+        out = []
+        mu = np.mean([prop.area for prop in regions])
+        for prop in regions:
+            sigma = np.sqrt(prop.area)  # assuming Poisson distributed areas
+            prob = np.log(len(regions) / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
+                                                            prop.area - mu) / sigma) ** 2
+            intensities = prop.intensity_image[prop.image]
+            mean_int = np.mean(intensities)
+            std_int = np.std(intensities)
+            out.append(Measurement(prob, [prop.centroid[0], prop.centroid[1], mean_int], data=std_int))
+
+        Positions3D = []
+        res = 6.45 / 10
+        for pos in out:
+            posZ = pos.PositionZ
+            Positions3D.append(Measurement(pos.Log_Probability,
+                                                      [pos.PositionX * res, pos.PositionY * res, posZ * 10]))
+
+        return Positions3D, mask
+
 class SimpleAreaDetector2(Detector):
     """
     Detector classifying objects by area and number to be used with pengu-track modules.
@@ -233,12 +322,15 @@ class SimpleAreaDetector2(Detector):
             List of information about each blob of adequate size.
         """
         image[mask] = np.zeros_like(image)[mask]
+        # image //= 2
         j_max = np.amax(image)
         stack = np.zeros((j_max, image.shape[0], image.shape[1]), dtype=np.bool)
         for j in range(j_max):
             stack[j, image == j] = True
 
         labels, n = label(stack, structure=np.ones((3, 3, 3)))
+        # labels, n = skimage.measure.label(stack.astype(np.uint8), connectivity=3)
+
 
         index_data2 = np.zeros_like(image)
         for l in labels:
