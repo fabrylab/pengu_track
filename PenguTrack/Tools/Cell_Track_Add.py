@@ -349,13 +349,8 @@ class Addon(clickpoints.Addon):
             #
 
             for pos in Positions:
-<<<<<<< dest
                 self.db.setMarker(frame=i, layer=0, y=pos.PositionX / res, x=pos.PositionY / res,
-=======
-                self.db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX / res, x=pos.PositionY / res,
->>>>>>> source
                                   type=self.detection_marker_type)
-
             if len(Positions) != 0:
                 # if np.all(Positions != np.array([])):
 
