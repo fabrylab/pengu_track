@@ -81,19 +81,16 @@ class Addon(clickpoints.Addon):
         marker_type = db.getMarkerType(name="PT_Detection_Marker")
         if not marker_type:
             marker_type = db.setMarkerType(name="PT_Detection_Marker", color="#FF0000", style='{"scale":1.2}')
-        db.deleteMarkers(type=marker_type)
         self.detection_marker_type = marker_type
 
         marker_type2 = db.getMarkerType(name="PT_Track_Marker")
         if not marker_type2:
             marker_type2 = db.setMarkerType(name="PT_Track_Marker", color="#00FF00", mode=db.TYPE_Track)
-        db.deleteMarkers(type=marker_type2)
         self.track_marker_type = marker_type2
 
         marker_type3 = db.getMarkerType(name="PT_Prediction_Marker")
         if not marker_type3:
             marker_type3 = db.setMarkerType(name="PT_Prediction_Marker", color="#0000FF")
-        db.deleteMarkers(type=marker_type3)
         self.prediction_marker_type = marker_type3
 
         if not db.getMaskType(name="PT_SegMask"):
@@ -327,11 +324,16 @@ class Addon(clickpoints.Addon):
     #     self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=frame)
 
     def run(self, start_frame=0):
-        # Delete Old Tracks
-        db.deleteTracks(type=self.track_marker_type)
-
         images = self.db.getImageIterator(start_frame=start_frame)
         db = self.db
+        # Delete Old Tracks
+        db.deleteTracks(type=self.track_marker_type)
+        marker_type = db.getMarkerType(name="PT_Detection_Marker")
+        marker_type2 = db.getMarkerType(name="PT_Track_Marker")
+        marker_type3 = db.getMarkerType(name="PT_Prediction_Marker")
+        db.deleteMarkers(type=marker_type)
+        db.deleteMarkers(type=marker_type2)
+        db.deleteMarkers(type=marker_type3)
         for image in images:
             i = image.sort_index
             print("Doing Frame %s" % i)
