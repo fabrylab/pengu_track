@@ -1089,6 +1089,8 @@ class MultiFilter(Filter):
         # np.amax(probability_gain) - np.amin(probability_gain)))
 
         rows, cols = linear_sum_assignment(cost_matrix)
+
+        print("Probs for frame %s are "%i, probability_gain[rows,cols])
         # if M >2:
         #     rows, cols = linear_sum_assignment(-1*probability_gain)
         # elif M==2:
@@ -1099,7 +1101,9 @@ class MultiFilter(Filter):
         #     cols=[0]
         # else:
         #     raise ValueError
-
+        for t in range(N):
+            if t not in rows:
+                print("No update for track %s with best prob %s in frame %s"%(gain_dict[t], np.amax(probability_gain[t]), i))
         for j, k in enumerate(rows):
             # if not np.all(np.isnan(probability_gain)+np.isinf(probability_gain)):
             #     k, m = np.unravel_index(np.nanargmax(probability_gain), probability_gain.shape)
@@ -1120,10 +1124,11 @@ class MultiFilter(Filter):
                 self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
+                print("Updated track %s with prob %s in frame %s" % (gain_dict[k], probability_gain[k, m], i))
 
             else:
                 if gain_dict.has_key(k):
-                    print("DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (k, probability_gain[k, m], i))
+                    print("DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (gain_dict[k], probability_gain[k, m], i))
                 else:
                     print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
                 try:
