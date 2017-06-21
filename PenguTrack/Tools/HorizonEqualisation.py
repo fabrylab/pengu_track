@@ -156,7 +156,9 @@ class HorizonEqualisation():
         print("Role at %s"%(np.arctan(m)*180/np.pi))
 
         # Calculate Camera tilt
-        return np.arctan((t / y - 1/2.) * (y_s / f))*-1
+        tilt = np.arctan((t / y - 1/2.) * (y_s / f))*-1
+        print("Tilt at %s"%(tilt*180/np.pi))
+        return tilt
 
     def calc_theta(self, theta_markers, sensor_size, image_size, f):
         x_t1, y_t1 = theta_markers

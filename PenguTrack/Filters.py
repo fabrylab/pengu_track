@@ -1069,14 +1069,14 @@ class MultiFilter(Filter):
         # probability_gain = probability_gain-norm #(probability_gain.T - np.log(norm)).T
         # print(probability_gain)
         self.Probability_Gain.update({i: np.array(probability_gain)})
-        import pickle
-        with open("/home/birdflight/Desktop/ProbabilityGains.pkl", "w") as myfile:
-            pickle.dump(self.Probability_Gain, myfile, pickle.HIGHEST_PROTOCOL)
-        with open("/home/birdflight/Desktop/Measurements.pkl", "w") as myfile:
-            pickle.dump(self.Measurements, myfile, pickle.HIGHEST_PROTOCOL)
-        with open("/home/birdflight/Desktop/GainDicts.pkl", "w") as myfile:
-            pickle.dump(self.Probability_Gain_Dicts, myfile, pickle.HIGHEST_PROTOCOL)
-        # self.CriticalIndex = gain_dict[np.nanargmax([np.sort(a)[-2]/np.sort(a)[-1] for a in probability_gain[:N]])]
+        # import pickle
+        # with open("/home/birdflight/Desktop/ProbabilityGains.pkl", "w") as myfile:
+        #     pickle.dump(self.Probability_Gain, myfile, pickle.HIGHEST_PROTOCOL)
+        # with open("/home/birdflight/Desktop/Measurements.pkl", "w") as myfile:
+        #     pickle.dump(self.Measurements, myfile, pickle.HIGHEST_PROTOCOL)
+        # with open("/home/birdflight/Desktop/GainDicts.pkl", "w") as myfile:
+        #     pickle.dump(self.Probability_Gain_Dicts, myfile, pickle.HIGHEST_PROTOCOL)
+        # # self.CriticalIndex = gain_dict[np.nanargmax([np.sort(a)[-2]/np.sort(a)[-1] for a in probability_gain[:N]])]
         x = {}
         x_err = {}
         from scipy.optimize import linear_sum_assignment
