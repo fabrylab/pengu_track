@@ -313,10 +313,10 @@ class Addon(clickpoints.Addon):
             self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=i)
 
             SegMap = self.segmentate()
-            self.db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
+            self.db.setMask(frame=i, layer=0, data=((~SegMap).astype(np.uint8)))
             Positions = self.detect()
             for pos in Positions:
-                self.db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX / res, x=pos.PositionY / res,
+                self.db.setMarker(frame=i, layer=0, y=pos.PositionX / res, x=pos.PositionY / res,
                                   type=self.detection_marker_type)
 
             if len(Positions) != 0:
