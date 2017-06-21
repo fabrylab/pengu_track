@@ -1,3 +1,4 @@
+from __future__ import print_function, division
 import numpy as np
 from skimage import transform
 from scipy.ndimage.interpolation import map_coordinates
@@ -9,11 +10,10 @@ class HorizonEqualisation():
 
         self.Horizonmarkers = horizonmarkers
         self.Pengu_Markers = pengu_markers
-        self.F = f
-        self.Sensor_Size = sensor_size
-        self.h_p = h_p
-        self.Max_Dist = max_dist
-
+        self.F = float(f)
+        self.Sensor_Size = np.asarray(sensor_size, dtype=float)
+        self.h_p = float(h_p)
+        self.Max_Dist = float(max_dist)
         self.height, self.width  = img_shape
 
 
@@ -84,6 +84,43 @@ class HorizonEqualisation():
         # reshape grid points for image interpolation
         grid = np.asarray([warped_xx.T, warped_yy.T]).T
         self.grid = grid.T.reshape((2, self.width * self.height))
+
+    # Define Warp Function
+    def warp_log(self, xy):
+        xx_, yy_ = xy
+
+        #xx_ /= (self.Max_Dist/self.height)/(self.h_p/self.Penguin_Size)
+        # vectors of every grid point in the plane (-h)
+        yy_ /= self.Max_Dist  # linear 0 to 1
+        yy_ *= np.log(self.Max_Dist / self.y_min[1])  # linear 0 to log(max/min)
+        yy_ = self.y_min[1] * np.exp(yy_)  # exponential from y_min to y_max
+
+        # initialize 3d positions
+        coord = np.asarray([xx_, yy_, -self.camera_h * np.ones_like(xx_)])
+        coord_norm = np.linalg.norm(coord, axis=0)
+        # calculate the angle between camera mid-beam-vector and grid-point-vector
+        alpha = np.arccos(np.dot(coord.T, self.x_s).T / (coord_norm * self.x_s_norm))  # * np.sign(np.tan(phi_)*h-yy_)
+        # calculate the angle between y_max-vector and grid-point-vector in the plane (projected to the plane)
+        theta = np.sum((np.cross(coord.T, self.x_s) * np.cross(self.y_max, self.x_s)).T
+                                 , axis=0) / (coord_norm * self.x_s_norm * np.sin(alpha) *
+                                              self.y_max_norm * self.x_s_norm * np.sin(self.alpha_y))
+        try:
+            theta[theta>1.] = 1.
+            theta[theta<-1.] = -1.
+        except TypeError:
+            if theta > 1.:
+                theta = 1.
+            elif theta < -1:
+                theta = -1.
+            else:
+                pass
+        theta = np.arccos(theta) * np.sign(xx_)
+        # from the angles it is possible to calculate the position of the focused beam on the camera-sensor
+        r = np.tan(alpha) * self.F
+        warp_xx = np.sin(theta) * r * self.width / self.Sensor_Size[0] + self.width / 2.
+        warp_yy = np.cos(theta) * r * self.height / self.Sensor_Size[1] + self.height / 2.
+        return warp_xx, warp_yy
+
         
     def warp_orth(self, xy):
         # if True:
