@@ -1,6 +1,7 @@
 import numpy as np
 from skimage import transform
 from scipy.ndimage.interpolation import map_coordinates
+from skimage import img_as_uint
 
 class HorizonEqualisation():
     # Define Warp Function

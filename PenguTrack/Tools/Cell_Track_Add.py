@@ -100,9 +100,6 @@ class Addon(clickpoints.Addon):
             self.mask_type = db.getMaskType(name="PT_SegMask")
         self.mask_type_id = self.mask_type.id
 
-        # Delete Old Tracks
-        db.deleteTracks(type=self.track_marker_type)
-
         # Initialize Pengutrack Framework
         # Initialize physical model as 3d random walk with 1 Hz frame-rate
         self.model = RandomWalk(dim=3)
@@ -300,6 +297,9 @@ class Addon(clickpoints.Addon):
     #     self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=self.current_frame)
 
     def run(self, start_frame=0):
+        # Delete Old Tracks
+        db.deleteTracks(type=self.track_marker_type)
+
         images = self.db.getImageIterator(start_frame=start_frame)
         db = self.db
         for image in images:
