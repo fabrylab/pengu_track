@@ -63,3 +63,5 @@ PenguTrack/Tools/.~lock.ProfileAlex.csv#
 PenguTrack/Tools/.~lock.ProfileAlex.csv#
 PenguTrack/Tools/.~lock.ProfileAlex.csv#
 *.orig
+PenguTrack/Tools/Image_Test.py
+PenguTrack/Tools/MIN_MAX_Test.py
