@@ -261,7 +261,7 @@ class Filter(object):
                     # print(self.Measurement_Distribution.logpdf(position - self.Model.measure(comparison)))
                     # print(np.log(self.Measurement_Distribution.pdf(position - self.Model.measure(comparison))))
                     # print("----------")
-                    # probs += self.Measurements[i].Log_Probability
+                    probs += self.Measurements[i].Log_Probability
                 except ValueError:
                     print(position.shape, position)
                     print(comparison.shape, comparison)
@@ -299,7 +299,7 @@ class Filter(object):
                 # print(self.Measurement_Distribution.logpdf(position - self.Model.measure(comparison)))
                 # print(np.log(self.Measurement_Distribution.pdf(position - self.Model.measure(comparison))))
                 # print("----------")
-                # probs += measurements[i].Log_Probability
+                probs += measurements[i].Log_Probability
                 # except RuntimeWarning:
                 #     probs = -np.inf
         return probs
@@ -1119,7 +1119,8 @@ class MultiFilter(Filter):
             # if (probability_gain[k, m] - np.amin(probability_gain) >=
             #     (self.LogProbabilityThreshold *(np.amax(probability_gain)-np.amin(probability_gain)))
             #     and gain_dict.has_key(k)):
-            if probability_gain[k,m] > LogProbabilityThreshold and gain_dict.has_key(k):
+            if gain_dict.has_key(k) and (probability_gain[k, m] > LogProbabilityThreshold or len(
+                    self.ActiveFilters[gain_dict[k]].X) < 2) :
             # if probability_gain[k, m] - MIN > LIMIT and gain_dict.has_key(k):
                 self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})

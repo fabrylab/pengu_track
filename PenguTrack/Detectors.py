@@ -527,6 +527,355 @@ class SimpleAreaDetector(Detector):
             return out
 
 
+def extended_regionprops(label_image, intensity_image=None, cache=True):
+    """Measure properties of labeled image regions.
+
+    Parameters
+    ----------
+    label_image : (N, M) ndarray
+        Labeled input image. Labels with value 0 are ignored.
+    intensity_image : (N, M) ndarray, optional
+        Intensity (i.e., input) image with same size as labeled image.
+        Default is None.
+    cache : bool, optional
+        Determine whether to cache calculated properties. The computation is
+        much faster for cached properties, whereas the memory consumption
+        increases.
+
+    Returns
+    -------
+    properties : list of RegionProperties
+        Each item describes one labeled region, and can be accessed using the
+        attributes listed below.
+
+    Notes
+    -----
+    The following properties can be accessed as attributes or keys:
+
+    **area** : int
+        Number of pixels of region.
+    **bbox** : tuple
+        Bounding box ``(min_row, min_col, max_row, max_col)``.
+        Pixels belonging to the bounding box are in the half-open interval
+        ``[min_row; max_row)`` and ``[min_col; max_col)``.
+    **bbox_area** : int
+        Number of pixels of bounding box.
+    **centroid** : array
+        Centroid coordinate tuple ``(row, col)``.
+    **convex_area** : int
+        Number of pixels of convex hull image.
+    **convex_image** : (H, J) ndarray
+        Binary convex hull image which has the same size as bounding box.
+    **coords** : (N, 2) ndarray
+        Coordinate list ``(row, col)`` of the region.
+    **eccentricity** : float
+        Eccentricity of the ellipse that has the same second-moments as the
+        region. The eccentricity is the ratio of the focal distance
+        (distance between focal points) over the major axis length.
+        The value is in the interval [0, 1).
+        When it is 0, the ellipse becomes a circle.
+    **equivalent_diameter** : float
+        The diameter of a circle with the same area as the region.
+    **euler_number** : int
+        Euler characteristic of region. Computed as number of objects (= 1)
+        subtracted by number of holes (8-connectivity).
+    **extent** : float
+        Ratio of pixels in the region to pixels in the total bounding box.
+        Computed as ``area / (rows * cols)``
+    **filled_area** : int
+        Number of pixels of filled region.
+    **filled_image** : (H, J) ndarray
+        Binary region image with filled holes which has the same size as
+        bounding box.
+    **image** : (H, J) ndarray
+        Sliced binary region image which has the same size as bounding box.
+    **inertia_tensor** : (2, 2) ndarray
+        Inertia tensor of the region for the rotation around its mass.
+    **inertia_tensor_eigvals** : tuple
+        The two eigen values of the inertia tensor in decreasing order.
+    **intensity_image** : ndarray
+        Image inside region bounding box.
+    **label** : int
+        The label in the labeled input image.
+    **local_centroid** : array
+        Centroid coordinate tuple ``(row, col)``, relative to region bounding
+        box.
+    **major_axis_length** : float
+        The length of the major axis of the ellipse that has the same
+        normalized second central moments as the region.
+    **max_intensity** : float
+        Value with the greatest intensity in the region.
+    **mean_intensity** : float
+        Value with the mean intensity in the region.
+    **min_intensity** : float
+        Value with the least intensity in the region.
+    **minor_axis_length** : float
+        The length of the minor axis of the ellipse that has the same
+        normalized second central moments as the region.
+    **moments** : (3, 3) ndarray
+        Spatial moments up to 3rd order::
+
+            m_ji = sum{ array(x, y) * x^j * y^i }
+
+        where the sum is over the `x`, `y` coordinates of the region.
+    **moments_central** : (3, 3) ndarray
+        Central moments (translation invariant) up to 3rd order::
+
+            mu_ji = sum{ array(x, y) * (x - x_c)^j * (y - y_c)^i }
+
+        where the sum is over the `x`, `y` coordinates of the region,
+        and `x_c` and `y_c` are the coordinates of the region's centroid.
+    **moments_hu** : tuple
+        Hu moments (translation, scale and rotation invariant).
+    **moments_normalized** : (3, 3) ndarray
+        Normalized moments (translation and scale invariant) up to 3rd order::
+
+            nu_ji = mu_ji / m_00^[(i+j)/2 + 1]
+
+        where `m_00` is the zeroth spatial moment.
+    **orientation** : float
+        Angle between the X-axis and the major axis of the ellipse that has
+        the same second-moments as the region. Ranging from `-pi/2` to
+        `pi/2` in counter-clockwise direction.
+    **perimeter** : float
+        Perimeter of object which approximates the contour as a line
+        through the centers of border pixels using a 4-connectivity.
+    **solidity** : float
+        Ratio of pixels in the region to pixels of the convex hull image.
+    **weighted_centroid** : array
+        Centroid coordinate tuple ``(row, col)`` weighted with intensity
+        image.
+    **weighted_local_centroid** : array
+        Centroid coordinate tuple ``(row, col)``, relative to region bounding
+        box, weighted with intensity image.
+    **weighted_moments** : (3, 3) ndarray
+        Spatial moments of intensity image up to 3rd order::
+
+            wm_ji = sum{ array(x, y) * x^j * y^i }
+
+        where the sum is over the `x`, `y` coordinates of the region.
+    **weighted_moments_central** : (3, 3) ndarray
+        Central moments (translation invariant) of intensity image up to
+        3rd order::
+
+            wmu_ji = sum{ array(x, y) * (x - x_c)^j * (y - y_c)^i }
+
+        where the sum is over the `x`, `y` coordinates of the region,
+        and `x_c` and `y_c` are the coordinates of the region's weighted
+        centroid.
+    **weighted_moments_hu** : tuple
+        Hu moments (translation, scale and rotation invariant) of intensity
+        image.
+    **weighted_moments_normalized** : (3, 3) ndarray
+        Normalized moments (translation and scale invariant) of intensity
+        image up to 3rd order::
+
+            wnu_ji = wmu_ji / wm_00^[(i+j)/2 + 1]
+
+        where ``wm_00`` is the zeroth spatial moment (intensity-weighted area).
+
+    Each region also supports iteration, so that you can do::
+
+      for prop in region:
+          print(prop, region[prop])
+
+    See Also
+    --------
+    label
+
+    References
+    ----------
+    .. [1] Wilhelm Burger, Mark Burge. Principles of Digital Image Processing:
+           Core Algorithms. Springer-Verlag, London, 2009.
+    .. [2] B. Jähne. Digital Image Processing. Springer-Verlag,
+           Berlin-Heidelberg, 6. edition, 2005.
+    .. [3] T. H. Reiss. Recognizing Planar Objects Using Invariant Image
+           Features, from Lecture notes in computer science, p. 676. Springer,
+           Berlin, 1993.
+    .. [4] http://en.wikipedia.org/wiki/Image_moment
+
+    Examples
+    --------
+    >>> from skimage import data, util
+    >>> from skimage.measure import label
+    >>> img = util.img_as_ubyte(data.coins()) > 110
+    >>> label_img = label(img, connectivity=img.ndim)
+    >>> props = regionprops(label_img)
+    >>> # centroid of first labeled object
+    >>> props[0].centroid
+    (22.729879860483141, 81.912285234465827)
+    >>> # centroid of first labeled object
+    >>> props[0]['centroid']
+    (22.729879860483141, 81.912285234465827)
+
+    """
+
+    label_image = np.squeeze(label_image)
+
+    if label_image.ndim not in (2, 3):
+        raise TypeError('Only 2-D and 3-D images supported.')
+
+    if not np.issubdtype(label_image.dtype, np.integer):
+        raise TypeError('Label image must be of integral type.')
+
+    regions = []
+
+    objects = ndi.find_objects(label_image)
+    for i, sl in enumerate(objects):
+        if sl is None:
+            continue
+
+        label = i + 1
+
+        props = ExtendedRegionProps(sl, label, label_image, intensity_image,
+                                  cache)
+        regions.append(props)
+
+    return regions
+
+import skimage.measure._regionprops as REGIONPROPS
+from functools import wraps
+
+def _cached(f):
+    @wraps(f)
+    def wrapper(obj):
+        cache = obj._cache
+        prop = f.__name__
+
+        if not ((prop in cache) and obj._cache_active):
+            cache[prop] = f(obj)
+
+        return cache[prop]
+
+    return wrapper
+
+class ExtendedRegionProps(REGIONPROPS._RegionProperties):
+    def __init__(self,*args, **kwargs):
+        super(ExtendedRegionProps, self).__init__(*args, **kwargs)
+
+    # @_cached
+    def _surrounding_image(self):
+        slicex, slicey = self._slice
+        int_im = np.copy(self._intensity_image[slicex.start-2:slicex.stop+2,
+                         slicey.start-2:slicey.stop+2])
+        if int_im.shape[0] != slicex.stop - slicex.start+4 or \
+                        int_im.shape[1] != slicey.stop -slicey.start +4 :
+            int_im = np.copy(self._intensity_image[self._slice])
+            image = self.image
+        else:
+            image = np.zeros_like(int_im, dtype=bool)
+            image[2:-2,2:-2] = self.image
+        int_im[~image] = 0
+        return int_im
+
+    # @_cached
+    def _inside_image(self):
+        slicex, slicey = self._slice
+        int_im = np.copy(self._intensity_image[slicex.start-2:slicex.stop+2,
+                         slicey.start-2:slicey.stop+2])
+        if int_im.shape[0] != slicex.stop - slicex.start+4 or \
+                        int_im.shape[1] != slicey.stop -slicey.start +4 :
+            int_im = np.copy(self._intensity_image[self._slice])
+            image = self.image
+        else:
+            image = np.zeros_like(int_im, dtype=bool)
+            image[2:-2,2:-2] = self.image
+        int_im[image] = 0
+        return int_im
+
+    def _full_image(self):
+        return np.copy(self._intensity_image[self._slice])
+
+    def _oversize_image(self, o):
+        o=int(o)
+        if o<1:
+            return np.copy(self._intensity_image[self._slice])
+
+        slicex, slicey = self._slice
+        int_im = np.copy(self._intensity_image[slicex.start-o:slicex.stop+o,
+                         slicey.start-o:slicey.stop+o])
+        if int_im.shape[0] != slicex.stop - slicex.start+2*o or \
+                        int_im.shape[1] != slicey.stop -slicey.start + 2*o :
+            return self._oversize_image(o-1)
+        else:
+            return int_im
+
+    def sur_std(self):
+        return np.std(self._surrounding_image())
+
+    def sur_mu(self):
+        return np.mean(self._surrounding_image())
+
+    def in_max(self):
+        return np.nanmax(self._inside_image())
+
+    def in_min(self):
+        return np.nanmin(self._inside_image())
+
+    def sur_max(self):
+        return np.nanmax(self._surrounding_image())
+
+    def sur_min(self):
+        return np.nanmin(self._surrounding_image())
+
+    def in_std(self):
+        return np.std(self._inside_image())
+
+    def in_mu(self):
+        return np.mean(self._inside_image())
+
+    def in_out_contrast(self):
+        i_m = self.InsideMean
+        o_m = self.SurroundingMean
+        return np.abs(i_m-o_m).astype(float)/(o_m+i_m)
+
+    # def in_out_contrast2(self):
+    #     i_max = self.InsideMax
+    #     i_min = self.InsideMin
+    #     o_m = self.SurroundingMean
+    #     o_sig = self.SurroundingStd
+    #     # return np.abs(i_m-o_m).astype(float)/256.
+    #     # return max(np.abs(i_max-o_m),np.abs(i_min-o_m)).astype(float)/o_sig
+    #     return max(np.abs(i_max-o_m),np.abs(i_min-o_m)).astype(float)/o_sig
+
+    def in_out_contrast2(self):
+        int_im = self._oversize_image(1)#self._intensity_image[self._slice]
+        i_max = np.amax(int_im).astype(float)
+        i_min = np.amin(int_im).astype(float)
+        return (i_max-i_min)/(i_max+i_min)
+
+    def __getattribute__(self, item):
+        try:
+            return super(ExtendedRegionProps, self).__getattribute__(item)
+        except AttributeError:
+            return  self.__getattr__(item)
+
+    def __getattr__(self, item):
+        if item == "InOutContrast":
+            return self.in_out_contrast()
+        elif item == "InOutContrast2":
+            return self.in_out_contrast2()
+        elif item == "SurroundingStd":
+            return self.sur_std()
+        elif item == "SurroundingMean":
+            return self.sur_mu()
+        elif item == "InsideStd":
+            return self.in_std()
+        elif item == "InsideMean":
+            return self.in_mu()
+        elif item == "SurroundingMin":
+            return self.sur_min()
+        elif item == "SurroundingMax":
+            return self.sur_max()
+        elif item == "InsideMin":
+            return self.in_min()
+        elif item == "InsideMax":
+            return self.in_max()
+        else:
+            raise AttributeError("'ExtendedRegionProps' object has no attribute '%s'"%item)
+            # self.__getattribute__(item)
+            # super(ExtendedRegionProps, self).__getattribute__(item)
+
 class RegionFilter(object):
     def __init__(self, prop, value, var=None, lower_limit=None, upper_limit=None, dist=None):
         super(RegionFilter, self).__init__()
@@ -557,7 +906,7 @@ class RegionFilter(object):
 
         if lower_limit is None:
             self.lower_limit = np.ones(self.dim)*-np.inf
-        elif np.asarray(lower_limit).shape ==1:
+        elif len(np.asarray(lower_limit).shape) == 1:
             self.lower_limit = np.asarray(lower_limit, dtype=float)
         elif np.asarray(lower_limit).shape == ():
             self.lower_limit = np.ones(self.dim)*lower_limit
@@ -566,7 +915,7 @@ class RegionFilter(object):
 
         if upper_limit is None:
             self.upper_limit = np.ones(self.dim)*np.inf
-        elif np.asarray(upper_limit).shape ==1:
+        elif len(np.asarray(upper_limit).shape) == 1:
             self.upper_limit = np.asarray(upper_limit, dtype=float)
         elif np.asarray(upper_limit).shape == ():
             self.upper_limit = np.ones(self.dim)*upper_limit
@@ -585,7 +934,7 @@ class RegionFilter(object):
         return [self.logprob(region.__getattribute__(self.prop)) for region in regions]
 
     def logprob(self, test_value):
-        if self.lower_limit < test_value < self.upper_limit:
+        if np.all(self.lower_limit < test_value) and np.all(test_value  < self.upper_limit):
             return self.dist.logpdf(test_value)
         else:
             return -np.inf
@@ -615,11 +964,10 @@ class RegionPropDetector(Detector):
 
     def detect(self, image, intensity_image=None):
 
-        regions = skimage.measure.regionprops(skimage.measure.label(image), intensity_image=intensity_image)
-
+        regions = extended_regionprops(skimage.measure.label(image), intensity_image=intensity_image)
         return [Measurement(
             np.sum([filter.filter([region]) for filter in self.Filters]),
-            region.centroid)
+            region.centroid, data=dict([[filter.prop, region.__getattribute__(filter.prop)] for filter in self.Filters]))
             for region in regions]
 
 
@@ -1243,6 +1591,177 @@ class MoGSegmentation(Segmentation):
         else:
             raise ValueError('False format of data.')
 
+class MoGSegmentation2(Segmentation):
+    """
+    Segmentation method comparing input images to image-background buffer. Able to learn new background information.
+    """
+
+    def __init__(self, n=20, r=15, n_min=1, phi=16, init_image=None):
+        """
+        Segmentation method comparing input images to image-background buffer. Able to learn new background information.
+
+        Parameters
+        ----------
+        n: int, optional
+            Number of buffer frames.
+        r: int, optional
+            Distance-Treshold in standard color-room. If a input pixel deviates more than r from a background-buffer
+            pixel it is counted as a deviation.
+        n_min: int, optional
+            Number of minimum deviations to count a pixel as foreground.
+        phi: int, optional
+            Inverse of update rate. Every phi-est foreground pixel will be updated to the background buffer.
+
+        init_image: array_like, optional
+            Image for initialisation of background.
+
+        """
+        super(MoGSegmentation2, self).__init__()
+        self.N = int(n)
+        self.R = np.uint16(r)
+        # self.Phi = int(phi)
+        self.Skale = None
+        self.Mu = None
+        self.Sig = None
+        self.Max = None
+        self.NN = None
+
+        if init_image is not None:
+            data = np.array(init_image, ndmin=2)
+            self.__dt__ = smallest_dtype(data)
+            print(self.__dt__)
+            if len(data.shape) == 3:
+                self.Mu = np.tile(data.astype(self.__dt__), self.N
+                                       ).reshape(data.shape + (self.N,)
+                                                 ).transpose((3, 0, 1, 2))
+                self.Sig = np.ones_like(self.Mu)*self.R
+                self.N = np.ones_like(self.Mu)
+                self.Skale = np.mean(rgb2gray(data))
+            elif len(data.shape) == 2:
+                self.Mu = np.tile(data.astype(self.__dt__), (self.N, 1, 1,))
+                self.Sig = np.ones_like(self.Mu) * self.R
+                self.N = np.ones_like(self.Mu)
+                self.Skale = np.mean(data)
+            else:
+                raise ValueError('False format of data.')
+            self.Max = np.zeros_like(self.Mu, dtype=bool)
+            # self.Max = np.tile(np.arange(N), data.shape + (1,)).T
+        else:
+            self.__dt__ = None
+
+        self.SegMap = None
+        self.width = None
+        self.height = None
+
+    def detect(self, image, do_neighbours=True):
+        """
+        Segmentation function. This compares the input image to the background model and returns a segmentation map.
+
+        Parameters
+        ----------
+        image: array_like
+            Input Image.
+        do_neighbours: bool, optional
+            If True neighbouring pixels will be updated accordingly to their foreground vicinity, else this
+            time-intensiv calculation will not be done.
+
+
+        Returns
+        ----------
+        SegMap: array_like, bool
+            The segmented image.
+        """
+        return super(MoGSegmentation2, self).detect(image)
+
+
+    def segmentate(self, image, do_neighbours=True, mask=None):
+        super(MoGSegmentation2, self).segmentate(image)
+        data = np.array(image, ndmin=2)
+        self.Mask = mask
+
+        if self.width is None or self.height is None:
+            self.width, self.height = data.shape[:2]
+        if len(data.shape) == 3:
+            this_skale = np.mean(rgb2gray(data))
+        elif len(data.shape) == 2:
+            this_skale = np.mean(data)
+        else:
+            raise ValueError('False format of data.')
+
+        if this_skale == 0:
+            this_skale = self.Skale
+        if self.Skale is None:
+            self.Skale = this_skale
+
+        if self.__dt__ is None:
+            self.__dt__ = smallest_dtype(data)
+
+        data = (data.astype(float) * (self.Skale / this_skale)).astype(self.__dt__)
+        if self.Mu is None:
+            if len(data.shape) == 3:
+                self.Mu = np.tile(data, self.N).reshape((self.N,) + data.shape)
+            elif len(data.shape)==2:
+                self.Mu = np.tile(data.T, self.N).T.reshape((self.N,) + data.shape[::-1])
+
+        if self.Sig is None:
+                self.Sig = np.ones_like(self.Mu) * self.R
+        if self.N is None:
+                self.N = np.ones_like(self.Mu)
+
+        if self.SegMap is None:
+            self.SegMap = np.ones((self.width, self.height), dtype=bool)
+
+        if self.Max is None:
+            self.Max = np.zeros_like(self.Mu, dtype=bool)
+
+        if len(data.shape) == 3:
+            diff = self.Mu.astype(next_dtype(-1 * data))
+            diff = np.abs(rgb2gray(diff - data))
+            self.SegMap = np.all((diff > self.Sig), axis=0)
+            self.Max = (np.tile(np.arange(self.N), data.shape[::-1] + (1, )).T == np.argmin(np.abs(diff-self.Sig), axis=0))
+        elif len(data.shape) == 2:
+            diff = np.asarray(
+                [np.amax([sample, data], axis=0) - np.amin([sample, data], axis=0) for sample in self.Mu])
+            self.SegMap = np.all((diff > self.Sig), axis=0)
+            self.Max = (np.tile(np.arange(self.N), data.shape[::-1] + (1, )).T == np.argmin(np.abs(diff-self.Sig), axis=0))
+        else:
+            raise ValueError('False format of data.')
+        self.N += self.SegMap
+        self.N[~self.SegMap] = 1
+        if self.Mask is not None and np.all(self.Mask.shape == self.SegMap.shape):
+            self.SegMap &= ~self.Mask
+        return self.SegMap
+
+    def update(self, mask, image, do_neighbours=True):
+
+        data = np.array(image, ndmin=2)
+
+        if self.width is None or self.height is None:
+            self.width, self.height = data.shape[:2]
+        if len(data.shape) == 3:
+            this_skale = np.mean(rgb2gray(data))
+        elif len(data.shape) == 2:
+            this_skale = np.mean(data)
+        else:
+            raise ValueError('False format of data.')
+
+        if this_skale == 0:
+            this_skale = self.Skale
+        if self.Skale is None:
+            self.Skale = this_skale
+
+        if self.__dt__ is None:
+            self.__dt__ = smallest_dtype(data)
+
+        data = (data.astype(float) * (self.Skale / this_skale)).astype(self.__dt__)
+
+        for i in range(self.N):
+            self.Mu[i][self.Max[i]] += (data[self.Max[i]]).astype(self.__dt__)/self.N[i]
+            self.Sig[i][self.Max[i]] = (self.Sig[i][self.Max[i]]**2+(((data[self.Max[i]]).astype(self.__dt__)-self.Mu[i][self.Max[i]])**2)/(self.N[i]))**2
+
+        n = np.sum(image_mask)
+        print("Updated %s pixels" % n)
+
 
 class ViBeSegmentation(Segmentation):
     """
@@ -1323,7 +1842,7 @@ class ViBeSegmentation(Segmentation):
         SegMap: array_like, bool
             The segmented image.
         """
-        return super(ViBeSegmentation, self).detect(image)
+        return super(ViBeSegmentation, self).detect(image, do_neighbours=True)
 
         # data = np.array(image, ndmin=2)
         #
@@ -1462,6 +1981,7 @@ class ViBeSegmentation(Segmentation):
         image_mask = (np.random.rand(self.width, self.height)*self.Phi < 1) & mask
 
         sample_index = np.random.randint(0, self.N)
+
         self.Samples[sample_index][image_mask] = (data[image_mask]).astype(self.__dt__)
 
         do_neighbours=False
@@ -1493,6 +2013,96 @@ class ViBeSegmentation(Segmentation):
                 print(np.sum(neighbours), np.sum(image_mask), x.shape, y.shape)
                 raise
         print("Updated %s pixels" % n)
+
+class AlexSegmentation(ViBeSegmentation):
+    """
+    Segmentation method comparing input images to image-background buffer. Able to learn new background information.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super(AlexSegmentation, self).__init__(*args, **kwargs)
+
+    def segmentate(self, image, do_neighbours=True, mask=None):
+        super(ViBeSegmentation, self).segmentate(image)
+        data = np.array(image, ndmin=2)
+        self.Mask = mask
+
+        if self.width is None or self.height is None:
+            self.width, self.height = data.shape[:2]
+        if len(data.shape) == 3:
+            this_skale = np.mean(rgb2gray(data))
+        elif len(data.shape) == 2:
+            this_skale = np.mean(data)
+        else:
+            raise ValueError('False format of data.')
+
+        if this_skale == 0:
+            this_skale = self.Skale
+        if self.Skale is None:
+            self.Skale = this_skale
+
+        if self.__dt__ is None:
+            self.__dt__ = smallest_dtype(data)
+
+        data = (data.astype(float)*(self.Skale/this_skale)).astype(self.__dt__)
+        if self.Samples is None:
+            self.Samples = np.tile(data, self.N).reshape((self.N,)+data.shape)
+        if self.SegMap is None:
+            self.SegMap = np.ones((self.width, self.height), dtype=bool)
+
+        if len(data.shape) == 3:
+            diff = self.Samples.astype(next_dtype(-1*data))
+            diff = np.abs(rgb2gray(diff-data))
+            # self.SegMap = (np.mean(diff, axis=0, dtype=np.uint8) >= self.R).astype(bool)
+            self.SegMap = (np.sum((diff
+                                   > self.R).astype(np.uint8), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
+            # self.SegMap = np.any(diff > self.R, axis=0).astype(bool)
+            # self.Max = (np.tile(np.arange(self.N), data.shape[::-1] + (1, )).T == np.argmax(diff, axis=0))
+        elif len(data.shape) == 2:
+            diff = np.asarray([np.amax([sample, data],axis=0)-np.amin([sample,data], axis=0) for sample in self.Samples])
+            # self.SegMap = (np.mean(diff, axis=0, dtype=np.uint8)>= self.R).astype(bool)
+            self.SegMap = (np.sum((diff > self.R).astype(np.uint8), axis=0, dtype=np.uint8)
+                           >= self.N_min).astype(bool)
+            # self.SegMap = np.any(diff > self.R, axis=0).astype(bool)
+            # self.Max = (np.tile(np.arange(self.N), data.shape[::-1] + (1, )).T == np.argmax(diff, axis=0))
+        else:
+            raise ValueError('False format of data.')
+        if self.Mask is not None and np.all(self.Mask.shape == self.SegMap.shape):
+            self.SegMap &= ~self.Mask
+        # self.Max *= self.SegMap
+        return self.SegMap, diff
+
+    def update(self, mask, image, do_neighbours=True):
+        data = np.array(image, ndmin=2)
+
+        if self.width is None or self.height is None:
+            self.width, self.height = data.shape[:2]
+        if len(data.shape) == 3:
+            this_skale = np.mean(rgb2gray(data))
+        elif len(data.shape) == 2:
+            this_skale = np.mean(data)
+        else:
+            raise ValueError('False format of data.')
+
+        if this_skale == 0:
+            this_skale = self.Skale
+        if self.Skale is None:
+            self.Skale = this_skale
+
+        if self.__dt__ is None:
+            self.__dt__ = smallest_dtype(data)
+
+        data = (data.astype(float)*(self.Skale/this_skale)).astype(self.__dt__)
+        image_mask = (np.random.rand(self.width, self.height)*self.Phi < 1) & mask
+
+        sample_index = np.random.randint(0, self.N)
+        #
+        # for i in range(self.N):
+        #     self.Samples[i][self.Max[i]] += (data[self.Max[i]]).astype(self.__dt__)
+
+        self.Samples[sample_index][image_mask] += (data[image_mask]).astype(self.__dt__)
+
+        print("Updated %s pixels" % np.sum(self.SegMap))
 
 class BlobSegmentation(Segmentation):
     """
