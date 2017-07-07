@@ -926,9 +926,9 @@ class RegionFilter(object):
             self.dist = dist
         else:
             if self.dim == 1:
-                self.dist = stats.norm()
+                self.dist = stats.norm(loc=self.value, scale=np.sqrt(self.var))
             else:
-                self.dist = stats.multivariate_normal(mean=self.value, cov = np.sqrt(self.var))
+                self.dist = stats.multivariate_normal(mean=self.value, cov = self.var)
 
     def filter(self, regions):
         return [self.logprob(region.__getattribute__(self.prop)) for region in regions]
@@ -962,12 +962,14 @@ class RegionPropDetector(Detector):
             else:
                 raise ValueError("Filter must be of type RegionFilter or dictionary, not %s"%type(filter))
 
+        # print("Got %s layers of filters in detector!"%len(self.Filters))
+
     def detect(self, image, intensity_image=None):
 
         regions = extended_regionprops(skimage.measure.label(image), intensity_image=intensity_image)
         return [Measurement(
             np.sum([filter.filter([region]) for filter in self.Filters]),
-            region.centroid, data=dict([[filter.prop, region.__getattribute__(filter.prop)] for filter in self.Filters]))
+            region.centroid, data=dict([[filter.prop, [region.__getattribute__(filter.prop), filter.filter([region])]] for filter in self.Filters]))
             for region in regions]
 
 
@@ -1634,17 +1636,17 @@ class MoGSegmentation2(Segmentation):
                 self.Mu = np.tile(data.astype(self.__dt__), self.N
                                        ).reshape(data.shape + (self.N,)
                                                  ).transpose((3, 0, 1, 2))
-                self.Sig = np.ones_like(self.Mu)*self.R
-                self.N = np.ones_like(self.Mu)
+                self.Sig = np.ones_like(self.Mu, dtype=self.__dt__)*self.__dt__(self.R)
+                self.N = np.ones_like(self.Mu, dtype=np.uint16)
                 self.Skale = np.mean(rgb2gray(data))
             elif len(data.shape) == 2:
                 self.Mu = np.tile(data.astype(self.__dt__), (self.N, 1, 1,))
-                self.Sig = np.ones_like(self.Mu) * self.R
-                self.N = np.ones_like(self.Mu)
+                self.Sig = np.ones_like(self.Mu, dtype=self.__dt__) * self.__dt__(self.R)
+                self.N = np.ones_like(self.Mu, dtype=np.uint16)
                 self.Skale = np.mean(data)
             else:
                 raise ValueError('False format of data.')
-            self.Max = np.zeros_like(self.Mu, dtype=bool)
+            self.Max = np.zeros_like(self.Mu, dtype=self.__dt__)
             # self.Max = np.tile(np.arange(N), data.shape + (1,)).T
         else:
             self.__dt__ = None
@@ -1903,7 +1905,7 @@ class ViBeSegmentation(Segmentation):
         # self.update(out, image, do_neighbours=do_neighbours)
         # return out
 
-    def segmentate(self, image, do_neighbours=True, mask=None):
+    def segmentate(self, image, do_neighbours=True, mask=None, return_diff = False):
         super(ViBeSegmentation, self).segmentate(image)
         data = np.array(image, ndmin=2)
         self.Mask = mask
@@ -1954,6 +1956,9 @@ class ViBeSegmentation(Segmentation):
         # self.SegMap = self.SegMap & ~self.Mask
         if self.Mask is not None and np.all(self.Mask.shape == self.SegMap.shape):
             self.SegMap &= ~self.Mask
+
+        if return_diff:
+            return self.SegMap, diff
         return self.SegMap
 
     def update(self, mask, image, do_neighbours=True):
@@ -2013,6 +2018,107 @@ class ViBeSegmentation(Segmentation):
                 print(np.sum(neighbours), np.sum(image_mask), x.shape, y.shape)
                 raise
         print("Updated %s pixels" % n)
+
+
+class DumbViBeSegmentation(ViBeSegmentation):
+    def __init__(self, *args, **kwargs):
+        super(DumbViBeSegmentation, self).__init__(*args, **kwargs)
+        self.SampleIndex = 0
+        # self.DumbStory = None
+
+    def segmentate(self, image, do_neighbours=True, mask=None, return_diff = False):
+        super(ViBeSegmentation, self).segmentate(image)
+        data = np.array(image, ndmin=2)
+        self.Mask = mask
+
+        if self.width is None or self.height is None:
+            self.width, self.height = data.shape[:2]
+        if len(data.shape) == 3:
+            this_skale = np.mean(rgb2gray(data))
+        elif len(data.shape) == 2:
+            this_skale = np.mean(data)
+        else:
+            raise ValueError('False format of data.')
+
+        if this_skale == 0:
+            this_skale = self.Skale
+        if self.Skale is None:
+            self.Skale = this_skale
+
+        if self.__dt__ is None:
+            self.__dt__ = smallest_dtype(data)
+
+        data = (data.astype(float)*(self.Skale/this_skale)).astype(self.__dt__)
+        if self.Samples is None:
+            self.Samples = np.tile(data, self.N).reshape((self.N,)+data.shape)
+        if self.SegMap is None:
+            self.SegMap = np.ones((self.width, self.height), dtype=bool)
+
+        if len(data.shape) == 3:
+            # self.SegMap = (np.sum((np.sum((self.Samples.astype(np.int32)-data)**2, axis=-1)**0.5/np.sqrt(data.shape[-1])
+            #                        > self.R), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
+            diff = self.Samples.astype(next_dtype(-1*data))
+            diff = np.abs(rgb2gray(diff-data))
+            # self.SegMap = (np.sum((diff
+            #                        > self.R).astype(np.uint8), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
+            self.SegMap = np.all(diff>self.R, axis=0).astype(bool)
+        elif len(data.shape) == 2:
+            # diff = self.Samples
+            # diff[self.Samples>data] = (self.Samples -data)[self.Samples>data]
+            # diff[self.Samples<=data] = (data-self.Samples)[self.Samples<=data]
+            diff = np.asarray([np.amax([sample, data],axis=0)-np.amin([sample,data], axis=0) for sample in self.Samples])
+            # self.SegMap = (np.sum((diff > self.R).astype(np.uint8), axis=0, dtype=np.uint8)
+            #                >= self.N_min).astype(bool)
+            self.SegMap = np.all(diff>self.R, axis=0).astype(bool)
+            # self.SegMap = (np.sum((np.abs(self.Samples.astype(next_dtype(-1*data))- data.astype(next_dtype(-1*data))
+            #                               ) > self.R).astype(np.uint8), axis=0, dtype=np.uint8)
+            #                >= self.N_min).astype(bool)
+        else:
+            raise ValueError('False format of data.')
+        # self.SegMap[self.Mask] = False
+        # self.SegMap = self.SegMap & ~self.Mask
+        if self.Mask is not None and np.all(self.Mask.shape == self.SegMap.shape):
+            self.SegMap &= ~self.Mask
+
+        if return_diff:
+            return self.SegMap, diff
+        return self.SegMap
+
+    def update(self, mask, image, do_neighbours=True):
+
+        # if self.DumbStory is None:
+        #     self.DumbStory = np.zeros_like(image, dtype=np.uint8)
+
+        data = np.array(image, ndmin=2)
+
+        if self.width is None or self.height is None:
+            self.width, self.height = data.shape[:2]
+        if len(data.shape) == 3:
+            this_skale = np.mean(rgb2gray(data))
+        elif len(data.shape) == 2:
+            this_skale = np.mean(data)
+        else:
+            raise ValueError('False format of data.')
+
+        if this_skale == 0:
+            this_skale = self.Skale
+        if self.Skale is None:
+            self.Skale = this_skale
+
+        if self.__dt__ is None:
+            self.__dt__ = smallest_dtype(data)
+
+        data = (data.astype(float)*(self.Skale/this_skale)).astype(self.__dt__)
+        # image_mask = (np.random.rand(self.width, self.height)*self.Phi < 1) & mask
+
+        self.SampleIndex = (self.SampleIndex+1)%self.N
+
+        # self.Samples[self.SampleIndex][image_mask] = (data[image_mask]).astype(self.__dt__)
+        self.Samples[self.SampleIndex] = data.astype(self.__dt__)
+        # self.DumbStory = (self.DumbStory/(self.Phi+1))+self.SegMap
+
+        print("Updated %s pixels" % np.sum(self.SegMap))
+
 
 class AlexSegmentation(ViBeSegmentation):
     """
@@ -2100,7 +2206,7 @@ class AlexSegmentation(ViBeSegmentation):
         # for i in range(self.N):
         #     self.Samples[i][self.Max[i]] += (data[self.Max[i]]).astype(self.__dt__)
 
-        self.Samples[sample_index][image_mask] += (data[image_mask]).astype(self.__dt__)
+        self.Samples[sample_index][image_mask] = (data[image_mask]).astype(self.__dt__)
 
         print("Updated %s pixels" % np.sum(self.SegMap))
 
