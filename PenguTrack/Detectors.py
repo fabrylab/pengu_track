@@ -2760,6 +2760,12 @@ def rgb2gray(rgb):
     dt = rgb.dtype
     return np.dot(rgb[...,:3], [0.299, 0.587, 0.114]).astype(dt)
 
+def gray2rgb(gray):
+    # rgb = np.asarray(rgb)
+    dt = gray.dtype
+    return np.tensordot(gray, [1,  1,  1], axes=0).astype(dt)
+    # return np.tensordot(gray, [ 0.351,  0.179,  0.920], axes=0).astype(dt)
+
 def next_dtype(array):
     dt = array.dtype
 
