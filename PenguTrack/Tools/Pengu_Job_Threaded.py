@@ -10,20 +10,9 @@ import time
 from qtpy import QtGui, QtCore, QtWidgets
 from qimage2ndarray import array2qimage
 
-import imageio_plugin_VIS as vis   # import and register VIS plugin
-import imageio
-input_file = "/home/alex/Masterarbeit/770_PANA/blabla.cdb"
 
-# open .vis database with imageIO
-reader = imageio.get_reader(input_file)
-image_number_iterator = iter(range(700,reader.get_length()))
-conv = vis.ConvertTo8Bit()
+input_file = "/home/user/Desktop/252/252Horizon.cdb"
 
-
-# sys.path.append(os.path.join(os.path.dirname(__file__), "..", "qextendedgraphicsview"))
-from include.QExtendedGraphicsView import QExtendedGraphicsView
-from include.Tools import GraphicsItemEventFilter
-from include.MemMap import MemMap
 
 def int8(input):
     return np.array(input,ndmin=2,dtype=np.uint8,copy=True)
@@ -40,7 +29,7 @@ from PenguTrack.Models import VariableSpeed
 # from PenguTrack.Detectors import ViBeSegmentation
 # from PenguTrack.Detectors import AlexSegmentation as ViBeSegmentation
 # from PenguTrack.Detectors import DumbViBeSegmentation as ViBeSegmentation
-from PenguTrack.Detectors import SiAdViBeSegmentation
+from PenguTrack.Detectors import SiAdViBeSegmentation, rgb2gray
 # from PenguTrack.Detectors import SimpleAreaDetector as AreaDetector
 
 from skimage.morphology import binary_closing, binary_dilation, binary_opening, binary_erosion
@@ -68,20 +57,22 @@ images = db_start.getImageIterator()
 images = db_start.getImageIterator()
 def getImage():
     im = images.next()
+    # im.data = rgb2gray(im.data)
     fname = im.filename
     from datetime import datetime
-    d = datetime.strptime(fname[0:15], '%Y%m%d-%H%M%S')
+    # d = datetime.strptime(fname[0:15], '%Y%m%d-%H%M%S')
+    d = im.timestamp
     time_unix = np.uint32(time.mktime(d.timetuple()))
-    time_ms = np.uint32(fname[16:17])*100
+    time_ms = 0#np.uint32(fname[16:17])*100
     meta = {'time': time_unix,
             'time_ms': time_ms,
             'file_name': fname,
             'path': im.path.path}
-    return im.data, meta
+    return rgb2gray(im.data), meta
 
 # Tracking Parameters
-q = 200
-r = 100
+q = 3
+r = 1
 
 # Initialise PenguTrack
 object_size = 3  # Object diameter (smallest)
@@ -121,33 +112,35 @@ for i in range(10):
             print(init_buffer[-1].shape)
             print(init_buffer[-1].dtype)
             break
-init = np.array(np.median([init_buffer], axis=0))
+
+init = np.array(np.median(init_buffer, axis=0))
+
 
 # Load horizon-markers
-horizont_type = db.getMarkerType(name="Horizon")
+horizont_type = db_start.getMarkerType(name="Horizon")
 try:
-    horizon_markers = np.array([[m.x, m.y] for m in db.getMarkers(type=horizont_type)]).T
+    horizon_markers = np.array([[m.x, m.y] for m in db_start.getMarkers(type=horizont_type)]).T
 except ValueError:
     raise ValueError("No markers with name 'Horizon'!")
 
 # Load penguin-markers
-penguin_type = db.getMarkerType(name="Penguin_Size")
+penguin_type = db_start.getMarkerType(name="Penguin_Size")
 try:
-    penguin_markers = np.array([[m.x1, m.y1, m.x2, m.y2] for m in db.getLines(type="Penguin_Size")]).T
+    penguin_markers = np.array([[m.x1, m.y1, m.x2, m.y2] for m in db_start.getLines(type="Penguin_Size")]).T
 except ValueError:
     raise ValueError("No markers with name 'Horizon'!")
 
-VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 500, n=5, init_image=init, n_min=3, r=10, phi=1)#, camera_h=44.)
+VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 500, n=3, init_image=init, n_min=3, r=10, phi=1, subsampling=2)#, camera_h=44.)
 
 del init_buffer
 
 for i in range(10):
     while True:
-        img, meta = cam.getNewestImage()
+        img, meta = getImage()
         if img is not None:
             print("Got img from cam")
             mask = VB.segmentate(img, do_neighbours=False)
-            VB.update(mask&(~NoMask), img, do_neighbours=False)
+            VB.update(mask, img, do_neighbours=False)
             break
 
 import matplotlib.pyplot as plt
@@ -157,16 +150,16 @@ print('Initialized Tracker')
 # AD = AreaDetector(object_area, object_number, upper_limit=10, lower_limit=0)
 from PenguTrack.Detectors import RegionFilter, RegionPropDetector
 
-rf = RegionFilter("area",17.2,var=11.**2)#, lower_limit=4., upper_limit=50)
-rf2 = RegionFilter("solidity",0.98,var=0.04**2)#, lower_limit=0.8)
-rf3 = RegionFilter("eccentricity",0.51,var=0.31**2)#, upper_limit=0.95)
-rf4 = RegionFilter("extent",0.66,var=0.07**2)#, lower_limit=0.5, upper_limit=0.9)
-rf5 = RegionFilter("InOutContrast2", 0.89, var=0.13**2)#, lower_limit=0.9)
+rf = RegionFilter("area",100,var=50.**2, lower_limit=30., upper_limit=200)
+# rf2 = RegionFilter("solidity",0.98,var=0.04**2)#, lower_limit=0.8)
+# rf3 = RegionFilter("eccentricity",0.51,var=0.31**2)#, upper_limit=0.95)
+# rf4 = RegionFilter("extent",0.66,var=0.07**2)#, lower_limit=0.5, upper_limit=0.9)
+# rf5 = RegionFilter("InOutContrast2", 0.89, var=0.13**2)#, lower_limit=0.9)
 rf6 = RegionFilter("mean_intensity", 60., var=17.**2)#, lower_limit=25.)
-rf7 = RegionFilter("max_intensity", 124, var=56)#, lower_limit=40)
-rf8 = RegionFilter("min_intensity", 21, var=14)#, lower_limit=0, upper_limit=70)
+# rf7 = RegionFilter("max_intensity", 124, var=56)#, lower_limit=40)
+# rf8 = RegionFilter("min_intensity", 21, var=14)#, lower_limit=0, upper_limit=70)
 
-AD = RegionPropDetector([rf,rf2,rf3,rf5,rf6])
+AD = RegionPropDetector([rf, rf6])#,rf2,rf3,rf5,rf6])
 
 
 print("--------------------------")
@@ -240,7 +233,7 @@ def load(load_cam):
     i = 1
     while True:
         try:
-            img, meta = cam.getNewestImage()
+            img, meta = getImage()
         except StopIteration:
             break
         if img is not None:
@@ -261,8 +254,9 @@ def segmentate():
         print("starting Segmentation %s"%i)
         SegMap = VB.segmentate(img, do_neighbours=False)
         VB.update(SegMap, img, do_neighbours=False)
+        SegMap = binary_opening(SegMap)
         SegMap_write_queue.put([i, SegMap])
-        detection_pipe_in.send([i, SegMap, img])
+        detection_pipe_in.send([i, SegMap, VB.horizontal_equalisation(img)])
         print("Segmentated Image %s"%i)
 
 
@@ -271,6 +265,11 @@ def detect():
     while True:
         i, SegMap, img = detection_pipe_out.recv()
         Positions = AD.detect(SegMap, intensity_image=img)
+        for pos in Positions:
+            pos.PositionY, pos.PositionX = VB.log_to_orth([pos.PositionY/float(VB.SubSampling)
+                                                              , pos.PositionX/float(VB.SubSampling)])
+            pos.PositionX *= (VB.Max_Dist / VB.height)
+            pos.PositionY *= (VB.Max_Dist / VB.height)
         Detection_write_queue.put([i, Positions])
         tracking_pipe_in.send([i, Positions])
         print("Found %s animals in %s!"%(len(Positions), i))
@@ -312,7 +311,6 @@ def DB_write():
         try:
             while not Image_write_queue.empty():
                 timestamp, i, meta  = Image_write_queue.get()
-                fname = timestamp.strftime("%Y%m%d-%H%M%S")+"-%s"%int(timestamp.microsecond/100000) + "_Fino4_SpynelS.jpg"
                 fname = meta['file_name']
                 if db.getPath(meta["path"]) is None:
                     path = db.setPath(meta["path"])
@@ -337,12 +335,20 @@ def DB_write():
                         Detection_write_queue.put([i,Positions])
                         break
                     #
+
                     for pos in Positions:
                         while True:
                             if image_dict.has_key(i):
                                 break
+                        x = pos.PositionX
+                        y = pos.PositionY
+                        x_px = x * (VB.height / VB.Max_Dist)
+                        y_px = y * (VB.height / VB.Max_Dist)
+                        x_det, y_det = VB.orth_to_log([y_px, x_px])
+                        x_det *= VB.SubSampling
+                        y_det *= VB.SubSampling
                         detection_marker = db.setMarker(image=db.getImage(id=image_dict[i]),
-                                                x=pos.PositionY, y=pos.PositionX,
+                                                x=x_det, y=y_det,
                                                 text="Detection  %.2f \n %s" % (pos.Log_Probability, "\n".join(["%s \t %s"%(k, pos.Data[k]) for k in pos.Data])),
                                                 type=PT_Detection_Type)
                         db.setMeasurement(marker=detection_marker, log=pos.Log_Probability, x=pos.PositionX, y=pos.PositionY)
@@ -361,15 +367,21 @@ def DB_write():
                             meas = ActiveFilters[k].Measurements[i]
                             x = meas.PositionX
                             y = meas.PositionY
+                            x_px = x * (VB.height / VB.Max_Dist)
+                            y_px = y * (VB.height / VB.Max_Dist)
+                            x_img, y_img = VB.warp_orth([VB.Res * (y_px - VB.width / 2.), VB.Res * (VB.height - x_px)])
                             # prob = ActiveFilters[k].log_prob(keys=[i], compare_bel=False)
                             prob = ActiveFilters[k].log_prob(keys=[i])
-                            db.setMarker(image=db.getImage(id=image_dict[i]), x=y, y=x,
+                            db.setMarker(image=db.getImage(id=image_dict[i]), x=x_img, y=y_img,
                                          track=track,
                                          text="Track %s, Prob %.2f" % (k, prob),
                                          type=PT_Track_Type)
                         if ActiveFilters[k].Predicted_X.has_key(i):
                             pred_x, pred_y = MultiKal.Model.measure(ActiveFilters[k].Predicted_X[i])
-                            db.setMarker(image=db.getImage(id=image_dict[i]), x=pred_y, y=pred_x,
+                            pred_x_px = pred_x *(VB.height / VB.Max_Dist)
+                            pred_y_px = pred_y *(VB.height / VB.Max_Dist)
+                            pred_x_img, pred_y_img = VB.warp_orth([VB.Res * (pred_y_px - VB.width / 2.), VB.Res * (VB.height - pred_x_px)])
+                            db.setMarker(image=db.getImage(id=image_dict[i]), x=pred_x_img, y=pred_y_img,
                                          text="Prediction %s" % (k),
                                          type=PT_Prediction_Type)
                     Timer_out.put([i, time.time()])
@@ -383,7 +395,7 @@ def DB_write():
             pass
 
 
-loading = Process(target=load, args=(cam,))
+loading = Process(target=load, args=(None,))
 segmentation = Process(target=segmentate)
 detection = Process(target=detect)
 tracking = Process(target=track)

@@ -2299,7 +2299,7 @@ class SiAdViBeSegmentation(Segmentation):
     """
     function = None
 
-    def __init__(self, horizonmarkers, f, sensor_size, pengu_markers, h_p, max_dist, init_image,  n=20, r=15, n_min=1, phi=16, camera_h = None, log=True):
+    def __init__(self, horizonmarkers, f, sensor_size, pengu_markers, h_p, max_dist, init_image,  n=20, r=15, n_min=1, phi=16, camera_h = None, log=True, subsampling=1):
         """
         Segmentation method comparing input images to image-background buffer. Able to learn new background information.
 
@@ -2361,6 +2361,8 @@ class SiAdViBeSegmentation(Segmentation):
         self.width = data.shape[1]
         self.height = data.shape[0]
 
+        self.SubSampling = int(subsampling)
+
         x, y = self.Horizonmarkers
         m, t = np.polyfit(x, y, 1)  # linear fit for camera role
         angle_m = np.arctan(m)
@@ -2395,7 +2397,7 @@ class SiAdViBeSegmentation(Segmentation):
             self.camera_h = float(camera_h)
 
         # Initialize grid
-        xx, yy = np.meshgrid(np.arange(self.width), np.arange(self.height))
+        xx, yy = np.meshgrid(np.arange(self.width*self.SubSampling)/float(self.SubSampling), np.arange(self.height*self.SubSampling)/float(self.SubSampling))
         # Grid has same aspect ratio as picture
 
         # counter-angle to phi is used in further calculation
@@ -2438,7 +2440,7 @@ class SiAdViBeSegmentation(Segmentation):
             warped_xx, warped_yy = self.warp_orth([xx, yy])
         # reshape grid points for image interpolation
         grid = np.asarray([warped_xx.T, warped_yy.T]).T
-        self.grid = grid.T.reshape((2, self.width * self.height))
+        self.grid = grid.T.reshape((2, self.width * self.height * self.SubSampling**2))
 
 
         # Initialize with warped image
@@ -2597,9 +2599,9 @@ class SiAdViBeSegmentation(Segmentation):
 
         if len(image.shape) == 3:
             # split the image in colors and perform interpolation
-            return np.asarray([map_coordinates(i, self.grid[:, ::-1], order=0).reshape((self.width, self.height))[::-1] for i in image.T]).T
+            return np.asarray([map_coordinates(i, self.grid[:, ::-1], order=0).reshape((self.width*self.SubSampling, self.height*self.SubSampling))[::-1] for i in image.T]).T
         elif len(image.shape) == 2:
-            return np.asarray(img_as_uint(map_coordinates(image.T, self.grid[:, ::-1], order=0)).reshape((self.width, self.height))[::-1]).T
+            return np.asarray(img_as_uint(map_coordinates(image.T, self.grid[:, ::-1], order=0)).reshape((self.width*self.SubSampling, self.height*self.SubSampling))[::-1]).T
         else:
             raise ValueError("The given image is whether RGB nor greyscale!")
 
