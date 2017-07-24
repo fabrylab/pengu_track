@@ -66,3 +66,4 @@ PenguTrack/Tools/.~lock.ProfileAlex.csv#
 PenguTrack/Tools/Image_Test.py
 PenguTrack/Tools/MIN_MAX_Test.py
 *.orig
+.idea/*
