@@ -1022,6 +1022,7 @@ class MultiFilter(Filter):
             _filter = self.ActiveFilters[j]
             if np.amax(list(_filter.Predicted_X.keys()))-np.amax(list(_filter.X.keys())) >= self.FilterThreshold:
                 self.ActiveFilters.pop(j)
+                print("Stoped track %s in frame %s with no updates for %s frames"%(j, i, self.FilterThreshold))
 
         predicted_x = {}
         predicted_x_error = {}
@@ -1194,8 +1195,10 @@ class MultiFilter(Filter):
             # if (probability_gain[k, m] - np.amin(probability_gain) >=
             #     (self.LogProbabilityThreshold *(np.amax(probability_gain)-np.amin(probability_gain)))
             #     and gain_dict.has_key(k)):
-            if gain_dict.has_key(k) and (probability_gain[k, m] > LogProbabilityThreshold or len(
-                    self.ActiveFilters[gain_dict[k]].X) < 2) :
+            # if gain_dict.has_key(k) and (probability_gain[k, m] > LogProbabilityThreshold or len(
+            #         self.ActiveFilters[gain_dict[k]].X) < 2) :
+            if gain_dict.has_key(k) and (probability_gain[k, m] > LogProbabilityThreshold or (len(
+                    self.ActiveFilters[gain_dict[k]].X) < 2 and i-self.ActiveFilters[gain_dict[k]].X.keys()[-1] < 2)) :
             # if probability_gain[k, m] - MIN > LIMIT and gain_dict.has_key(k):
                 self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
