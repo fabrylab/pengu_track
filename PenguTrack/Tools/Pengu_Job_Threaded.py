@@ -95,7 +95,7 @@ Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
 MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
                        np.diag(R))#, meas_dist=Meas_Dist, state_dist=State_Dist)
 # MultiKal.LogProbabilityThreshold = -10000.
-MultiKal.LogProbabilityThreshold = -50.
+MultiKal.LogProbabilityThreshold = -21.
 MultiKal.FilterThreshold = 2
 MultiKal.MeasurementProbabilityThreshold = 0.
 MultiKal.AssignmentProbabilityThreshold = 0.
