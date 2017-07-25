@@ -202,7 +202,7 @@ class Yin_Evaluator(Evaluator):
 
 
 if __name__ == "__main__":
-    evaluation = Yin_Evaluator(10, temporal_threshold=0., spacial_threshold=0.)
+    evaluation = Yin_Evaluator(100, temporal_threshold=0.02, spacial_threshold=0.05)
     evaluation.load_GT_tracks_from_clickpoints(path="/home/birdflight/Desktop/252Horizon.cdb", type="GT")
     evaluation.load_System_tracks_from_clickpoints(path="/home/birdflight/Desktop/252_Tracked.cdb", type="PT_Track_Marker")
     evaluation.match()
