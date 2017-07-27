@@ -186,10 +186,6 @@ class Yin_Evaluator(Evaluator):
                 return  self.System_Tracks[A]
             else:
                 raise ValueError("%s is not a track!" % track)
-
-
-
-
         else:
             return track
 
@@ -202,8 +198,8 @@ class Yin_Evaluator(Evaluator):
 
 
 if __name__ == "__main__":
-    evaluation = Yin_Evaluator(100, temporal_threshold=0.02, spacial_threshold=0.05)
-    evaluation.load_GT_tracks_from_clickpoints(path="/home/birdflight/Desktop/252Horizon.cdb", type="GT")
-    evaluation.load_System_tracks_from_clickpoints(path="/home/birdflight/Desktop/252_Tracked.cdb", type="PT_Track_Marker")
+    evaluation = Yin_Evaluator(10, temporal_threshold=0.2, spacial_threshold=0.05)
+    evaluation.load_GT_tracks_from_clickpoints(path="/home/user/Desktop/PT_Test_LOG21.cdb", type="GT")
+    evaluation.load_System_tracks_from_clickpoints(path="/home/user/Desktop/PT_Test_LOG21.cdb", type="PT_Track_Marker")
     evaluation.match()
     print(evaluation.Matches)

@@ -40,7 +40,7 @@ import scipy.stats as ss
 
 # Load Database
 # file_path = "/home/birdflight/Desktop/PT_Test.cdb"
-file_path = "/home/user/Desktop/PT_Test.cdb"
+file_path = "/home/user/Desktop/PT_Test_n2_r40.cdb"
 # file_path = "/mnt/mmap/PT_Test3.cdb"
 # file_path = "/mnt/mmap/PT_Test4.cdb"
 
@@ -50,13 +50,17 @@ db = DataFileExtended(file_path,"w")
 db_start = DataFileExtended(input_file)
 # images = db_start.getImageIterator(start_frame=2490-30, end_frame=2600)
 # images = db_start.getImageIterator(start_frame=1936-210, end_frame=2600)
-images = db_start.getImageIterator()
+# images = db_start.getImageIterator(end_frame=52)
 # images = db_start.getImageIterator(start_frame=1936-20-90, end_frame=2600)
 # images = db_start.getImageIterator(start_frame=1500, end_frame=2600)
 
-images = db_start.getImageIterator()
+images = db_start.getImageIterator(end_frame=68)
 def getImage():
-    im = images.next()
+    try:
+        im = images.next()
+    except StopIteration:
+        print("Done! First!")
+        return None, None
     # im.data = rgb2gray(im.data)
     fname = im.filename
     from datetime import datetime
@@ -130,7 +134,7 @@ try:
 except ValueError:
     raise ValueError("No markers with name 'Horizon'!")
 
-VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 500, n=3, init_image=init, n_min=3, r=10, phi=1, subsampling=2)#, camera_h=44.)
+VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 500, n=3, init_image=init, n_min=2, r=40, phi=1, subsampling=2)#, camera_h=44.)
 
 del init_buffer
 
@@ -232,10 +236,13 @@ from datetime import datetime, timedelta
 def load(load_cam):
     i = 1
     while True:
-        try:
-            img, meta = getImage()
-        except StopIteration:
-            break
+        # try:
+        img, meta = getImage()
+        # if img is None and meta is None:
+        #     print("Done! Second!")
+        #     break
+        # except StopIteration:
+            # break
         if img is not None:
             timestamp = datetime.fromtimestamp(meta["time"])
             timestamp += timedelta(milliseconds=int(meta["time_ms"]))
@@ -245,12 +252,22 @@ def load(load_cam):
             print("loaded image %s" % i)
             # print(meta)
             i+=1
+        else:
+            Image_write_queue.put([None,None,None])
+            segmentation_pipe_in.send([None,None])
+            Timer_in.put([None,None])
+            break
+    print("Done!Loading!")
 
 
 def segmentate():
     LastMap = None
     while True:
         i, img = segmentation_pipe_out.recv()
+        if i is None and img is None:
+            SegMap_write_queue.put([None, None])
+            detection_pipe_in.send([None,None,None])
+            break
         print("starting Segmentation %s"%i)
         SegMap = VB.segmentate(img, do_neighbours=False)
         VB.update(SegMap, img, do_neighbours=False)
@@ -258,12 +275,17 @@ def segmentate():
         SegMap_write_queue.put([i, SegMap])
         detection_pipe_in.send([i, SegMap, VB.horizontal_equalisation(img)])
         print("Segmentated Image %s"%i)
+    print("Done Segmenation!")
 
 
 def detect():
     Map = None
     while True:
         i, SegMap, img = detection_pipe_out.recv()
+        if i is None and SegMap is None and img is None:
+            Detection_write_queue.put([None,None])
+            tracking_pipe_in.send([None,None])
+            break
         Positions = AD.detect(SegMap, intensity_image=img)
         for pos in Positions:
             pos.PositionY, pos.PositionX = VB.log_to_orth([pos.PositionY/float(VB.SubSampling)
@@ -273,6 +295,7 @@ def detect():
         Detection_write_queue.put([i, Positions])
         tracking_pipe_in.send([i, Positions])
         print("Found %s animals in %s!"%(len(Positions), i))
+    print("DoneDetection!")
 
         # if not detection_pipe_out.poll(1) and not segmentation.is_alive():
         #     break
@@ -280,18 +303,25 @@ def detect():
 
 def track():
     while True:
-        with np.errstate(all="raise"):
-            i, Positions = tracking_pipe_out.recv()
-            MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
-            if len(Positions) > 2:
-                print("Tracking %s" % i)
-                # Update Filter with new Detections
-                MultiKal.update(z=Positions, i=i)
-                Track_write_queue.put([i, MultiKal.ActiveFilters])
-            else:
-                print("empty track at %s"%i)
-                Track_write_queue.put([i, {}])
-            print("Got %s Filters in frame %s" % (len(MultiKal.ActiveFilters.keys()), i))
+        try:
+            with np.errstate(all="raise"):
+                i, Positions = tracking_pipe_out.recv()
+                if i is None and Positions is None:
+                    Track_write_queue.put([None,None])
+                    raise StopIteration
+                MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
+                if len(Positions) > 2:
+                    print("Tracking %s" % i)
+                    # Update Filter with new Detections
+                    MultiKal.update(z=Positions, i=i)
+                    Track_write_queue.put([i, MultiKal.ActiveFilters])
+                else:
+                    print("empty track at %s"%i)
+                    Track_write_queue.put([i, {}])
+                print("Got %s Filters in frame %s" % (len(MultiKal.ActiveFilters.keys()), i))
+        except StopIteration:
+            break
+    print("Done Tracking!")
 
 
 def dummy_write():
@@ -311,6 +341,9 @@ def DB_write():
         try:
             while not Image_write_queue.empty():
                 timestamp, i, meta  = Image_write_queue.get()
+                if timestamp is None and i is None and meta is None:
+                    # raise StopIteration
+                    break
                 fname = meta['file_name']
                 if db.getPath(meta["path"]) is None:
                     path = db.setPath(meta["path"])
@@ -323,6 +356,9 @@ def DB_write():
             with db.db.atomic() as transaction:
                 while not SegMap_write_queue.empty():
                     i, Mask = SegMap_write_queue.get()
+                    if i is None and Mask is None:
+                        # raise StopIteration
+                        break
                     if not image_dict.has_key(i):
                         SegMap_write_queue.put([i, Mask])
                         break
@@ -331,11 +367,12 @@ def DB_write():
                     print("Masks set! %s" % i)
                 while not Detection_write_queue.empty():
                     i, Positions = Detection_write_queue.get()
+                    if i is None and Positions is None:
+                        # raise StopIteration
+                        break
                     if not image_dict.has_key(i):
                         Detection_write_queue.put([i,Positions])
                         break
-                    #
-
                     for pos in Positions:
                         while True:
                             if image_dict.has_key(i):
@@ -355,6 +392,10 @@ def DB_write():
                     print("Detections written! %s"%i)
                 while not Track_write_queue.empty():
                     i, ActiveFilters = Track_write_queue.get()
+                    if i is None and ActiveFilters is None:
+                        Timer_out.put([None,None])
+                        # break
+                        raise StopIteration
                     if not image_dict.has_key(i):
                         Track_write_queue.put([i, ActiveFilters])
                         break
@@ -393,6 +434,10 @@ def DB_write():
                         db.deleteTracks(id=track.id)
         except peewee.OperationalError:
             pass
+        except StopIteration:
+        #     print("blab")
+            break
+    print("Done!Writing!")
 
 
 loading = Process(target=load, args=(None,))
@@ -414,10 +459,16 @@ while True:
     try:
         if not Timer_in.empty():
             i, value = Timer_in.get()
-            times1.update({i: value})
+            if i is None and value is None:
+                pass
+            else:
+                times1.update({i: value})
 
         if not Timer_out.empty():
             i, value = Timer_out.get()
+            if i is None and value is None:
+                print("DoneTime!")
+                # raise StopIteration
             times2.update({i: value})
             for i in times2:
                 if times1.has_key(i):
@@ -425,6 +476,16 @@ while True:
                 else:
                     print("DAMN!!")
             print("Needed %s s per frame"%((time.time()-start)/len(times2.keys())))
+        # print("......")
+        # print(loading.is_alive())
+        # print(segmentation.is_alive())
+        # print(detection.is_alive())
+        # print(tracking.is_alive())
+        # print(writing_DB.is_alive())
+        # if not tracking.is_alive():
+        #     raise StopIteration
+        # print("......")
+        # time.sleep(1)
 
     except (KeyboardInterrupt, SystemExit):
         loading.terminate()
@@ -433,4 +494,10 @@ while True:
         tracking.terminate()
         writing_DB.terminate()
         raise
-
+    except StopIteration:
+        # loading.terminate()
+        # segmentation.terminate()
+        # detection.terminate()
+        # tracking.terminate()
+        # writing_DB.terminate()
+        break
