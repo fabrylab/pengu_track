@@ -40,7 +40,8 @@ import scipy.stats as ss
 
 # Load Database
 # file_path = "/home/birdflight/Desktop/PT_Test.cdb"
-file_path = "/home/user/Desktop/PT_Test_n2_r40.cdb"
+file_path = "/home/user/Desktop/PT_Test_full_n3_r7_A20.cdb"
+c=20
 # file_path = "/mnt/mmap/PT_Test3.cdb"
 # file_path = "/mnt/mmap/PT_Test4.cdb"
 
@@ -54,7 +55,7 @@ db_start = DataFileExtended(input_file)
 # images = db_start.getImageIterator(start_frame=1936-20-90, end_frame=2600)
 # images = db_start.getImageIterator(start_frame=1500, end_frame=2600)
 
-images = db_start.getImageIterator(end_frame=68)
+images = db_start.getImageIterator()
 def getImage():
     try:
         im = images.next()
@@ -134,7 +135,7 @@ try:
 except ValueError:
     raise ValueError("No markers with name 'Horizon'!")
 
-VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 500, n=3, init_image=init, n_min=2, r=40, phi=1, subsampling=2)#, camera_h=44.)
+VB = SiAdViBeSegmentation(horizon_markers, 14e-3, [17e-3, 9e-3], penguin_markers, penguin_height, 500, n=3, init_image=init, n_min=3, r=7, phi=1, subsampling=2)#, camera_h=44.)
 
 del init_buffer
 
@@ -154,16 +155,17 @@ print('Initialized Tracker')
 # AD = AreaDetector(object_area, object_number, upper_limit=10, lower_limit=0)
 from PenguTrack.Detectors import RegionFilter, RegionPropDetector
 
-rf = RegionFilter("area",100,var=50.**2, lower_limit=30., upper_limit=200)
+rf = RegionFilter("area",200,var=40.**2, lower_limit=c, upper_limit=300)
+# rf = RegionFilter("area",200,var=40.**2, upper_limit=300)
 # rf2 = RegionFilter("solidity",0.98,var=0.04**2)#, lower_limit=0.8)
 # rf3 = RegionFilter("eccentricity",0.51,var=0.31**2)#, upper_limit=0.95)
 # rf4 = RegionFilter("extent",0.66,var=0.07**2)#, lower_limit=0.5, upper_limit=0.9)
 # rf5 = RegionFilter("InOutContrast2", 0.89, var=0.13**2)#, lower_limit=0.9)
-rf6 = RegionFilter("mean_intensity", 60., var=17.**2)#, lower_limit=25.)
+# rf6 = RegionFilter("mean_intensity", 60., var=17.**2)#, lower_limit=25.)
 # rf7 = RegionFilter("max_intensity", 124, var=56)#, lower_limit=40)
 # rf8 = RegionFilter("min_intensity", 21, var=14)#, lower_limit=0, upper_limit=70)
 
-AD = RegionPropDetector([rf, rf6])#,rf2,rf3,rf5,rf6])
+AD = RegionPropDetector([rf])#,rf2,rf3,rf5,rf6])
 
 
 print("--------------------------")
