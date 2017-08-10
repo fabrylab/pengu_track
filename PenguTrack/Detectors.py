@@ -2674,9 +2674,14 @@ class SiAdViBeSegmentation(Segmentation):
         return warp_xx, warp_yy
 
     def back_warp_orth(self, xy):
-        if True:
-            return xy
+        # calculate beam angles in camera
         warp_xx, warp_yy = xy
+        r = np.linalg.norm([warp_xx-self.width/2., warp_yy-self.height/2.], axis=1)
+        theta = np.arctan2(warp_xx-self.width/2., warp_yy-self.height/2.)
+        alpha = np.arctan(r/self.F)
+
+
+
         warp_xx = (warp_xx-self.width/2.)*self.Sensor_Size[0]/self.width
         warp_yy = (warp_yy-self.height/2.)*self.Sensor_Size[1]/self.height
         # Calculate angles in Camera-Coordinates
