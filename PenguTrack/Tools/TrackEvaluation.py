@@ -1,4 +1,6 @@
 from __future__ import print_function, division
+import matplotlib
+matplotlib.use('Agg')
 import numpy as np
 import clickpoints
 
@@ -52,7 +54,7 @@ class Evaluator(object):
                     meas = Measurement(1., [m.measurement[0].x,
                                             m.measurement[0].y,
                                             m.measurement[0].z])
-                    self.GT_Tracks[track.id].update(z=meas, i=m.image.sort_index)
+                    self.GT_Tracks[track.id].update(z=meas, i=m.image.timestamp)
         else:
             for track in self.GT_db.getTracks(type=type):
                 self.GT_Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
@@ -60,7 +62,7 @@ class Evaluator(object):
                     meas = Measurement(1., [m.x,
                                             m.y,
                                             0])
-                    self.GT_Tracks[track.id].update(z=meas, i=m.image.sort_index)
+                    self.GT_Tracks[track.id].update(z=meas, i=m.image.timestamp)
 
 
     def load_System_tracks_from_clickpoints(self, path, type):
@@ -74,7 +76,7 @@ class Evaluator(object):
                                             m.measurement[0].y,
                                             m.measurement[0].z],
                                        frame=m.image.sort_index)
-                    self.System_Tracks[track.id].update(z=meas, i=m.image.sort_index)
+                    self.System_Tracks[track.id].update(z=meas, i=m.image.timestamp)
         else:
             for track in self.System_db.getTracks(type=type):
                 self.System_Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
@@ -82,7 +84,7 @@ class Evaluator(object):
                     meas = Measurement(1., [m.x,
                                             m.y,
                                             0], frame=m.image.sort_index)
-                    self.System_Tracks[track.id].update(z=meas, i=m.image.sort_index)
+                    self.System_Tracks[track.id].update(z=meas, i=m.image.timestamp)
 
     def save_tracks_to_db(self, path, type, function=None):
         if function is None:
@@ -110,14 +112,19 @@ class Evaluator(object):
 
         with self.GT_db.db.atomic() as transaction:
             self.GT_db.deleteTracks(type=type)
-            for track in self.Tracks:
+            for track in self.GT_Tracks:
                 # self.db.deleteTracks(id=track)
                 GT_db_track = self.GT_db.setTrack(type=type, id=track)
                 for m in self.GT_Tracks[track].Measurements:
                     meas = self.GT_Tracks[track].Measurements[m]
                     pos = [meas.PositionX, meas.PositionY, meas.PositionZ]
                     pos = function(pos)
-                    marker = self.GT_db.setMarker(type=type, frame=m, x=pos[0], y=pos[1], track=track)
+                    try:
+                        marker = self.GT_db.setMarker(type=type, frame=self.GT_db.getImages(timestamp=m)[0].sort_index, x=pos[0], y=pos[1], track=track)
+                    except clickpoints.ImageDoesNotExist:
+                        continue
+                    except IndexError:
+                        continue
                     meas = self.GT_Tracks[track].Measurements[m]
                     self.GT_db.setMeasurement(marker=marker, log=meas.Log_Probability,
                                            x=meas.PositionX, y=meas.PositionY, z=meas.PositionZ)
@@ -136,7 +143,7 @@ class Evaluator(object):
                     meas = self.System_Tracks[track].Measurements[m]
                     pos = [meas.PositionX, meas.PositionY, meas.PositionZ]
                     pos = function(pos)
-                    marker = self.System_db.setMarker(type=type, frame=m, x=pos[0], y=pos[1], track=track)
+                    marker = self.System_db.setMarker(type=type, frame=self.System_db.getImages(timestamp=m)[0].sort_index, x=pos[0], y=pos[1], track=track)
                     meas = self.System_Tracks[track].Measurements[m]
                     self.System_db.setMeasurement(marker=marker, log=meas.Log_Probability,
                                            x=meas.PositionX, y=meas.PositionY, z=meas.PositionZ)
@@ -152,6 +159,8 @@ class Yin_Evaluator(Evaluator):
     def temporal_overlap(self, trackA, trackB):
         trackA = self._handle_Track_(trackA)
         trackB = self._handle_Track_(trackB)
+        intersect = set(trackA.X.keys()).intersection(trackB.X.keys())
+        # return max(len(intersect)/len(trackA.X.keys()), len(intersect)/len(trackB.X.keys()))
         return len(set(trackA.X.keys()).intersection(trackB.X.keys()))/len(set(trackA.X.keys()).union(set(trackB.X.keys())))
         # return min(max(trackA.X.keys()),max(trackB.X.keys()))-max(min(trackA.X.keys()),min(trackB.X.keys()))
 
@@ -194,12 +203,400 @@ class Yin_Evaluator(Evaluator):
             self.Matches.update({gt: [st for st in self.System_Tracks if (np.mean(self.spatial_overlap(st,gt).values())>self.SpaceThreshold and
                                                 self.temporal_overlap(st,gt)>self.TempThreshold)]})
 
+    def FAT(self, trackA, trackB):
+        pass
+
+    def TF(self, trackA):
+        pass
+
+    def TE(self, trackA, trackB):
+        trackA = self._handle_Track_(trackA)
+        trackB = self._handle_Track_(trackB)
+        frames = set(trackA.X.keys()).intersection(set(trackB.X.keys()))
+        return [np.linalg.norm(trackA.X[f]-trackB.X[f]) for f in frames]
+
+    def TME(self, trackA, trackB):
+        return np.mean(self.TE(trackA, trackB))
+
+    def TMED(self, trackA, trackB):
+        return np.std(self.TE(trackA, trackB))
+
+    def TMEMT(self, trackA):
+        trackA = self._handle_Track_(trackA)
+        if trackA in self.GT_Tracks.values():
+            key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
+        else:
+            raise KeyError("Track is not a Ground Truth Track")
+        tmemt=[]
+        l=[]
+        for m in self.Matches[key]:
+            trackB = self._handle_Track_(m)
+            te = self.TE(trackA, trackB)
+            tmemt.append(np.mean(te)*len(te))
+            l.append(len(te))
+        return np.sum(tmemt)/np.sum(l)
+
+    def TMEMTD(self, trackA):
+        trackA = self._handle_Track_(trackA)
+        if trackA in self.GT_Tracks.values():
+            key = [k for k in self.GT_Tracks if self.GT_Tracks[k] == trackA][0]
+        else:
+            raise KeyError("Track is not a Ground Truth Track")
+        tmemt = []
+        l = []
+        for m in self.Matches[key]:
+            trackB = self._handle_Track_(m)
+            te = self.TE(trackA, trackB)
+            tmemt.append(np.std(te)*len(te))
+            l.append(len(te))
+        return np.sum(tmemt) / np.sum(l)
+
+    def TC(self, trackA):
+        trackA = self._handle_Track_(trackA)
+        if trackA in self.GT_Tracks.values():
+            key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
+        else:
+            raise KeyError("Track is not a Ground Truth Track")
+        tc = []
+        for m in self.Matches[key]:
+            tc.extend(self.System_Tracks[m].X.keys())
+        return len(set(tc))/float(len(trackA.X))
+
+    def R2(self, trackA):
+        trackA = self._handle_Track_(trackA)
+        if trackA in self.GT_Tracks.values():
+            key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
+        else:
+            raise KeyError("Track is not a Ground Truth Track")
+        tc = []
+        t2 = []
+        for m in self.Matches[key]:
+            t2.extend(set(self.System_Tracks[m].X.keys()).intersection(set(tc)))
+            tc.extend(self.System_Tracks[m].X.keys())
+        return len(set(t2))/float(len(trackA.X))
+
+    def R3(self, trackA):
+        trackA = self._handle_Track_(trackA)
+        if trackA in self.GT_Tracks.values():
+            key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
+        else:
+            raise KeyError("Track is not a Ground Truth Track")
+        tc = []
+        t2 = []
+        t3 = []
+        for m in self.Matches[key]:
+            t3.extend(set(self.System_Tracks[m].X.keys()).intersection(set(t2)))
+            t2.extend(set(self.System_Tracks[m].X.keys()).intersection(set(tc)))
+            tc.extend(self.System_Tracks[m].X.keys())
+        return len(set(t3))/float(len(trackA.X))
+
+    def CTM(self, trackA):
+        trackA = self._handle_Track_(trackA)
+        if trackA in self.GT_Tracks.values():
+            key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
+        else:
+            raise KeyError("Track is not a Ground Truth Track")
+        ct = []
+        l = []
+        for m in self.Matches[key]:
+            trackB = self._handle_Track_(m)
+            o=self.spatial_overlap(trackA, trackB).values()
+            ct.extend(o)
+            l.append(len(o))
+        return np.sum(ct)/np.sum(l)
+
+    def CTD(self, trackA):
+        trackA = self._handle_Track_(trackA)
+        if trackA in self.GT_Tracks.values():
+            key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
+        else:
+            raise KeyError("Track is not a Ground Truth Track")
+        ct = []
+        l = []
+        for m in self.Matches[key]:
+            trackB = self._handle_Track_(m)
+            o=self.spatial_overlap(trackA, trackB).values()
+            ct.append(len(o)*np.std(o))
+            l.append(len(o))
+        return np.sum(ct)/np.sum(l)
+
+    def LT(self, trackA):
+        trackA = self._handle_Track_(trackA)
+        if trackA in self.GT_Tracks.values():
+            key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
+        else:
+            raise KeyError("Track is not a Ground Truth Track")
+        first_sys = min([min(self._handle_Track_(m).X.keys()) for m in self.Matches[key]])
+        return first_sys-min(trackA.X.keys())
+
+    def IDC(self, trackA):
+        trackA = self._handle_Track_(trackA)
+        if trackA in self.GT_Tracks.values():
+            key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
+        else:
+            raise KeyError("Track is not a Ground Truth Track")
+        ct = []
+        l = []
+        frames = set()
+        for m in self.Matches[key]:
+            trackB = self._handle_Track_(m)
+            frames.symmetric_difference_update(trackB.X.keys())
+        IDC_j = 1
+        id = None
+        for f in frames:
+            if id is None:
+                id=[k for k in self.Matches[key] if self.System_Tracks[k].X.has_key(f)][0]
+            if not self.System_Tracks[id].X.has_key(f):
+                IDC_j +=1
+                ids=[k for k in self.Matches[key] if self.System_Tracks[k].X.has_key(f)]
+                func = lambda i : len([fr for fr in frames if f<fr and fr<[fr for fr in frames if fr>f and not self.System_Tracks[id].X.has_key(f)][0]])
+                id = max(ids, key=func)
+
+        return IDC_j
+
+    def velocity(self, trackA):
+        trackA = self._handle_Track_(trackA)
+        if trackA in self.GT_Tracks.values():
+            key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
+        else:
+            raise KeyError("Track is not a Ground Truth Track")
+        from datetime import timedelta
+        t = np.array(sorted(trackA.X.keys()))
+        x = np.array([trackA.X[f] for f in t], dtype=float)
+        delta_x = x[1:]-x[:-1]
+        delta_t = np.array([delta.seconds for delta in t[1:]-t[:-1]], dtype=float)
+        return delta_x.T/delta_t
+
+    def activity(self, trackA):
+        # trackA = self._handle_Track_(trackA)
+        # if trackA in self.GT_Tracks.values():
+        #     key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
+        # else:
+        #     raise KeyError("Track is not a Ground Truth Track")
+        # from datetime import timedelta
+        # x = np.array(trackA.X.values(), dtype=float)
+        # delta_x = x[1:]-x[:-1]
+        # t = np.array(sorted(trackA.X.keys()))
+        # delta_t = np.array([delta.seconds for delta in t[1:]-t[:-1]], dtype=float)
+        # v = delta_x.T/delta_t
+        v=self.velocity(trackA)
+        v_n = np.linalg.norm(v, axis=0)
+        # from skimage.filters import threshold_otsu
+        # val = threshold_otsu(v_n, nbins=100)
+        # print(v_n, v_n.shape)
+        # plt.figure()
+        # plt.hist(v_n.T, bins=100)
+        # print(np.amin(v_n), np.amax(v_n), val)
+        return np.sum(v_n>self.Object_Size/2.)/float(len(v_n))
+
+class Alex_Evaluator(Yin_Evaluator):
+    def __init__(self, object_size, camera_height, camera_tilt, image_height, sensor_height, focal_length, tolerance =1., **kwargs):
+        self.Camera_Height = float(camera_height)
+        self.Image_Height=float(image_height)
+        self.Sensor_Height= float(sensor_height)
+        self.Focal_Length = float(focal_length)
+        self.Camera_Tilt = float(camera_tilt)
+        self.Object_Size_m = float(object_size)
+        self.Tolerance = float(tolerance)
+        super(Alex_Evaluator, self).__init__(self.Object_Size_m, **kwargs)
+
+    def size(self, y_px):
+        dist_m = self.Camera_Height * np.tan(np.arctan(
+            (self.Image_Height / 2. - y_px) / self.Image_Height * self.Sensor_Height / self.Focal_Length) - self.Camera_Tilt + np.pi / 2.)
+        return 2 * np.arctan(self.Object_Size_m / 2. / dist_m) * self.Image_Height / (2 * np.arctan(self.Sensor_Height / 2. / self.Focal_Length))
+
+
+    def _intersect_(self, p1, p2):
+        o = self.Tolerance*self.size((p1[1]+p2[1])/2.)/2.
+        l = max(p1[0]-o, p2[0]-o)
+        r = min(p1[0]+o, p2[0]+o)
+        t = min(p1[1]+o, p2[1]+o)
+        b = max(p1[1]-o, p2[1]-o)
+        return (t-b)*(r-l) if ((r-l)>0 and (t-b)>0) else 0
+
+    def _union_(self, p1, p2):
+        return 2*(self.Tolerance*self.size((p1[1]+p2[1])/2.))**2-self._intersect_(p1,p2)
+
+    def relative_velocity(self, trackA):
+        trackA = self._handle_Track_(trackA)
+        if trackA in self.GT_Tracks.values():
+            key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
+        else:
+            raise KeyError("Track is not a Ground Truth Track")
+        from datetime import timedelta
+        t = np.array(sorted(trackA.X.keys()))
+        x = np.array([trackA.X[f] for f in t], dtype=float)
+        sizes = self.size(x[1:].T[1])
+        delta_x = ((x[1:]-x[:-1]).T/sizes).T
+        delta_t = np.array([delta.seconds for delta in t[1:]-t[:-1]], dtype=float)
+        return delta_x.T/delta_t
+
+    def activity(self, trackA, thresh=.25):
+        v=self.relative_velocity(trackA)
+        v_n = np.linalg.norm(v, axis=0)
+        return np.sum(v_n>thresh)/float(len(v_n))
+
+    def activities(self, trackA, thresh=.25):
+        v=self.relative_velocity(trackA)
+        v_n = np.linalg.norm(v, axis=0)
+        v_max = np.amax(v_n)
+        return v_n<tresh
+
+    def rTE(self, trackA, trackB):
+        trackA = self._handle_Track_(trackA)
+        trackB = self._handle_Track_(trackB)
+        frames = set(trackA.X.keys()).intersection(set(trackB.X.keys()))
+        return dict([[f, np.linalg.norm(trackA.X[f] - trackB.X[f])/self.size((trackA.X[f][1]+trackB.X[f][1])/2.)] for f in frames])
+
+    def rTME(self, trackA, trackB):
+        return np.mean(self.rTE(trackA,trackB).values())
+
+    def rTMED(self, trackA, trackB):
+        return np.std(self.rTE(trackA,trackB).values())
+
+    def rTMEMT(self, trackA):
+        trackA = self._handle_Track_(trackA)
+        if trackA in self.GT_Tracks.values():
+            key = [k for k in self.GT_Tracks if self.GT_Tracks[k] == trackA][0]
+        else:
+            raise KeyError("Track is not a Ground Truth Track")
+        tmemt = []
+        l = []
+        for m in self.Matches[key]:
+            trackB = self._handle_Track_(m)
+            te = self.rTE(trackA, trackB)
+            tmemt.append(np.mean(te.values()) * len(te))
+            l.append(len(te))
+        return np.sum(tmemt) / np.sum(l)
+
+    def rTMEMTD(self, trackA):
+        trackA = self._handle_Track_(trackA)
+        if trackA in self.GT_Tracks.values():
+            key = [k for k in self.GT_Tracks if self.GT_Tracks[k] == trackA][0]
+        else:
+            raise KeyError("Track is not a Ground Truth Track")
+        tmemt = []
+        l = []
+        for m in self.Matches[key]:
+            trackB = self._handle_Track_(m)
+            te = self.rTE(trackA, trackB)
+            tmemt.append(np.std(te.values()) * len(te))
+            l.append(len(te))
+        return np.sum(tmemt) / np.sum(l)
 
 
 
 if __name__ == "__main__":
-    evaluation = Yin_Evaluator(10, temporal_threshold=0.2, spacial_threshold=0.05)
-    evaluation.load_GT_tracks_from_clickpoints(path="/home/user/Desktop/PT_Test_LOG21.cdb", type="GT")
-    evaluation.load_System_tracks_from_clickpoints(path="/home/user/Desktop/PT_Test_LOG21.cdb", type="PT_Track_Marker")
+# <<<<<<< dest
+#     evaluation = Yin_Evaluator(10, temporal_threshold=0.2, spacial_threshold=0.05)
+#     evaluation.load_GT_tracks_from_clickpoints(path="/home/user/Desktop/PT_Test_LOG21.cdb", type="GT")
+#     evaluation.load_System_tracks_from_clickpoints(path="/home/user/Desktop/PT_Test_LOG21.cdb", type="PT_Track_Marker")
+# =======
+#    import matplotlib
+#    matplotlib.use("Agg")
+    # evaluation = Yin_Evaluator(100, temporal_threshold=0.8, spacial_threshold=0.6)
+    evaluation = Alex_Evaluator(0.525, 37.9, 0.24, 2592, 9e-3, 14e-3
+                                ,temporal_threshold=0.01, spacial_threshold=0.4, tolerance=1)
+    evaluation.load_GT_tracks_from_clickpoints(path="/home/birdflight/Desktop/Adelie_Evaluation/252Horizon.cdb", type="GT")
+    evaluation.load_System_tracks_from_clickpoints(path="/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb", type="PT_Track_Marker")
+    evaluation.system_db = clickpoints.DataFile("/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb")
+    evaluation.system_db.setMarkerType(name="GT", color="#FFFFFF", mode=evaluation.system_db.TYPE_Track)
+    evaluation.system_db.setMarkerType(name="Match", color="#FF8800", mode=evaluation.system_db.TYPE_Track)
+    evaluation.save_GT_tracks_to_db(path="/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb", type="GT")
+
+    for f in sorted(evaluation.GT_Tracks[1].X.keys())[:20]:
+        for m in evaluation.GT_Tracks:
+            evaluation.GT_Tracks[m].downfilter(f)
+# >>>>>>> source
     evaluation.match()
+
+    tmemt = []
+    tmemtd =  []
+    tc = []
+    r2 =  []
+    r3 =  []
+    ctm = []
+    ctd =  []
+    lt =  []
+    idc =  []
+    a =  []
+
     print(evaluation.Matches)
+    for m in evaluation.Matches:
+        print("------------")
+        print(m)
+        tmemt.append(evaluation.TMEMT(m))
+        tmemtd.append(evaluation.TMEMTD(m))
+        tc.append(evaluation.TC(m))
+        r2.append(evaluation.R2(m))
+        r3.append(evaluation.R3(m))
+        ctm.append(evaluation.CTM(m))
+        ctd.append(evaluation.CTD(m))
+        lt.append(evaluation.LT(m))
+        idc.append(evaluation.IDC(m))
+        a.append(evaluation.activity(m))
+        print("TMEMT",tmemt[-1], tmemtd[-1])
+        print("TMEMT coeff",tmemtd[-1]/tmemt[-1])
+        print("TC",tc[-1])
+        print("corrected TC",tc[-1]/a[-1])
+        print("R2",r2[-1])
+        print("R3",r3[-1])
+        print("CTM",ctm[-1])
+        print("CTD",ctd[-1])
+        print("LT",lt[-1])
+        print("IDC",idc[-1])
+        print("activity",a[-1])
+
+    print("------------")
+    print("----mean----")
+    print("TMEMT",np.mean(tmemt), np.std(tmemtd)/len(tmemtd)**0.5)
+    print("TMEMT coeff",np.mean(np.asarray(tmemtd)/np.asarray(tmemt)), np.std(np.asarray(tmemtd)/np.asarray(tmemt))/len(tmemt)**0.5)
+    print("TC",np.mean(tc), np.std(tc)/len(tc)**0.5)
+    print("corrected TC",np.mean(np.asarray(tc)/np.asarray(a)),np.std(np.asarray(tc)/np.asarray(a))/len(a)**0.5)
+    print("R2",np.mean(r2), np.std(r2)/len(r2)**0.5)
+    print("R3",np.mean(r3), np.std(r3)/len(r3)**0.5)
+    print("CTM",np.mean(ctm), np.std(ctm)/len(ctm)**0.5)
+    print("CTD",np.mean(ctd), np.std(ctd)/len(ctd)**0.5)
+    print("LT",np.mean([l.seconds for l in lt]), np.std([l.seconds for l in lt])/len(lt)**0.5)
+    print("IDC",np.mean(idc), np.std(idc)/len(idc)**0.5)
+    print("activity",np.mean(a), np.std(a)/len(a)**0.5)
+
+
+    from datetime import timedelta
+    fig, axes = plt.subplots(len(evaluation.Matches.keys()), 1)
+
+    all_times = set()
+    for m in evaluation.GT_Tracks:
+        all_times.update(evaluation.GT_Tracks[m].X.keys())
+    all_times = sorted(all_times)
+    x_min = min(all_times)
+    x_max = max(all_times)
+    max_len=max([len(v) for v in evaluation.Matches.values()])
+    pal = sn.color_palette(n_colors=max_len)
+    fig.suptitle("Track Coverage", y=1.)
+    lines={}
+    for i, m in enumerate(evaluation.Matches):
+        axes[i].set_xlim([x_min,x_max])
+        axes[i].set_ylim([0,2])
+        # axes[i].set_title("Ground Truth Track %s"%m, size=12)
+        ACT = np.linalg.norm(evaluation.relative_velocity(m), axis=0)
+        temps = sorted(evaluation._handle_Track_(m).X.keys())
+        l1 = axes[i].fill_between([t for t in all_times if t in temps],[2 for t in all_times if t in temps], alpha=0.1, label="Penguin is Visible")
+        l2 = axes[i].fill_between(temps[1:],ACT, alpha=0.2, label="Penguin Velocity")
+        lines.update({"Penguin is Visible  ":l1, "Penguin Velocity  ":l2})
+        for j,n in enumerate(evaluation.Matches[m]):
+            overs = evaluation.rTE(m,n)
+            temps = np.array(sorted(overs.keys()))
+            x = [overs[t] for t in temps]
+            t_0 = temps[0]
+            lines.update({"System Track Error %s"%j:axes[i].plot(temps, x, color=pal[j])[0]})
+            axes[i].set_ylabel("Distance\n (in Penguin Sizes)")
+            my_plot.despine(axes[i])
+            my_plot.setAxisSizeMM(fig, axes[i], 147, 180/len(axes))
+    axes[-1].set_xlabel("Timestamp")
+    plt.tight_layout()
+    fig.autofmt_xdate()
+    fig.legend([lines[k] for k in sorted(lines.keys())], [k[:-2] for k in sorted(lines.keys())], ncol=3, loc="lower center", prop={"size":12})
+    plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Adelie_TrackEvaluation.pdf")
+    plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Adelie_TrackEvaluation.png")
+    plt.show()
