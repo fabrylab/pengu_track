@@ -72,7 +72,8 @@ def getImage():
     meta = {'time': time_unix,
             'time_ms': time_ms,
             'file_name': fname,
-            'path': im.path.path}
+            'path': im.path.path,
+            'offset': [im.offset.x, im.offset.y]}
     return rgb2gray(im.data), meta
 
 # Tracking Parameters
@@ -248,7 +249,8 @@ def load(load_cam):
         if img is not None:
             timestamp = datetime.fromtimestamp(meta["time"])
             timestamp += timedelta(milliseconds=int(meta["time_ms"]))
-            segmentation_pipe_in.send([i, img])
+            offset = meta['offset']
+            segmentation_pipe_in.send([i, img, offset])
             Image_write_queue.put([timestamp, i, meta])
             Timer_in.put([i, time.time()])
             print("loaded image %s" % i)
@@ -265,7 +267,7 @@ def load(load_cam):
 def segmentate():
     LastMap = None
     while True:
-        i, img = segmentation_pipe_out.recv()
+        i, img, offset = segmentation_pipe_out.recv()
         if i is None and img is None:
             SegMap_write_queue.put([None, None])
             detection_pipe_in.send([None,None,None])
