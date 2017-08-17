@@ -6,11 +6,11 @@ if __name__ == '__main__':
     from PenguTrack.DataFileExtended import DataFileExtended
 
     # Load Data from Databases
-    db = DataFileExtended("/home/birdflight/Desktop/PT_Test_full_n3_r7_A20.cdb")
+    db = DataFileExtended("/home/birdflight/Desktop/PT_Test_full_n3_r7_A20_filtered.cdb")
     db2 = DataFileExtended("/home/birdflight/Desktop/252_GT_Detections.cdb")
     LogType=db.getMarkerType(name="PT_Detection_Marker")
     ImgType=db.getMarkerType(name="PT_Track_Marker")
-    Positions_Log = np.asarray([[m.x, m.y, m.image.sort_index] for m in db.getMarkers(type=LogType) if not m.text.count("inf")])
+    # Positions_Log = np.asarray([[m.x, m.y, m.image.sort_index] for m in db.getMarkers(type=LogType) if not m.text.count("inf")])
     Positions_Img = np.asarray([[m.x, m.y, m.image.sort_index] for m in db.getMarkers(type=ImgType) if m.track.markers.count() >3])
 
     # Do Correction for Position Data

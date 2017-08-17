@@ -14,7 +14,7 @@ import imageio_plugin_VIS as vis   # import and register VIS plugin
 import imageio
 input_file = r'/mnt/131.188.117.98/data2/HGH/Data/2017/name_2017-02-09_15-50-48.db/2017-02-09_15-50-53.vis'
 
-# open .vis database with imageIO
+open .vis database with imageIO
 reader = imageio.get_reader(input_file)
 image_number_iterator = iter(range(700,reader.get_length()))
 conv = vis.ConvertTo8Bit()
@@ -117,14 +117,14 @@ import scipy.stats as ss
 
 # Load Database
 # file_path = "/home/birdflight/Desktop/PT_Test.cdb"
-file_path = "/mnt/mmap/PT_Test.cdb"
+file_path = "/mnt/mmap/Starter_Full.cdb"
 # file_path = "/mnt/mmap/PT_Test3.cdb"
 # file_path = "/mnt/mmap/PT_Test4.cdb"
 
 global db
 db = DataFileExtended(file_path,"w")
 
-db_start = DataFileExtended("/home/birdflight/Desktop/Starter3.cdb")
+db_start = DataFileExtended("/home/birdflight/Desktop/Starter.cdb")
 # images = db_start.getImageIterator(start_frame=2490-30, end_frame=2600)
 # images = db_start.getImageIterator(start_frame=1936-210, end_frame=2600)
 images = db_start.getImageIterator(start_frame=700)
@@ -192,7 +192,7 @@ NoMask = db_start.getMask(frame=0).data.astype(bool)
 
 # VB = ViBeSegmentation(n=3, init_image=np.array(np.median(init_buffer, axis=0)), n_min=3, r=30 , phi=1) #Starter
 # VB = ViBeSegmentation(n=3, init_image=np.array(np.median(init_buffer, axis=0)), n_min=3, r=30 , phi=1) #Starter2
-VB = ViBeSegmentation(n=8, init_image=np.array(np.median(init_buffer, axis=0)), n_min=8, r=50 , phi=1) #Starter3
+# VB = ViBeSegmentation(n=8, init_image=np.array(np.median(init_buffer, axis=0)), n_min=8, r=50 , phi=1) #Starter3
 # VB = ViBeSegmentation(n=3, init_image=np.array(np.median(init_buffer, axis=0)), n_min=3, r=75 , phi=1) #Starter4 - VIS
 
 # VB.Samples[0] = np.amax(init_buffer, axis=0)

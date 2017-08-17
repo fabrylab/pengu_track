@@ -183,15 +183,15 @@ class Yin_Evaluator(Evaluator):
     def _union_(self, p1, p2):
         return 2*self.Object_Size**2-self._intersect_(p1,p2)
 
-    def _handle_Track_(self, track):
+    def _handle_Track_(self, track, tracks=None):
         if not isinstance(track, Filter):
             try:
                 A = int(track)
             except TypeError:
                 raise ValueError("%s is not a track!"%track)
-            if self.GT_Tracks.has_key(A):
+            if self.GT_Tracks.has_key(A) and (tracks is None or tracks==self.GT_Tracks):
                  return self.GT_Tracks[A]
-            elif self.System_Tracks.has_key(A):
+            elif self.System_Tracks.has_key(A) and (tracks is None or tracks==self.System_Tracks):
                 return  self.System_Tracks[A]
             else:
                 raise ValueError("%s is not a track!" % track)
@@ -213,7 +213,7 @@ class Yin_Evaluator(Evaluator):
         trackA = self._handle_Track_(trackA)
         trackB = self._handle_Track_(trackB)
         frames = set(trackA.X.keys()).intersection(set(trackB.X.keys()))
-        return [np.linalg.norm(trackA.X[f]-trackB.X[f]) for f in frames]
+        return dict([[f,np.linalg.norm(trackA.X[f]-trackB.X[f])] for f in frames])
 
     def TME(self, trackA, trackB):
         return np.mean(self.TE(trackA, trackB))
@@ -231,7 +231,7 @@ class Yin_Evaluator(Evaluator):
         l=[]
         for m in self.Matches[key]:
             trackB = self._handle_Track_(m)
-            te = self.TE(trackA, trackB)
+            te = self.TE(trackA, trackB).values()
             tmemt.append(np.mean(te)*len(te))
             l.append(len(te))
         return np.sum(tmemt)/np.sum(l)
@@ -246,13 +246,13 @@ class Yin_Evaluator(Evaluator):
         l = []
         for m in self.Matches[key]:
             trackB = self._handle_Track_(m)
-            te = self.TE(trackA, trackB)
+            te = self.TE(trackA, trackB).values()
             tmemt.append(np.std(te)*len(te))
             l.append(len(te))
         return np.sum(tmemt) / np.sum(l)
 
     def TC(self, trackA):
-        trackA = self._handle_Track_(trackA)
+        trackA = self._handle_Track_(trackA, tracks=self.GT_Tracks)
         if trackA in self.GT_Tracks.values():
             key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
         else:
@@ -260,7 +260,7 @@ class Yin_Evaluator(Evaluator):
         tc = []
         for m in self.Matches[key]:
             tc.extend(self.System_Tracks[m].X.keys())
-        return len(set(tc))/float(len(trackA.X))
+        return len(set(tc).intersection(set(trackA.X.keys())))/float(len(trackA.X))
 
     def R2(self, trackA):
         trackA = self._handle_Track_(trackA)
@@ -326,7 +326,10 @@ class Yin_Evaluator(Evaluator):
             key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
         else:
             raise KeyError("Track is not a Ground Truth Track")
-        first_sys = min([min(self._handle_Track_(m).X.keys()) for m in self.Matches[key]])
+        try:
+            first_sys = min([min(self._handle_Track_(m).X.keys()) for m in self.Matches[key]])
+        except ValueError:
+            return max(trackA.X.keys())-min(trackA.X.keys())
         return first_sys-min(trackA.X.keys())
 
     def IDC(self, trackA):
@@ -345,13 +348,22 @@ class Yin_Evaluator(Evaluator):
         id = None
         for f in frames:
             if id is None:
-                id=[k for k in self.Matches[key] if self.System_Tracks[k].X.has_key(f)][0]
+                id=[k for k in self.Matches[key] if self.System_Tracks[k].X.has_key(f)]
+                if len(id)>0:
+                    id=id[0]
+                else:
+                    id = None
+                    continue
+                # id=[k for k in self.Matches[key] if self.System_Tracks[k].X.has_key(f)][0]
             if not self.System_Tracks[id].X.has_key(f):
                 IDC_j +=1
                 ids=[k for k in self.Matches[key] if self.System_Tracks[k].X.has_key(f)]
                 func = lambda i : len([fr for fr in frames if f<fr and fr<[fr for fr in frames if fr>f and not self.System_Tracks[id].X.has_key(f)][0]])
-                id = max(ids, key=func)
-
+                try:
+                    id = max(ids, key=func)
+                except ValueError:
+                    id = None
+                    continue
         return IDC_j
 
     def velocity(self, trackA):
@@ -597,6 +609,6 @@ if __name__ == "__main__":
     plt.tight_layout()
     fig.autofmt_xdate()
     fig.legend([lines[k] for k in sorted(lines.keys())], [k[:-2] for k in sorted(lines.keys())], ncol=3, loc="lower center", prop={"size":12})
-    plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Adelie_TrackEvaluation.pdf")
-    plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Adelie_TrackEvaluation.png")
+    plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Pictures/Adelie_TrackEvaluation.pdf")
+    plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Pictures/Adelie_TrackEvaluation.png")
     plt.show()

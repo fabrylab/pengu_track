@@ -54,11 +54,17 @@ class SegmentationEvaluator(object):
         #         self.System_Masks.append(str(im.timestamp))
         # self.System_Masks.extend(set([str(m.image.timestamp) for m in self.system_db.getMasks()]).update(set(self.System_Masks_Masks)))
 
-    def match(self):
+    def match(self, gt_inverse=True, system_inverse=True):
         stamps = set(self.GT_Masks).intersection(self.System_Masks)
         for stamp in stamps:
-            sm = ~self.system_db.getMask(image=self.system_db.getImages(timestamp=stamp)[0]).data.astype(bool)
-            gt = ~self.gt_db.getMask(image=self.gt_db.getImages(timestamp=stamp)[0]).data.astype(bool)
+            if system_inverse:
+                sm = ~self.system_db.getMask(image=self.system_db.getImages(timestamp=stamp)[0]).data.astype(bool)
+            else:
+                sm = self.system_db.getMask(image=self.system_db.getImages(timestamp=stamp)[0]).data.astype(bool)
+            if gt_inverse:
+                gt = ~self.gt_db.getMask(image=self.gt_db.getImages(timestamp=stamp)[0]).data.astype(bool)
+            else:
+                gt = self.gt_db.getMask(image=self.gt_db.getImages(timestamp=stamp)[0]).data.astype(bool)
             P = np.sum(gt).astype(float)
             TP = np.sum(sm & gt).astype(float)
             FP = np.sum(sm & (~gt)).astype(float)
@@ -83,84 +89,170 @@ class SegmentationEvaluator(object):
 
 
 if __name__ == "__main__":
-    import os
-    with open("/home/birdflight/Desktop/SegmentationEvaluation.txt", "w") as myfile:
-        myfile.write("n,\t r,\t Sensitivity, \t Specificity, \t Precision \n")
-    for n in [1,2,3]:
-        for r in [1,5,7,10,12,15,20,30,40,50]:
-            if os.path.exists("/home/birdflight/Desktop/PT_Test_n%s_r%s.cdb"%(n,r)):
-                pass
-            else:
-                continue
-            seg = SegmentationEvaluator()
-            seg.load_GT_masks_from_clickpoints("/home/birdflight/Desktop/252_GT_Detections_Proj.cdb")
-            seg.load_System_masks_from_clickpoints("/home/birdflight/Desktop/PT_Test_n%s_r%s.cdb"%(n,r))
-            seg.match()
-            print(np.mean(seg.sensitivity.values()))
-            print(np.mean(seg.specificity.values()))
-            with open("/home/birdflight/Desktop/SegmentationEvaluation.txt", "a") as myfile:
-                myfile.write(",\t".join([str(n),
-                                         str(r),
-                                         str(np.mean(seg.sensitivity.values())),
-                                         str(np.mean(seg.specificity.values())),
-                                         str(np.mean(seg.precision.values()))]))
-                myfile.write("\n")
+    version="birdflight"
+    if version == "Adelie":
+        import os
+        with open("/home/birdflight/Desktop/SegmentationEvaluation.txt", "w") as myfile:
+            myfile.write("n,\t r,\t Sensitivity, \t Specificity, \t Precision \n")
+        for n in [1,2,3]:
+            for r in [1,5,7,10,12,15,20,30,40,50]:
+                if os.path.exists("/home/birdflight/Desktop/PT_Test_n%s_r%s.cdb"%(n,r)):
+                    pass
+                else:
+                    continue
+                seg = SegmentationEvaluator()
+                seg.load_GT_masks_from_clickpoints("/home/birdflight/Desktop/252_GT_Detections_Proj.cdb")
+                seg.load_System_masks_from_clickpoints("/home/birdflight/Desktop/PT_Test_n%s_r%s.cdb"%(n,r))
+                seg.match()
+                print(np.mean(seg.sensitivity.values()))
+                print(np.mean(seg.specificity.values()))
+                with open("/home/birdflight/Desktop/SegmentationEvaluation.txt", "a") as myfile:
+                    myfile.write(",\t".join([str(n),
+                                             str(r),
+                                             str(np.mean(seg.sensitivity.values())),
+                                             str(np.mean(seg.specificity.values())),
+                                             str(np.mean(seg.precision.values()))]))
+                    myfile.write("\n")
 
-    data = np.genfromtxt("/home/birdflight/Desktop/SegmentationEvaluation.txt", delimiter=",")[1:]
-    fig, ax = plt.subplots()
-    ax.set_xlim([1e-7, 5e-3])
-    ax.set_xscale('log')
-    ax.set_ylim([-0.05, 1.05])
-    ax.set_xlabel("False Positive Rate")
-    ax.set_ylabel("True Positive Rate")
-    c = sn.color_palette(n_colors=6)
-    for n in [3,2,1]:
-        mask = data.T[0]==n
-        # n = 5 if n==43 else n
-        ax.fill_between(1.-data[mask].T[3],data[mask].T[2], color=c[n-1], alpha=0.2)
-    for n in [1,2,3]:
-        mask = data.T[0]==n
-        # n = 5 if n==43 else n
-        ax.plot(1-data[mask].T[3],data[mask].T[2], '-o', color=c[n-1], label=r"$N_{min}=%s$"%n)
-        # for xyr in zip(1-data[mask].T[3],data[mask].T[2],data[mask].T[1]):
-        #     ax.annotate('%s' %xyr[-1], xy=xyr[:-1], textcoords='data')
-    # ax.ticklabel_format(axis='x', style='sci', scilimits=(-2, 2))
-    plt.legend(loc='best')
-    my_plot.despine(ax)
-    my_plot.setAxisSizeMM(fig,ax,147,90)
-    plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation.pdf")
-    plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation.png")
+        data = np.genfromtxt("/home/birdflight/Desktop/SegmentationEvaluation.txt", delimiter=",")[1:]
+        fig, ax = plt.subplots()
+        ax.set_xlim([1e-7, 5e-3])
+        ax.set_xscale('log')
+        ax.set_ylim([-0.05, 1.05])
+        ax.set_xlabel("False Positive Rate")
+        ax.set_ylabel("True Positive Rate")
+        c = sn.color_palette(n_colors=6)
+        for n in [3,2,1]:
+            mask = data.T[0]==n
+            # n = 5 if n==43 else n
+            ax.fill_between(1.-data[mask].T[3],data[mask].T[2], color=c[n-1], alpha=0.2)
+        for n in [1,2,3]:
+            mask = data.T[0]==n
+            # n = 5 if n==43 else n
+            ax.plot(1-data[mask].T[3],data[mask].T[2], '-o', color=c[n-1], label=r"$N_{min}=%s$"%n)
+            # for xyr in zip(1-data[mask].T[3],data[mask].T[2],data[mask].T[1]):
+            #     ax.annotate('%s' %xyr[-1], xy=xyr[:-1], textcoords='data')
+        # ax.ticklabel_format(axis='x', style='sci', scilimits=(-2, 2))
+        plt.legend(loc='best')
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig,ax,147,90)
+        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation.pdf")
+        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation.png")
 
-    fig, ax = plt.subplots()
-    ax.set_xlim([0, 55])
-    ax.set_ylim([-0.05, 1.05])
-    ax.set_xlabel("ViBe Sensititivity Parameter")
-    ax.set_ylabel("True Positive Rate")
-    c = sn.color_palette(n_colors=6)
-    for n in [1,2,3]:
-        mask = data.T[0]==n
-        # n = 5 if n==43 else n
-        ax.plot(data[mask].T[1],data[mask].T[2], '-o', color=c[n-1], label=r"$N_{min}=%s$"%n)
-    ax.legend()
-    my_plot.despine(ax)
-    my_plot.setAxisSizeMM(fig,ax,147,90)
-    plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_TPR.pdf")
-    plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_TPR.png")
+        fig, ax = plt.subplots()
+        ax.set_xlim([0, 55])
+        ax.set_ylim([-0.05, 1.05])
+        ax.set_xlabel("ViBe Sensititivity Parameter")
+        ax.set_ylabel("True Positive Rate")
+        c = sn.color_palette(n_colors=6)
+        for n in [1,2,3]:
+            mask = data.T[0]==n
+            # n = 5 if n==43 else n
+            ax.plot(data[mask].T[1],data[mask].T[2], '-o', color=c[n-1], label=r"$N_{min}=%s$"%n)
+        ax.legend()
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig,ax,147,90)
+        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_TPR.pdf")
+        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_TPR.png")
 
-    fig = plt.figure()
-    ax = plt.subplot(111)
-    ax.set_xlim([0, 55])
-    ax.set_ylim([-0.05, 1.05])
-    ax.set_xlabel("ViBe Sensititivity Parameter")
-    ax.set_ylabel("Precision")
-    c = sn.color_palette(n_colors=6)
-    for n in [1,2,3]:
-        mask = data.T[0]==n
-        # n = 5 if n==43 else n
-        ax.plot(data[mask].T[1],data[mask].T[4], '-o', color=c[n-1], label=r"$N_{min}=%s$"%n)
-    ax.legend(loc="center right")
-    my_plot.despine(ax)
-    my_plot.setAxisSizeMM(fig,ax,147,90)
-    plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_PRE.pdf")
-    plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_PRE.png")
-    plt.show()
+        fig = plt.figure()
+        ax = plt.subplot(111)
+        ax.set_xlim([0, 55])
+        ax.set_ylim([-0.05, 1.05])
+        ax.set_xlabel("ViBe Sensititivity Parameter")
+        ax.set_ylabel("Precision")
+        c = sn.color_palette(n_colors=6)
+        for n in [1,2,3]:
+            mask = data.T[0]==n
+            # n = 5 if n==43 else n
+            ax.plot(data[mask].T[1],data[mask].T[4], '-o', color=c[n-1], label=r"$N_{min}=%s$"%n)
+        ax.legend(loc="center right")
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig,ax,147,90)
+        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_PRE.pdf")
+        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_PRE.png")
+        plt.show()
+    elif version == "birdflight":
+        import os
+
+        with open("/home/birdflight/Desktop/SegmentationEvaluation_bf.txt", "w") as myfile:
+            myfile.write("n,\t r,\t Sensitivity, \t Specificity, \t Precision \n")
+        for n in [3]:
+            for r in [5,10, 20, 30, 40, 50]:
+                if os.path.exists("/mnt/mmap/Starter_n%s_%s_r%s.cdb" % (n, n, r)):
+                    pass
+                else:
+                    continue
+                seg = SegmentationEvaluator()
+                seg.load_GT_masks_from_clickpoints("/mnt/mmap/GT_Starter.cdb")
+                # seg.load_System_masks_from_clickpoints("/mnt/mmap/GT_Starter.cdb")
+                seg.load_System_masks_from_clickpoints("/mnt/mmap/Starter_n%s_%s_r%s.cdb" % (n, n, r))
+                seg.match(gt_inverse=False)
+                print(np.mean(seg.sensitivity.values()))
+                print(np.mean(seg.specificity.values()))
+                with open("/home/birdflight/Desktop/SegmentationEvaluation_bf.txt", "a") as myfile:
+                    myfile.write(",\t".join([str(n),
+                                             str(r),
+                                             str(np.mean(seg.sensitivity.values())),
+                                             str(np.mean(seg.specificity.values())),
+                                             str(np.mean(seg.precision.values()))]))
+                    myfile.write("\n")
+
+        data = np.genfromtxt("/home/birdflight/Desktop/SegmentationEvaluation_bf.txt", delimiter=",")[1:]
+        fig, ax = plt.subplots()
+        ax.set_xlim([1e-7, 5e-3])
+        ax.set_xscale('log')
+        ax.set_ylim([-0.05, 1.05])
+        ax.set_xlabel("False Positive Rate")
+        ax.set_ylabel("True Positive Rate")
+        c = sn.color_palette(n_colors=6)
+        for n in [3]:
+            mask = data.T[0] == n
+            # n = 5 if n==43 else n
+            ax.fill_between(1. - data[mask].T[3], data[mask].T[2], color=c[n - 1], alpha=0.2)
+        for n in [3]:
+            mask = data.T[0] == n
+            # n = 5 if n==43 else n
+            ax.plot(1 - data[mask].T[3], data[mask].T[2], '-o', color=c[n - 1], label=r"$N_{min}=%s$" % n)
+            # for xyr in zip(1-data[mask].T[3],data[mask].T[2],data[mask].T[1]):
+            #     ax.annotate('%s' %xyr[-1], xy=xyr[:-1], textcoords='data')
+        # ax.ticklabel_format(axis='x', style='sci', scilimits=(-2, 2))
+        plt.legend(loc='best')
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig, ax, 147, 90)
+        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_bf.pdf")
+        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_bf.png")
+
+        fig, ax = plt.subplots()
+        ax.set_xlim([0, 55])
+        ax.set_ylim([-0.05, 1.05])
+        ax.set_xlabel("ViBe Sensititivity Parameter")
+        ax.set_ylabel("True Positive Rate")
+        c = sn.color_palette(n_colors=6)
+        for n in [3]:
+            mask = data.T[0] == n
+            # n = 5 if n==43 else n
+            ax.plot(data[mask].T[1], data[mask].T[2], '-o', color=c[n - 1], label=r"$N_{min}=%s$" % n)
+        ax.legend()
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig, ax, 147, 90)
+        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_TPR_bf.pdf")
+        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_TPR_bf.png")
+
+        fig = plt.figure()
+        ax = plt.subplot(111)
+        ax.set_xlim([0, 55])
+        ax.set_ylim([-0.000005, 0.0003])
+        ax.set_xlabel("ViBe Sensititivity Parameter")
+        ax.set_ylabel("Precision")
+        c = sn.color_palette(n_colors=6)
+        for n in [3]:
+            mask = data.T[0] == n
+            # n = 5 if n==43 else n
+            ax.plot(data[mask].T[1], data[mask].T[4], '-o', color=c[n - 1], label=r"$N_{min}=%s$" % n)
+        ax.legend(loc="center right")
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig, ax, 147, 90)
+        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_PRE_bf.pdf")
+        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_PRE_bf.png")
+        plt.show()

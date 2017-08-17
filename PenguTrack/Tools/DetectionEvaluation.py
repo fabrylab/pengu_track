@@ -25,7 +25,8 @@ class Evaluator(object):
 
     def load_System_marker_from_clickpoints(self, path, type):
         self.system_db = DataFileExtended(path)
-        markers = np.asarray([[self.gt_db.getImage(filename=m.image.filename).sort_index, m.x, m.y] for m in self.system_db.getMarkers(type=type)])
+        image_filenames = set([img.filename for img in self.gt_db.getImages()]).intersection([img.filename for img in self.system_db.getImages()])
+        markers = np.asarray([[self.gt_db.getImage(filename=m.image.filename).sort_index, m.x, m.y] for m in self.system_db.getMarkers(type=type) if m.image.filename in image_filenames])
         self.System_Markers.update(dict([[t, markers[markers.T[0]==t].T[1:]] for t in set(markers.T[0])]))
 
     def save_marker_to_GT_db(self, markers, path, type):
@@ -135,79 +136,161 @@ class Yin_Evaluator(Evaluator):
 
 
 if __name__ == "__main__":
-    import os
-    with open("/home/birdflight/Desktop/DetectionEvaluation.txt", "w") as myfile:
-        myfile.write("n,\tr,\t NegativeRate, \t MissedRate, \t TruePositive, \t Precision \n")
-    for n in [1,2,3]:
-        for r in [1,5,10,20,30,40,50]:
-            if os.path.exists("/home/birdflight/Desktop/PT_Test_n%s_r%s.cdb"%(n,r)):
-                pass
-            else:
-                continue
-            evaluation = Yin_Evaluator(10, spacial_threshold=0.05)
-            evaluation.load_GT_marker_from_clickpoints(path="/home/birdflight/Desktop/252_GT_Detections.cdb", type="GT_Detection")
-            evaluation.load_System_marker_from_clickpoints(path="/home/birdflight/Desktop/PT_Test_n%s_r%s.cdb"%(n,r), type="PT_Track_Marker")
-            evaluation.match()
-            try:
-                print(evaluation.Negative_Rate[50])
-                print(evaluation.Missed_Rate[50])
-                with open("/home/birdflight/Desktop/DetectionEvaluation.txt", "a") as myfile:
-                    myfile.write(",\t".join([str(n),
-                                             str(r),
-                                             str(evaluation.Negative_Rate[50]),
-                                             str(evaluation.Missed_Rate[50]),
-                                             str(evaluation.True_Positive_Rate[50]),
-                                             str(evaluation.Precision[50])]))
-                    myfile.write("\n")
-                print("-----------------")
-            except KeyError:
-                pass
+    version = "birdflight"
+    if version == "Adelie":
+        import os
+        with open("/home/birdflight/Desktop/DetectionEvaluation.txt", "w") as myfile:
+            myfile.write("n,\tr,\t NegativeRate, \t MissedRate, \t TruePositive, \t Precision \n")
+        for n in [1,2,3]:
+            for r in [1,5,10,20,30,40,50]:
+                if os.path.exists("/home/birdflight/Desktop/PT_Test_n%s_r%s.cdb"%(n,r)):
+                    pass
+                else:
+                    continue
+                evaluation = Yin_Evaluator(10, spacial_threshold=0.05)
+                evaluation.load_GT_marker_from_clickpoints(path="/home/birdflight/Desktop/252_GT_Detections.cdb", type="GT_Detection")
+                evaluation.load_System_marker_from_clickpoints(path="/home/birdflight/Desktop/PT_Test_n%s_r%s.cdb"%(n,r), type="PT_Track_Marker")
+                evaluation.match()
+                try:
+                    print(evaluation.Negative_Rate[50])
+                    print(evaluation.Missed_Rate[50])
+                    with open("/home/birdflight/Desktop/DetectionEvaluation.txt", "a") as myfile:
+                        myfile.write(",\t".join([str(n),
+                                                 str(r),
+                                                 str(evaluation.Negative_Rate[50]),
+                                                 str(evaluation.Missed_Rate[50]),
+                                                 str(evaluation.True_Positive_Rate[50]),
+                                                 str(evaluation.Precision[50])]))
+                        myfile.write("\n")
+                    print("-----------------")
+                except KeyError:
+                    pass
 
-    data = np.genfromtxt("/home/birdflight/Desktop/DetectionEvaluation.txt", delimiter=",")[1:]
-    fig, ax = plt.subplots()
-    ax.set_xlim([(1-np.amax(data.T[3]))**1.1,1])
-    ax.set_ylim([np.amin(data.T[3])**1.1,1])
-    ax.loglog()
-    ax.set_xlabel("Correct Detection Rate")
-    ax.set_ylabel("Missed Detection Rate")
-    c = sn.color_palette(n_colors=3)
-    for n in [1,2,3]:
-        mask = data.T[0]==n
-        print(data[mask].T[2])
-        print(data[mask].T[3])
-        ax.plot(1-data[mask].T[3],data[mask].T[3], '-o', color=c[n-1])
-    plt.savefig("/home/birdflight/Desktop/DetectionEvaluation.pdf")
-    plt.savefig("/home/birdflight/Desktop/DetectionEvaluation.png")
+        data = np.genfromtxt("/home/birdflight/Desktop/DetectionEvaluation.txt", delimiter=",")[1:]
+        fig, ax = plt.subplots()
+        ax.set_xlim([(1-np.amax(data.T[3]))**1.1,1])
+        ax.set_ylim([np.amin(data.T[3])**1.1,1])
+        ax.loglog()
+        ax.set_xlabel("Correct Detection Rate")
+        ax.set_ylabel("Missed Detection Rate")
+        c = sn.color_palette(n_colors=3)
+        for n in [1,2,3]:
+            mask = data.T[0]==n
+            print(data[mask].T[2])
+            print(data[mask].T[3])
+            ax.plot(1-data[mask].T[3],data[mask].T[3], '-o', color=c[n-1])
+        plt.savefig("/home/birdflight/Desktop/DetectionEvaluation.pdf")
+        plt.savefig("/home/birdflight/Desktop/DetectionEvaluation.png")
 
 
-    fig, ax = plt.subplots()
-    ax.set_xlim([0, 55])
-    ax.set_ylim([-0.05, 1.05])
-    ax.set_xlabel("ViBe Sensititivity Parameter")
-    ax.set_ylabel("True Positive Rate")
-    c = sn.color_palette(n_colors=3)
-    for n in [1,2,3]:
-        mask = data.T[0]==n
-        ax.plot(data[mask].T[1],data[mask].T[4], '-o', color=c[n-1], label=r"$N_{min}=%s$"%n)
-    ax.legend()
-    my_plot.despine(ax)
-    my_plot.setAxisSizeMM(fig,ax,147,90)
-    plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_TPR.pdf")
-    plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_TPR.png")
+        fig, ax = plt.subplots()
+        ax.set_xlim([0, 55])
+        ax.set_ylim([-0.05, 1.05])
+        ax.set_xlabel("ViBe Sensititivity Parameter")
+        ax.set_ylabel("True Positive Rate")
+        c = sn.color_palette(n_colors=3)
+        for n in [1,2,3]:
+            mask = data.T[0]==n
+            ax.plot(data[mask].T[1],data[mask].T[4], '-o', color=c[n-1], label=r"$N_{min}=%s$"%n)
+        ax.legend()
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig,ax,147,90)
+        plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_TPR.pdf")
+        plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_TPR.png")
 
-    fig = plt.figure()
-    ax = plt.subplot(111)
-    ax.set_xlim([0, 55])
-    ax.set_ylim([-0.05, 1.05])
-    ax.set_xlabel("ViBe Sensititivity Parameter")
-    ax.set_ylabel("Precision")
-    c = sn.color_palette(n_colors=3)
-    for n in [1,2,3]:
-        mask = data.T[0]==n
-        ax.plot(data[mask].T[1],data[mask].T[5], '-o', color=c[n-1], label=r"$N_{min}=%s$"%n)
-    ax.legend(loc="best")
-    my_plot.despine(ax)
-    my_plot.setAxisSizeMM(fig,ax,147,90)
-    plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_PRE.pdf")
-    plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_PRE.png")
-    plt.show()
+        fig = plt.figure()
+        ax = plt.subplot(111)
+        ax.set_xlim([0, 55])
+        ax.set_ylim([-0.05, 1.05])
+        ax.set_xlabel("ViBe Sensititivity Parameter")
+        ax.set_ylabel("Precision")
+        c = sn.color_palette(n_colors=3)
+        for n in [1,2,3]:
+            mask = data.T[0]==n
+            ax.plot(data[mask].T[1],data[mask].T[5], '-o', color=c[n-1], label=r"$N_{min}=%s$"%n)
+        ax.legend(loc="best")
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig,ax,147,90)
+        plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_PRE.pdf")
+        plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_PRE.png")
+        plt.show()
+    elif version == "birdflight":
+        import os
+        with open("/home/birdflight/Desktop/DetectionEvaluation_bf.txt", "w") as myfile:
+            myfile.write("n,\tr,\t NegativeRate, \t MissedRate, \t TruePositive, \t Precision \n")
+        for r in [20]:
+            for f in [1,2,3,4,5]:
+                if os.path.exists("/mnt/mmap/Starter_n3_3_r%s_F%s.cdb" % (r, f)):
+                    pass
+                else:
+                    continue
+                evaluation = Yin_Evaluator(10, spacial_threshold=0.05)
+                evaluation.load_GT_marker_from_clickpoints(path="/mnt/mmap/GT_Starter.cdb",
+                                                           type="GT_Bird")
+                evaluation.load_System_marker_from_clickpoints(
+                    path="/mnt/mmap/Starter_n3_3_r%s_F%s.cdb" % (r, f), type="PT_Track_Marker")
+                evaluation.match()
+                print("bla")
+                try:
+                    print("blabla")
+                    print(np.mean(evaluation.Negative_Rate.values()))
+                    print(np.mean(evaluation.Missed_Rate.values()))
+                    with open("/home/birdflight/Desktop/DetectionEvaluation_bf.txt", "a") as myfile:
+                        myfile.write(",\t".join([str(r),
+                                                 str(f),
+                                                 str(np.mean(evaluation.Negative_Rate.values())),
+                                                 str(np.mean(evaluation.Missed_Rate.values())),
+                                                 str(np.mean(evaluation.True_Positive_Rate.values())),
+                                                 str(np.mean(evaluation.Precision.values()))]))
+                        myfile.write("\n")
+                    print("-----------------")
+                except KeyError:
+                    pass
+
+        data = np.genfromtxt("/home/birdflight/Desktop/DetectionEvaluation_bf.txt", delimiter=",")[1:]
+        # fig, ax = plt.subplots()
+        # ax.set_xlim([(1 - np.amax(data.T[3])) ** 1.1, 1])
+        # ax.set_ylim([np.amin(data.T[3]) ** 1.1, 1])
+        # ax.loglog()
+        # ax.set_xlabel("Correct Detection Rate")
+        # ax.set_ylabel("Missed Detection Rate")
+        # c = sn.color_palette(n_colors=3)
+        # for n in [1, 2, 3]:
+        #     mask = data.T[0] == n
+        #     print(data[mask].T[2])
+        #     print(data[mask].T[3])
+        #     ax.plot(1 - data[mask].T[3], data[mask].T[3], '-o', color=c[n - 1])
+        # plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_bf.pdf")
+        # plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_bf.png")
+
+        fig, ax = plt.subplots()
+        ax.set_xlim([0, 55])
+        ax.set_ylim([-0.05, 1.05])
+        ax.set_xlabel("ViBe Sensititivity Parameter")
+        ax.set_ylabel("True Positive Rate")
+        c = sn.color_palette(n_colors=3)
+        for n in [1, 2, 3]:
+            mask = data.T[0] == n
+            ax.plot(data[mask].T[1], data[mask].T[4], '-o', color=c[n - 1], label=r"$N_{min}=%s$" % n)
+        ax.legend()
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig, ax, 147, 90)
+        plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_TPR_bf.pdf")
+        plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_TPR_bf.png")
+
+        fig = plt.figure()
+        ax = plt.subplot(111)
+        ax.set_xlim([0, 55])
+        ax.set_ylim([-0.05, 1.05])
+        ax.set_xlabel("ViBe Sensititivity Parameter")
+        ax.set_ylabel("Precision")
+        c = sn.color_palette(n_colors=3)
+        for n in [1, 2, 3]:
+            mask = data.T[0] == n
+            ax.plot(data[mask].T[1], data[mask].T[5], '-o', color=c[n - 1], label=r"$N_{min}=%s$" % n)
+        ax.legend(loc="best")
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig, ax, 147, 90)
+        plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_PRE_bf.pdf")
+        plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_PRE_bf.png")
+        plt.show()
