@@ -39,7 +39,7 @@ from skimage import transform
 from scipy.ndimage.interpolation import map_coordinates
 from scipy.ndimage.interpolation import shift
 from skimage import img_as_uint
-from skimage.filters import threshold_otsu, threshold_niblack
+from skimage.filters import threshold_otsu
 from skimage.morphology import remove_small_objects, binary_erosion
 from skimage.measure import regionprops
 
@@ -1318,12 +1318,17 @@ class TresholdSegmentation(Segmentation):
 
     def segmentate(self, image):
         data = np.array(image, ndmin=2)
+        print(data.shape)
 
         if self.width is None or self.height is None:
             self.width, self.height = data.shape[:2]
 
         if self.reskale:
-            this_skale = np.mean((np.sum(data.astype(np.uint32)**2, axis=-1)**0.5))
+            if len(data.shape)==3:
+                # this_skale = np.mean((np.sum(data.astype(np.uint32)**2, axis=-1)**0.5))
+                this_skale = np.mean(rgb2gray(data))
+            elif len(data.shape)==2:
+                this_skale = np.mean(data)
         else:
             this_skale = 1.
 
@@ -1338,7 +1343,8 @@ class TresholdSegmentation(Segmentation):
             self.SegMap = np.ones((self.width, self.height), dtype=bool)
 
         if len(data.shape) == 3:
-            self.SegMap = (np.sum(data**2, axis=-1)**0.5/data.shape[-1]**0.5 > self.Treshold).astype(bool)
+            self.SegMap = (rgb2gray(data)>self.Treshold).astype(bool)
+            # self.SegMap = (np.sum(data**2, axis=-1)**0.5/data.shape[-1]**0.5 > self.Treshold).astype(bool)
         elif len(data.shape) == 2:
             print(np.amin(data), np.amax(data))
             self.SegMap = (data > self.Treshold).astype(bool)
