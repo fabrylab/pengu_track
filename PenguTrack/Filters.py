@@ -311,8 +311,10 @@ class Filter(object):
         if keys is None:
             keys = self.X.keys()
         if measurements is None:
-            measurements = dict([[k,self.Measurements[k]] for k in keys])
-
+            try:
+                measurements = dict([[k,self.Measurements[k]] for k in keys])
+            except KeyError:
+                return None
         prob = 0
         pending_downdates = []
         pending_downpredicts =[]
@@ -1111,20 +1113,27 @@ class MultiFilter(Filter):
 
         print(len(z))
         M = z.shape[0]
-        N = len(self.ActiveFilters.keys())
+        N = len(dict(self.ActiveFilters).keys())
+        print("Debug0")
 
         if N == 0 and M > 0:
             self.initial_update(measurements, i)
             return measurements, i
 
-        gain_dict = {}
+        gain_dict = []
         probability_gain = np.ones((max(M, N), M)) * -np.inf#*self.LogProbabilityThreshold
+        print("Debug0")
 
-        for j, k in enumerate(self.ActiveFilters.keys()):
-            gain_dict.update({j: k})
+        filter_keys = list(self.ActiveFilters.keys())
+        for j, k in enumerate(filter_keys):
+            # print(j)
+            gain_dict.append([j, k])
             for m, meas in enumerate(measurements):
                 probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas})
+        gain_dict = dict(gain_dict)
         self.Probability_Gain_Dicts.update({i: gain_dict})
+        print("Debug0")
+
             # for m in range(M):
             #     probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: measurements[m]})
         probability_gain[np.isinf(probability_gain)] = np.nan
@@ -1145,6 +1154,8 @@ class MultiFilter(Filter):
         # probability_gain = probability_gain-norm #(probability_gain.T - np.log(norm)).T
         # print(probability_gain)
         self.Probability_Gain.update({i: np.array(probability_gain)})
+        print("Debug0")
+
         # import pickle
         # with open("/home/birdflight/Desktop/ProbabilityGains.pkl", "w") as myfile:
         #     pickle.dump(self.Probability_Gain, myfile, pickle.HIGHEST_PROTOCOL)
@@ -1165,8 +1176,9 @@ class MultiFilter(Filter):
         # np.amax(probability_gain) - np.amin(probability_gain)))
 
         rows, cols = linear_sum_assignment(cost_matrix)
+        print("Debug1")
 
-        print("Probs for frame %s are "%i, probability_gain[rows,cols])
+        # print("Probs for frame %s are "%i, probability_gain[rows,cols])
         # if M >2:
         #     rows, cols = linear_sum_assignment(-1*probability_gain)
         # elif M==2:
