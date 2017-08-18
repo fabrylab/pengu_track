@@ -37,7 +37,8 @@ SELEM = disk(2,dtype=bool)
 import scipy.stats as ss
 
 # Load Database
-file_path = "/home/alex/Desktop/PT_Cell_Test.cdb"
+c=700
+file_path = "/home/alex/Desktop/PT_Cell_T%s.cdb"%c
 
 global db
 db = DataFileExtended(file_path,"w")
@@ -86,7 +87,7 @@ MultiKal.MeasurementProbabilityThreshold = 0.
 MultiKal.AssignmentProbabilityThreshold = 0.
 
 
-VB = TresholdSegmentation(1040)
+VB = TresholdSegmentation(c)
 
 import matplotlib.pyplot as plt
 
