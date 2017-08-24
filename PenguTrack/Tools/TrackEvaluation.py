@@ -531,55 +531,22 @@ class Alex_Evaluator(Yin_Evaluator):
 
 
 if __name__ == "__main__":
-<<<<<<< dest
-# <<<<<<< dest
-#     evaluation = Yin_Evaluator(10, temporal_threshold=0.2, spacial_threshold=0.05)
-#     evaluation.load_GT_tracks_from_clickpoints(path="/home/user/Desktop/PT_Test_LOG21.cdb", type="GT")
-#     evaluation.load_System_tracks_from_clickpoints(path="/home/user/Desktop/PT_Test_LOG21.cdb", type="PT_Track_Marker")
-# =======
-#    import matplotlib
-#    matplotlib.use("Agg")
-    # evaluation = Yin_Evaluator(100, temporal_threshold=0.8, spacial_threshold=0.6)
-    evaluation = Alex_Evaluator(0.525, 37.9, 0.24, 2592, 9e-3, 14e-3
-                                ,temporal_threshold=0.01, spacial_threshold=0.4, tolerance=1)
-    evaluation.load_GT_tracks_from_clickpoints(path="/home/birdflight/Desktop/Adelie_Evaluation/252Horizon.cdb", type="GT_under_limit")
-    evaluation.load_System_tracks_from_clickpoints(path="/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb", type="PT_Track_Marker")
-    evaluation.system_db = clickpoints.DataFile("/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb")
-    evaluation.system_db.setMarkerType(name="GT_under_limit", color="#FFFFFF", mode=evaluation.system_db.TYPE_Track)
-    evaluation.system_db.setMarkerType(name="Match", color="#FF8800", mode=evaluation.system_db.TYPE_Track)
-    evaluation.save_GT_tracks_to_db(path="/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb", type="GT_under_limit")
-=======
     version = "cell"
     if version == "adelie":
-        #     evaluation = Yin_Evaluator(10, temporal_threshold=0.2, spacial_threshold=0.05)
-        #     evaluation.load_GT_tracks_from_clickpoints(path="/home/user/Desktop/PT_Test_LOG21.cdb", type="GT")
-        #     evaluation.load_System_tracks_from_clickpoints(path="/home/user/Desktop/PT_Test_LOG21.cdb", type="PT_Track_Marker")
-        # =======
-        #    import matplotlib
-        #    matplotlib.use("Agg")
-        # evaluation = Yin_Evaluator(100, temporal_threshold=0.8, spacial_threshold=0.6)
         evaluation = Alex_Evaluator(0.525, 37.9, 0.24, 2592, 9e-3, 14e-3
-                                    , temporal_threshold=0.01, spacial_threshold=0.4, tolerance=1)
-        evaluation.load_GT_tracks_from_clickpoints(path="/home/birdflight/Desktop/Adelie_Evaluation/252Horizon.cdb",
-                                                   type="GT")
-        evaluation.load_System_tracks_from_clickpoints(
-            path="/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb", type="PT_Track_Marker")
-        evaluation.system_db = clickpoints.DataFile(
-            "/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb")
-        evaluation.system_db.setMarkerType(name="GT", color="#FFFFFF", mode=evaluation.system_db.TYPE_Track)
+                                    ,temporal_threshold=0.01, spacial_threshold=0.4, tolerance=1)
+        evaluation.load_GT_tracks_from_clickpoints(path="/home/birdflight/Desktop/Adelie_Evaluation/252Horizon.cdb", type="GT_under_limit")
+        evaluation.load_System_tracks_from_clickpoints(path="/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb", type="PT_Track_Marker")
+        evaluation.system_db = clickpoints.DataFile("/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb")
+        evaluation.system_db.setMarkerType(name="GT_under_limit", color="#FFFFFF", mode=evaluation.system_db.TYPE_Track)
         evaluation.system_db.setMarkerType(name="Match", color="#FF8800", mode=evaluation.system_db.TYPE_Track)
-        evaluation.save_GT_tracks_to_db(path="/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb",
-                                        type="GT")
->>>>>>> source
+        evaluation.save_GT_tracks_to_db(path="/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb", type="GT_under_limit")
 
-<<<<<<< dest
-    # for f in sorted(evaluation.GT_Tracks.values()[0].X.keys())[:20]:
-    for f in sorted(set(np.hstack([track.X.keys() for track in evaluation.GT_Tracks.values()])))[:20]:
-=======
-        for f in sorted(evaluation.GT_Tracks[1].X.keys())[:20]:
+        # for f in sorted(evaluation.GT_Tracks.values()[0].X.keys())[:20]:
+        for f in sorted(set(np.hstack([track.X.keys() for track in evaluation.GT_Tracks.values()])))[:20]:
+        # for f in sorted(evaluation.GT_Tracks[1].X.keys())[:20]:
             for m in evaluation.GT_Tracks:
                 evaluation.GT_Tracks[m].downfilter(f)
-                # >>>>>>> source
         evaluation.match()
 
         tmemt = []
@@ -637,11 +604,20 @@ if __name__ == "__main__":
 
         from datetime import timedelta
 
-        fig, axes = plt.subplots(len(evaluation.Matches.keys()), 1)
+        def total_hits(k):
+            return evaluation.TC(k) * len(evaluation.GT_Tracks[k].X.keys()) if (len(evaluation.GT_Tracks[k].X.keys()) > 10
+                                                                                and len(evaluation.Matches[k]) < 11) else 0.
+            # return np.random.rand()
+
+        plotted = dict([[k, evaluation.Matches[k]] for k in sorted(evaluation.Matches.keys(), key=total_hits)[-5:]])
+
+        from datetime import timedelta
+
+        fig, axes = plt.subplots(len(plotted), 1)
 
         all_times = set()
->>>>>>> source
-        for m in evaluation.GT_Tracks:
+        # for m in evaluation.GT_Tracks:
+        for m in plotted:
             all_times.update(evaluation.GT_Tracks[m].X.keys())
         all_times = sorted(all_times)
         x_min = min(all_times)
@@ -650,14 +626,14 @@ if __name__ == "__main__":
         pal = sn.color_palette(n_colors=max_len)
         fig.suptitle("Track Coverage", y=1.)
         lines = {}
-        for i, m in enumerate(evaluation.Matches):
+        for i, m in enumerate(plotted):
             axes[i].set_xlim([x_min, x_max])
             axes[i].set_ylim([0, 2])
             # axes[i].set_title("Ground Truth Track %s"%m, size=12)
             ACT = np.linalg.norm(evaluation.relative_velocity(m), axis=0)
             temps = sorted(evaluation._handle_Track_(m).X.keys())
-            l1 = axes[i].fill_between([t for t in all_times if t in temps], [2 for t in all_times if t in temps],
-                                      alpha=0.1, label="Penguin is Visible")
+            l1 = axes[i].fill_between([t for t in all_times if t in temps], [2 for t in all_times if t in temps], alpha=0.1,
+                                      label="Penguin is Visible")
             l2 = axes[i].fill_between(temps[1:], ACT, alpha=0.2, label="Penguin Velocity")
             lines.update({"Penguin is Visible  ": l1, "Penguin Velocity  ": l2})
             for j, n in enumerate(evaluation.Matches[m]):
@@ -671,9 +647,10 @@ if __name__ == "__main__":
                 my_plot.setAxisSizeMM(fig, axes[i], 147, 180 / len(axes))
         axes[-1].set_xlabel("Timestamp")
         plt.tight_layout()
+        axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
         fig.autofmt_xdate()
-        fig.legend([lines[k] for k in sorted(lines.keys())], [k[:-2] for k in sorted(lines.keys())], ncol=3,
-                   loc="lower center", prop={"size": 12})
+        fig.legend([lines[k] for k in sorted(lines.keys())], [k[:-2] for k in sorted(lines.keys())], ncol=3, loc="lower center",
+                   prop={"size": 12})
         plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Pictures/Adelie_TrackEvaluation.pdf")
         plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Pictures/Adelie_TrackEvaluation.png")
         plt.show()
@@ -758,56 +735,6 @@ if __name__ == "__main__":
 
         fig, axes = plt.subplots(len(evaluation.Matches.keys()), 1)
 
-<<<<<<< dest
-    def total_hits(k):
-        return evaluation.TC(k)*len(evaluation.GT_Tracks[k].X.keys()) if (len(evaluation.GT_Tracks[k].X.keys()) > 10
-                                                                          and len(evaluation.Matches[k])<11) else 0.
-        # return np.random.rand()
-
-    plotted = dict([[k, evaluation.Matches[k]] for k in sorted(evaluation.Matches.keys(), key=total_hits)[-5:]])
-
-    from datetime import timedelta
-
-    fig, axes = plt.subplots(len(plotted), 1)
-
-    all_times = set()
-    # for m in evaluation.GT_Tracks:
-    for m in plotted:
-        all_times.update(evaluation.GT_Tracks[m].X.keys())
-    all_times = sorted(all_times)
-    x_min = min(all_times)
-    x_max = max(all_times)
-    max_len=max([len(v) for v in evaluation.Matches.values()])
-    pal = sn.color_palette(n_colors=max_len)
-    fig.suptitle("Track Coverage", y=1.)
-    lines={}
-    for i, m in enumerate(plotted):
-        axes[i].set_xlim([x_min,x_max])
-        axes[i].set_ylim([0,2])
-        # axes[i].set_title("Ground Truth Track %s"%m, size=12)
-        ACT = np.linalg.norm(evaluation.relative_velocity(m), axis=0)
-        temps = sorted(evaluation._handle_Track_(m).X.keys())
-        l1 = axes[i].fill_between([t for t in all_times if t in temps],[2 for t in all_times if t in temps], alpha=0.1, label="Penguin is Visible")
-        l2 = axes[i].fill_between(temps[1:],ACT, alpha=0.2, label="Penguin Velocity")
-        lines.update({"Penguin is Visible  ":l1, "Penguin Velocity  ":l2})
-        for j,n in enumerate(evaluation.Matches[m]):
-            overs = evaluation.rTE(m,n)
-            temps = np.array(sorted(overs.keys()))
-            x = [overs[t] for t in temps]
-            t_0 = temps[0]
-            lines.update({"System Track Error %s"%j:axes[i].plot(temps, x, color=pal[j])[0]})
-            axes[i].set_ylabel("Distance\n (in Penguin Sizes)")
-            my_plot.despine(axes[i])
-            my_plot.setAxisSizeMM(fig, axes[i], 147, 180/len(axes))
-    axes[-1].set_xlabel("Timestamp")
-    plt.tight_layout()
-    axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-    fig.autofmt_xdate()
-    fig.legend([lines[k] for k in sorted(lines.keys())], [k[:-2] for k in sorted(lines.keys())], ncol=3, loc="lower center", prop={"size":12})
-    plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Pictures/Adelie_TrackEvaluation.pdf")
-    plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Pictures/Adelie_TrackEvaluation.png")
-    plt.show()
-=======
         all_times = set()
         for m in evaluation.GT_Tracks:
             all_times.update(evaluation.GT_Tracks[m].X.keys())
@@ -845,4 +772,6 @@ if __name__ == "__main__":
         plt.savefig("/home/alex/Desktop/Cell_TrackEvaluation.pdf")
         plt.savefig("/home/alex/Desktop/Cell_TrackEvaluation.png")
         plt.show()
->>>>>>> source
+
+    elif version == "bird":
+        pass

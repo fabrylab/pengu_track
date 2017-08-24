@@ -297,9 +297,6 @@ if __name__ == "__main__":
         my_plot.setAxisSizeMM(fig, ax, 147, 90)
         plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_PRE_bf.pdf")
         plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_PRE_bf.png")
-<<<<<<< dest
-        plt.show()
-
 
 
         # fig, ax = plt.subplots()
@@ -362,7 +359,7 @@ if __name__ == "__main__":
         plt.show()
         plt.draw()
         fig1.savefig('/home/birdflight/Desktop/DetectionEvaluation_PRE_BAR_bf.png', dpi=300)
-        fig1.savefig('/home/birdflight/Desktop/DetectionEvaluation_PRE_BAR_bf.pdf')=======
+        fig1.savefig('/home/birdflight/Desktop/DetectionEvaluation_PRE_BAR_bf.pdf')
         plt.show()
     elif version == "cell":
         import os
@@ -411,11 +408,10 @@ if __name__ == "__main__":
             print(data[mask].T[2])
             print(data[mask].T[3])
             ax.plot(1 - data[mask].T[3], data[mask].T[3], '-o', color=c[j])
-        plt.savefig("/home/alex/Desktop/DetectionEvaluation_bf.pdf")
-        plt.savefig("/home/alex/Desktop/DetectionEvaluation_bf.png")
+        plt.savefig("/home/alex/Desktop/DetectionEvaluation_ce.pdf")
+        plt.savefig("/home/alex/Desktop/DetectionEvaluation_ce.png")
 
-if True:
-    if True:
+
         fig, ax = plt.subplots()
         ax.set_xlim([-1, 250])
         ax.set_ylim([-0.05, 1.05])
@@ -447,4 +443,3 @@ if True:
         plt.savefig("/home/alex/Desktop/DetectionEvaluation_PRE_ce.pdf")
         plt.savefig("/home/alex/Desktop/DetectionEvaluation_PRE_ce.png")
         plt.show()
->>>>>>> source
