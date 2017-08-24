@@ -675,8 +675,11 @@ if __name__ == "__main__":
         for f in sorted(set(np.hstack([t.X.keys() for t in evaluation.GT_Tracks.values()])))[:20]:
             for m in evaluation.GT_Tracks:
                 evaluation.GT_Tracks[m].downfilter(f)
-                # >>>>>>> source
         evaluation.match()
+
+        bad_ids = [m for m in evaluation.Matches if len(evaluation.Matches[m])<1]
+        for b in bad_ids:
+            evaluation.Matches.pop(b)
 
         tmemt = []
         tmemtd = []
