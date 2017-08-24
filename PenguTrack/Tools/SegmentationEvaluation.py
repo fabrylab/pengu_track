@@ -262,9 +262,9 @@ if __name__ == "__main__":
     elif version == "cell":
 
         import os
-        with open("/home/birdflight/Desktop/SegmentationEvaluation_ce.txt", "w") as myfile:
+        with open("/home/alex/Desktop/SegmentationEvaluation_ce.txt", "w") as myfile:
             myfile.write("n,\t r,\t Sensitivity, \t Specificity, \t Precision \n")
-        for t in [700,800,900,1000,1100,1200]:
+        for t in [700,800,825,850,875,900,1000,1100,1200]:
             for a in [20]:
                 if os.path.exists("/home/alex/Desktop/PT_Cell_T%s.cdb"%(t)):
                     pass
@@ -274,10 +274,10 @@ if __name__ == "__main__":
                 seg.load_GT_masks_from_clickpoints("/home/alex/Desktop/PT_Cell_Test_GT.cdb")
                 # seg.load_System_masks_from_clickpoints("/mnt/mmap/GT_Starter.cdb")
                 seg.load_System_masks_from_clickpoints("/home/alex/Desktop/PT_Cell_T%s.cdb"%(t))
-                seg.match(gt_inverse=False)
+                seg.match()
                 print(np.mean(seg.sensitivity.values()))
                 print(np.mean(seg.specificity.values()))
-                with open("/home/birdflight/Desktop/SegmentationEvaluation_ce.txt", "a") as myfile:
+                with open("/home/alex/Desktop/SegmentationEvaluation_ce.txt", "a") as myfile:
                     myfile.write(",\t".join([str(t),
                                              str(a),
                                              str(np.mean(seg.sensitivity.values())),
@@ -285,11 +285,12 @@ if __name__ == "__main__":
                                              str(np.mean(seg.precision.values()))]))
                     myfile.write("\n")
 
-        data = np.genfromtxt("/home/birdflight/Desktop/SegmentationEvaluation_ce.txt", delimiter=",")[1:]
+        data = np.genfromtxt("/home/alex/Desktop/SegmentationEvaluation_ce.txt", delimiter=",")[1:]
         fig, ax = plt.subplots()
-        ax.set_xlim([1e-7, 5e-3])
-        ax.set_xscale('log')
+        # ax.set_xlim([1e-7, 5e-3])
+        # ax.set_xscale('log')
         ax.set_ylim([-0.05, 1.05])
+        ax.set_xlim([-0.05, 1.05])
         ax.set_xlabel("False Positive Rate")
         ax.set_ylabel("True Positive Rate")
         c = sn.color_palette(n_colors=6)
@@ -300,46 +301,46 @@ if __name__ == "__main__":
         for j, a in enumerate([20]):
             mask = data.T[1] == a
             # n = 5 if n==43 else n
-            ax.plot(1 - data[mask].T[3], data[mask].T[2], '-o', color=c[j - 1], label=r"$N_{min}=%s$" % a)
+            ax.plot(1 - data[mask].T[3], data[mask].T[2], '-o', color=c[j - 1], label="Cell Data")
             # for xyr in zip(1-data[mask].T[3],data[mask].T[2],data[mask].T[1]):
             #     ax.annotate('%s' %xyr[-1], xy=xyr[:-1], textcoords='data')
         # ax.ticklabel_format(axis='x', style='sci', scilimits=(-2, 2))
         plt.legend(loc='best')
         my_plot.despine(ax)
         my_plot.setAxisSizeMM(fig, ax, 147, 90)
-        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_ce.pdf")
-        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_ce.png")
+        plt.savefig("/home/alex/Desktop/SegmentationEvaluation_ce.pdf")
+        plt.savefig("/home/alex/Desktop/SegmentationEvaluation_ce.png")
 
         fig, ax = plt.subplots()
-        ax.set_xlim([0, 55])
+        ax.set_xlim([600,1300])
         ax.set_ylim([-0.05, 1.05])
-        ax.set_xlabel("ViBe Sensititivity Parameter")
+        ax.set_xlabel("Intensity Threshold")
         ax.set_ylabel("True Positive Rate")
         c = sn.color_palette(n_colors=6)
         for j, a in enumerate([20]):
             mask = data.T[1] == a
             # n = 5 if n==43 else n
-            ax.plot(data[mask].T[0], data[mask].T[2], '-o', color=c[j - 1], label=r"$N_{min}=%s$" % j)
-        ax.legend()
+            ax.plot(data[mask].T[0], data[mask].T[2], '-o', color=c[j - 1], label="Cell Data")
+        ax.legend("best")
         my_plot.despine(ax)
         my_plot.setAxisSizeMM(fig, ax, 147, 90)
-        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_TPR_ce.pdf")
-        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_TPR_ce.png")
+        plt.savefig("/home/alex/Desktop/SegmentationEvaluation_TPR_ce.pdf")
+        plt.savefig("/home/alex/Desktop/SegmentationEvaluation_TPR_ce.png")
 
         fig = plt.figure()
         ax = plt.subplot(111)
-        ax.set_xlim([0, 55])
-        ax.set_ylim([-0.000005, 0.0003])
-        ax.set_xlabel("ViBe Sensititivity Parameter")
+        ax.set_xlim([600,1300])
+        ax.set_ylim([-0.05,1.05])
+        ax.set_xlabel("Intensity Threshold")
         ax.set_ylabel("Precision")
         c = sn.color_palette(n_colors=6)
         for j, a in enumerate([20]):
             mask = data.T[1] == a
             # n = 5 if n==43 else n
-            ax.plot(data[mask].T[0], data[mask].T[4], '-o', color=c[j - 1], label=r"$N_{min}=%s$" % j)
-        ax.legend(loc="center right")
+            ax.plot(data[mask].T[0], data[mask].T[3], '-o', color=c[j - 1], label="Cell Data")
+        ax.legend(loc="best")
         my_plot.despine(ax)
         my_plot.setAxisSizeMM(fig, ax, 147, 90)
-        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_PRE_ce.pdf")
-        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_PRE_ce.png")
+        plt.savefig("/home/alex/Desktop/SegmentationEvaluation_PRE_ce.pdf")
+        plt.savefig("/home/alex/Desktop/SegmentationEvaluation_PRE_ce.png")
         plt.show()

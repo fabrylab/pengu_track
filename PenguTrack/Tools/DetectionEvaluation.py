@@ -30,8 +30,8 @@ class Evaluator(object):
         self.System_Markers.update(dict([[t, markers[markers.T[0]==t].T[1:]] for t in set(markers.T[0])]))
 
     def save_marker_to_GT_db(self, markers, path, type):
-        if function is None:
-            function = lambda x : x
+        # if function is None:
+        #     function = lambda x : x
         self.gt_db = DataFileExtended(path)
 
         with self.gt_db.db.atomic() as transaction:
@@ -136,7 +136,7 @@ class Yin_Evaluator(Evaluator):
 
 
 if __name__ == "__main__":
-    version = "birdflight"
+    version = "cell"
     if version == "Adelie":
         import os
         with open("/home/birdflight/Desktop/DetectionEvaluation.txt", "w") as myfile:
@@ -297,6 +297,7 @@ if __name__ == "__main__":
         my_plot.setAxisSizeMM(fig, ax, 147, 90)
         plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_PRE_bf.pdf")
         plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_PRE_bf.png")
+<<<<<<< dest
         plt.show()
 
 
@@ -361,4 +362,89 @@ if __name__ == "__main__":
         plt.show()
         plt.draw()
         fig1.savefig('/home/birdflight/Desktop/DetectionEvaluation_PRE_BAR_bf.png', dpi=300)
-        fig1.savefig('/home/birdflight/Desktop/DetectionEvaluation_PRE_BAR_bf.pdf')
+        fig1.savefig('/home/birdflight/Desktop/DetectionEvaluation_PRE_BAR_bf.pdf')=======
+        plt.show()
+    elif version == "cell":
+        import os
+
+        with open("/home/alex/Desktop/DetectionEvaluation_ce.txt", "w") as myfile:
+            myfile.write("A_min,\tA_max,\t NegativeRate, \t MissedRate, \t TruePositive, \t Precision \n")
+        for A_min in [0,25,50,75,100,150,200]:
+            for A_max in [300,400,np.inf]:
+                if os.path.exists("/home/alex/Desktop/PT_Cell_T850_A%s_%s.cdb"%(A_min,A_max)):
+                    pass
+                else:
+                    continue
+                evaluation = Yin_Evaluator(10, spacial_threshold=0.05)
+                evaluation.load_GT_marker_from_clickpoints(path="/home/alex/Desktop/PT_Cell_Test_GT.cdb",
+                                                           type="GroundTruth")
+                evaluation.load_System_marker_from_clickpoints(
+                    path="/home/alex/Desktop/PT_Cell_T850_A%s_%s.cdb"%(A_min,A_max), type="PT_Track_Marker")
+                evaluation.match()
+                # print("bla")
+                try:
+                    # print("blabla")
+                    print(np.mean(evaluation.Negative_Rate.values()))
+                    print(np.mean(evaluation.Missed_Rate.values()))
+                    with open("/home/alex/Desktop/DetectionEvaluation_ce.txt", "a") as myfile:
+                        myfile.write(",\t".join([str(A_min),
+                                                 str(A_max),
+                                                 str(np.mean(evaluation.Negative_Rate.values())),
+                                                 str(np.mean(evaluation.Missed_Rate.values())),
+                                                 str(np.mean(evaluation.True_Positive_Rate.values())),
+                                                 str(np.mean(evaluation.Precision.values()))]))
+                        myfile.write("\n")
+                    print("-----------------")
+                except KeyError:
+                    pass
+
+        data = np.genfromtxt("/home/alex/Desktop/DetectionEvaluation_ce.txt", delimiter=",")[1:]
+        fig, ax = plt.subplots()
+        ax.set_xlim([(1 - np.amax(data.T[3])) ** 1.1, 1])
+        ax.set_ylim([np.amin(data.T[3]) ** 1.1, 1])
+        ax.loglog()
+        ax.set_xlabel("Correct Detection Rate")
+        ax.set_ylabel("Missed Detection Rate")
+        c = sn.color_palette(n_colors=3)
+        for j,A_max in enumerate([500, np.inf]):
+            mask = data.T[1] == A_max
+            print(data[mask].T[2])
+            print(data[mask].T[3])
+            ax.plot(1 - data[mask].T[3], data[mask].T[3], '-o', color=c[j])
+        plt.savefig("/home/alex/Desktop/DetectionEvaluation_bf.pdf")
+        plt.savefig("/home/alex/Desktop/DetectionEvaluation_bf.png")
+
+if True:
+    if True:
+        fig, ax = plt.subplots()
+        ax.set_xlim([-1, 250])
+        ax.set_ylim([-0.05, 1.05])
+        ax.set_xlabel("ViBe Sensititivity Parameter")
+        ax.set_ylabel("True Positive Rate")
+        c = sn.color_palette(n_colors=4)
+        for j, A_max in enumerate([300,400,np.inf][::-1]):
+            mask = data.T[1] == A_max
+            ax.plot(data[mask].T[0], data[mask].T[4], '-o', color=c[j], label=r"$A_{max}=%s$" % A_max)
+        ax.legend()
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig, ax, 147, 90)
+        plt.savefig("/home/alex/Desktop/DetectionEvaluation_TPR_ce.pdf")
+        plt.savefig("/home/alex/Desktop/DetectionEvaluation_TPR_ce.png")
+
+        fig = plt.figure()
+        ax = plt.subplot(111)
+        ax.set_xlim([-1, 250])
+        ax.set_ylim([-0.05, 1.05])
+        ax.set_xlabel("ViBe Sensititivity Parameter")
+        ax.set_ylabel("Precision")
+        c = sn.color_palette(n_colors=4)
+        for j, A_max in enumerate([300,400,np.inf][::-1]):
+            mask = data.T[1] == A_max
+            ax.plot(data[mask].T[0], data[mask].T[5], '-o', color=c[j], label=r"$A_{max}=%s$" % A_max)
+        ax.legend(loc="best")
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig, ax, 147, 90)
+        plt.savefig("/home/alex/Desktop/DetectionEvaluation_PRE_ce.pdf")
+        plt.savefig("/home/alex/Desktop/DetectionEvaluation_PRE_ce.png")
+        plt.show()
+>>>>>>> source

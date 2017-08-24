@@ -37,8 +37,9 @@ SELEM = disk(2,dtype=bool)
 import scipy.stats as ss
 
 # Load Database
-c=700
-file_path = "/home/alex/Desktop/PT_Cell_T%s.cdb"%c
+a_min=75
+a_max=np.inf
+file_path = "/home/alex/Desktop/PT_Cell_T850_A%s_%s.cdb"%(a_min,a_max)
 
 global db
 db = DataFileExtended(file_path,"w")
@@ -87,7 +88,7 @@ MultiKal.MeasurementProbabilityThreshold = 0.
 MultiKal.AssignmentProbabilityThreshold = 0.
 
 
-VB = TresholdSegmentation(c)
+VB = TresholdSegmentation(850)
 
 import matplotlib.pyplot as plt
 
@@ -96,7 +97,7 @@ print('Initialized Tracker')
 # AD = AreaDetector(object_area, object_number, upper_limit=10, lower_limit=0)
 from PenguTrack.Detectors import RegionFilter, RegionPropDetector
 
-rf = RegionFilter("area",30,var=40.**2)#, lower_limit=c, upper_limit=300)
+rf = RegionFilter("area",200,var=108.**2, lower_limit=a_min, upper_limit=a_max)
 # rf = RegionFilter("area",200,var=40.**2, upper_limit=300)
 # rf2 = RegionFilter("solidity",0.98,var=0.04**2)#, lower_limit=0.8)
 # rf3 = RegionFilter("eccentricity",0.51,var=0.31**2)#, upper_limit=0.95)
