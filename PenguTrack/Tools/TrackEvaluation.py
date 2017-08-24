@@ -531,7 +531,7 @@ class Alex_Evaluator(Yin_Evaluator):
 
 
 if __name__ == "__main__":
-    version = "cell"
+    version = "adelie"
     if version == "adelie":
         evaluation = Alex_Evaluator(0.525, 37.9, 0.24, 2592, 9e-3, 14e-3
                                     ,temporal_threshold=0.01, spacial_threshold=0.4, tolerance=1)
@@ -774,4 +774,137 @@ if __name__ == "__main__":
         plt.show()
 
     elif version == "bird":
-        pass
+        import clickpoints
+        import numpy as np
+        import matplotlib.pyplot as plt
+        import seaborn as sn
+        import my_plot
+
+        eve = Yin_Evaluator(10, spacial_threshold=0.01, temporal_threshold=0.1)
+        eve.load_GT_tracks_from_clickpoints("/mnt/mmap/GT_Starter.cdb", "GT_Bird")
+        # eve.load_System_tracks_from_clickpoints("/mnt/mmap/Starter_n3_3_r20.cdb", type="PT_Track_Marker")
+        eve.load_System_tracks_from_clickpoints("/mnt/mmap/Starter_n3_3_r20_F5_q200_r100.cdb", type="PT_Track_Marker")
+        eve.match()
+        print(eve.Matches)
+
+        tmemt = []
+        tmemtd = []
+        tc = []
+        r2 = []
+        r3 = []
+        ctm = []
+        ctd = []
+        lt = []
+        idc = []
+        a = []
+
+        print(eve.Matches)
+        TC = {}
+        for m in eve.Matches:
+            print("------------")
+            print(m)
+            tmemt.append(eve.TMEMT(m))
+            tmemtd.append(eve.TMEMTD(m))
+            tc.append(eve.TC(m))
+            r2.append(eve.R2(m))
+            r3.append(eve.R3(m))
+            ctm.append(eve.CTM(m))
+            ctd.append(eve.CTD(m))
+            lt.append(eve.LT(m))
+            idc.append(eve.IDC(m))
+            a.append(eve.activity(m))
+            print("TMEMT", tmemt[-1], tmemtd[-1])
+            print("TMEMT coeff", tmemtd[-1] / tmemt[-1])
+            print("TC", tc[-1])
+            TC.update({m: tc[-1]})
+            print("corrected TC", tc[-1] / a[-1])
+            print("R2", r2[-1])
+            print("R3", r3[-1])
+            print("CTM", ctm[-1])
+            print("CTD", ctd[-1])
+            print("LT", lt[-1])
+            print("IDC", idc[-1])
+            print("activity", a[-1])
+
+        print("------------")
+        print("----mean----")
+        print("TMEMT", np.mean(tmemt), np.std(tmemtd) / len(tmemtd) ** 0.5)
+        print("TMEMT coeff", np.mean(np.asarray(tmemtd) / np.asarray(tmemt)),
+              np.std(np.asarray(tmemtd) / np.asarray(tmemt)) / len(tmemt) ** 0.5)
+        print("TC", np.mean(tc), np.std(tc) / len(tc) ** 0.5)
+        print("corrected TC", np.mean(np.asarray(tc) / np.asarray(a)),
+              np.std(np.asarray(tc) / np.asarray(a)) / len(a) ** 0.5)
+        print("R2", np.mean(r2), np.std(r2) / len(r2) ** 0.5)
+        print("R3", np.mean(r3), np.std(r3) / len(r3) ** 0.5)
+        print("CTM", np.mean(ctm), np.std(ctm) / len(ctm) ** 0.5)
+        print("CTD", np.mean(ctd), np.std(ctd) / len(ctd) ** 0.5)
+        print("LT", np.mean([l.seconds for l in lt]), np.std([l.seconds for l in lt]) / len(lt) ** 0.5)
+        print("IDC", np.mean(idc), np.std(idc) / len(idc) ** 0.5)
+        print("activity", np.mean(a), np.std(a) / len(a) ** 0.5)
+
+        from datetime import timedelta
+        import matplotlib.dates as md
+
+
+        def total_hits(k):
+            return TC[k] if len(eve.GT_Tracks[k].X.keys()) > 10 else 0.
+
+
+        plotted = dict([[k, eve.Matches[k]] for k in sorted(TC.keys(), key=total_hits)[-5:]])
+
+        fig, axes = plt.subplots(len(plotted.keys()), 1)
+
+        all_times = set()
+        for m in plotted:
+            all_times.update(eve.GT_Tracks[m].X.keys())
+        all_times = sorted(all_times)
+        x_min = min(all_times)
+        x_max = max(all_times)
+        max_len = max([len(v) for v in plotted.values()])
+
+        max_time_range = max([len(eve.GT_Tracks[k].X.keys()) for k in plotted]) + 1
+
+        pal = sn.color_palette(n_colors=max_len)
+        fig.suptitle("Track Coverage", y=1.)
+        lines = {}
+        for i, m in enumerate(plotted):
+            temps = sorted(eve._handle_Track_(m).X.keys())
+            x_min_loc = min(temps)
+            x_max_loc = max(temps)
+            # if x_max_loc < x_max:
+            axes[i].set_xlim([x_min_loc, all_times[all_times.index(x_min_loc)] + timedelta(seconds=max_time_range)])
+            # else:
+            #     axes[i].set_xlim([x_min_loc, x_max])
+
+            axes[i].set_ylim([-0.1, 2])
+            # axes[i].set_title("Ground Truth Track %s"%m, size=12)
+            ACT = np.linalg.norm(eve.velocity(m), axis=0)
+            ACT[np.isinf(ACT)] = np.nan
+            ACT /= np.nanmax(ACT)
+            l1 = axes[i].fill_between([t for t in all_times if t in temps], [100 for t in all_times if t in temps],
+                                      alpha=0.1,
+                                      label="Bird is Visible")
+            l2 = axes[i].fill_between(temps[1:], ACT, -0.1, alpha=0.2, label="Bird Velocity")
+            lines.update({"Bird is Visible  ": l1, "Bird Activity  ": l2})
+            for j, n in enumerate(eve.Matches[m]):
+                overs = eve.TE(m, n)
+                temps = np.array(sorted(overs.keys()))
+                x = [overs[t] for t in temps]
+                t_0 = temps[0]
+                lines.update({"System Track Error %s" % j: axes[i].plot(temps, x, color=pal[j])[0]})
+            axes[i].set_ylabel("Distance\n in px")
+            xfmt = md.DateFormatter('%M:%S')
+            axes[i].xaxis.set_major_formatter(xfmt)
+            my_plot.despine(axes[i])
+            my_plot.setAxisSizeMM(fig, axes[i], width=147, height=115 / len(axes))
+        axes[-1].set_xlabel("Timestamp")
+        # axes[-1].
+        # axes[i].
+        # fig.autofmt_xdate()
+        plt.tight_layout(pad=1.2)
+        fig.legend([lines[k] for k in sorted(lines.keys())], [k[:-2] for k in sorted(lines.keys())], ncol=1,
+                   loc="center right",
+                   prop={"size": 12})
+        plt.savefig("/home/birdflight/Desktop/Birdflight_TrackEvaluation.pdf")
+        plt.savefig("/home/birdflight/Desktop/Birdflight_TrackEvaluation.png")
+        plt.show()
