@@ -1,0 +1,221 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import my_plot
+import clickpoints
+import seaborn as sn
+
+db=clickpoints.DataFile("/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb")
+
+from datetime import timedelta
+def turning_angle(xyti):
+    # import numpy as np
+    x,y,t,i = xyti.T
+
+    x=np.array(x, dtype=float)
+    y=np.array(y, dtype=float)
+    t=np.array(t)
+
+    delx= x[1:]-x[:-1]
+    dely= y[1:]-y[:-1]
+    delt = np.array([(tt.seconds + tt.microseconds/1e6) for tt in (t[1:] - t[:-1])], dtype=float)
+
+    vx = delx/delt
+    vy = dely/delt
+
+    # norm = (vx[1:]**2+vy[1:]**2)**0.5 * (vx[:-1]**2+vy[:-1]**2)**0.5
+    # norm[norm==0.]=np.nan
+
+    # d = ((vx[1:]*vx[:-1])+(vy[1:]*vy[:-1]))/norm
+
+    norm = (vx[:-1]**2+vy[:-1]**2)**0.5
+    d1 = ((vx[1:]*vx[:-1])+(vy[1:]*vy[:-1]))/norm
+    d2 = ((vy[1:]*vx[:-1])-(vx[1:]*vy[:-1]))/norm
+
+    v = np.arctan2(d2, d1)
+    return i[0], v
+    # angle = np.arccos(d)
+    # return i[0],d
+
+def speed(xyti):
+    # import numpy as np
+    x, y, t, i = xyti.T
+
+    x = np.array(x)
+    y = np.array(y)
+    t = np.array(t)
+
+    delx = x[1:] - x[:-1]
+    dely = y[1:] - y[:-1]
+    delt = np.array([(tt.seconds + tt.microseconds/1e6) for tt in (t[1:] - t[:-1])])
+
+    vx = delx / delt
+    vy = dely / delt
+
+    speed = (vx**2+vy**2)**0.5
+    return i[0],speed
+
+tracks = db.getTracks(type="PT_Track_Marker")
+sp = dict([speed(np.array([[m.x,m.y,m.image.timestamp, track.id] for m in track.markers])) for track in tracks
+          if track.markers.count() > 4])
+ang = dict([turning_angle(np.array([[m.x,m.y,m.image.timestamp, track.id] for m in track.markers])) for track in tracks
+          if track.markers.count() > 4])
+
+speeds = np.array([np.mean(v) for v in sp.values()])
+speeds_std = np.array([np.std(v) for v in sp.values()])
+angles = np.array([np.mean(v) for v in ang.values()])
+angles_std = np.array([np.std(v) for v in ang.values()])
+
+mask = ~(np.isnan(speeds) | np.isnan(angles))
+
+
+db2 = clickpoints.DataFile("/home/birdflight/Desktop/Adelie_Evaluation/252_GT_Detections.cdb")
+tracks2 = db2.getTracks(type="GT")
+
+sp2 = dict([speed(np.array([[m.x,m.y,m.image.timestamp, track.id] for m in track.markers])) for track in tracks2
+          if track.markers.count() > 4])
+ang2 = dict([turning_angle(np.array([[m.x,m.y,m.image.timestamp, track.id] for m in track.markers])) for track in tracks2
+          if track.markers.count() > 4])
+
+speeds2 = np.array([np.mean(v) for v in sp2.values()])
+speeds2_std = np.array([np.std(v) for v in sp2.values()])
+angles2 = np.array([np.mean(v) for v in ang2.values()])
+angles2_std = np.array([np.std(v) for v in ang2.values()])
+
+mask2 = ~(np.isnan(speeds2) | np.isnan(angles2))
+
+mask3 = (speeds_std/speeds <2)&(1<speeds)&(speeds<10000)&(np.arccos(angles)*180/np.pi < 100)&(np.abs(angles_std/angles)<20)
+mask4 = (speeds_std/speeds <1)&(10>speeds)&(np.arccos(angles)*180/np.pi < 20)
+mask5 = ~(mask3)# | mask4)
+
+print("Had %s GT-Tracks"%len(speeds2))
+print("Found %s birds"%np.sum(mask3))
+print("Found %s ships"%np.sum(mask4))
+print("Found %s FP/Wind-Turbine Tracks"%np.sum(mask5))
+
+cpal=sn.color_palette(n_colors=5)
+
+fig, ax = plt.subplots()
+ax.set_title("System Track Classification")
+ax.set_ylabel("Turning Angle in degrees")
+ax.set_xlabel(r"Speed in $\frac{\mathrm{px}}{\mathrm{s}}$")
+ax.set_ylim([-1,181])
+ax.set_xlim([1e-1,1e3])
+
+ax.scatter(speeds[mask], 180/np.pi*np.arccos(angles[mask]), s=100*(speeds_std/speeds)[mask],color=cpal[0], edgecolors="k", label="System Tracks")
+ax.scatter(speeds2[mask2], 180/np.pi*np.arccos(angles2)[mask2], s=100*(speeds2_std/speeds2)[mask2], color=cpal[1], edgecolors="k", label="Birds(Ground Truth)")
+
+ax.legend(loc="best")
+ax.semilogx()
+my_plot.setAxisSizeMM(fig, ax, 147, 90)
+my_plot.despine(ax)
+plt.tight_layout()
+# plt.savefig("/home/birdflight/Desktop/BirdResults.png")
+# plt.savefig("/home/birdflight/Desktop/BirdResults.pdf")
+# plt.show()
+
+
+fig, ax = plt.subplots()
+ax.set_title("Classified Tracks")
+ax.set_ylabel("Turning Angle in degrees")
+ax.set_xlabel(r"Speed in $\frac{\mathrm{px}}{\mathrm{s}}$")
+ax.set_ylim([-1,181])
+ax.set_xlim([1e-1,1e3])
+# ax.scatter(speeds2[mask2], 180/np.pi*np.arccos(angles2)[mask2], s=100*(speeds2_std/speeds2)[mask2], color="green", edgecolors="k", label="Birds(Ground Truth)")
+
+# ax.scatter(speeds[mask], 180/np.pi*np.arccos(angles[mask]), s=100*(speeds_std/speeds)[mask], label="System Tracks")
+
+ax.scatter(speeds[mask3], 180/np.pi*np.arccos(angles)[mask3], s=100*(speeds_std/speeds)[mask3], color=cpal[1], label="Class Bird", edgecolors="k")
+# ax.scatter(speeds[mask4], 180/np.pi*np.arccos(angles)[mask4], s=100*(speeds_std/speeds)[mask4], color=cpal[3], label="Class Ship", edgecolors="k")
+ax.scatter(speeds[mask5], 180/np.pi*np.arccos(angles)[mask5], s=100*(speeds_std/speeds)[mask5], color="gray", label="Class Wind Turbines \n (False Positive)", edgecolors="k")
+
+ax.legend(loc="best")
+ax.semilogx()
+my_plot.setAxisSizeMM(fig, ax, 147, 90)
+my_plot.despine(ax)
+plt.tight_layout()
+# plt.savefig("/home/birdflight/Desktop/BirdResults_classified.png")
+# plt.savefig("/home/birdflight/Desktop/BirdResults_classified.pdf")
+plt.show()
+
+# bird_ids = [k for k in sp if (np.std(sp[k])/np.mean(sp[k]) <1)&(10<np.mean(sp[k]))&(np.mean(sp[k])<1000)&(np.arccos(np.mean(ang[k]))*180/np.pi < 100)]
+#
+# char_bird = db2.setMarkerType(name="Characterized Bird", color="#FF88FF", mode=db2.TYPE_Track)
+# for i in bird_ids:
+#     track=db.getTrack(i)
+#     data = np.array([[db2.getImages(filename=m.image.filename)[0], m.x, m.y] for m in track.markers
+#                               if db2.getImages(filename=m.image.filename).count()>0]).T
+#     if len(data)>0:
+#         images, X, Y = data
+#     else:
+#         continue
+#     new_track=db2.setTrack(type=char_bird)
+#     db2.setMarkers(image=images, x=X, y=Y, type=char_bird, track=new_track)
+
+# ship_ids = [k for k in sp if (np.std(sp[k])/np.mean(sp[k]) <1)&(np.mean(sp[k])<10)&(np.arccos(np.mean(ang[k]))*180/np.pi < 100)]
+# char_ship = db2.setMarkerType(name="Characterized Ship", color="#00FF00", mode=db2.TYPE_Track)
+# for i in ship_ids:
+#     track=db.getTrack(i)
+#     data = np.array([[db2.getImages(filename=m.image.filename)[0], m.x, m.y] for m in track.markers
+#                               if db2.getImages(filename=m.image.filename).count()>0]).T
+#     if len(data)>0:
+#         images, X, Y = data
+#     else:
+#         continue
+#     new_track=db2.setTrack(type=char_ship)
+#     db2.setMarkers(image=images, x=X, y=Y, type=char_ship, track=new_track)
+
+
+
+
+cpal=sn.color_palette(n_colors=5)
+
+fig, ax = plt.subplots()
+ax.set_title("System Track Classification")
+ax.set_ylabel("Turning Angle in degrees")
+ax.set_xlabel(r"Speed in $\frac{\mathrm{px}}{\mathrm{s}}$")
+ax.semilogy()
+ax.set_xlim([-180,180])
+ax.set_ylim([1e-1,1e3])
+
+mask = ~(np.isinf(angles) | np.isinf(speeds) | np.isinf(angles_std/angles) | np.isinf(speeds_std/speeds))
+mask2 = ~(np.isinf(angles2) | np.isinf(speeds2) | np.isinf(angles2_std/angles2) | np.isinf(speeds2_std/speeds2))
+
+from matplotlib.patches import Ellipse
+
+ax.errorbar(180/np.pi*angles[mask], speeds[mask],xerr=(angles_std/angles)[mask],  yerr=(speeds_std/speeds)[mask],color=cpal[0], label="System Tracks", linewidth=0, elinewidth=1)
+ax.errorbar(180/np.pi*angles2[mask2], speeds2[mask2],xerr=(angles2_std/angles2)[mask2],  yerr=(speeds2_std/speeds2)[mask2],color=cpal[0], label="System Tracks", linewidth=0, elinewidth=1)
+# ax.scatter(speeds[mask], 180/np.pi*np.arccos(angles[mask]), s=100*(speeds_std/speeds)[mask],color=cpal[0], edgecolors="k", label="System Tracks")
+# ax.scatter(speeds2[mask2], 180/np.pi*np.arccos(angles2)[mask2], s=100*(speeds2_std/speeds2)[mask2], color=cpal[1], edgecolors="k", label="Birds(Ground Truth)")
+
+ax.legend(loc="best")
+# ax.semilogx()
+my_plot.setAxisSizeMM(fig, ax, 147, 90)
+my_plot.despine(ax)
+plt.tight_layout()
+# plt.savefig("/home/birdflight/Desktop/BirdResults.png")
+# plt.savefig("/home/birdflight/Desktop/BirdResults.pdf")
+# plt.show()
+
+
+fig, ax = plt.subplots()
+ax.set_title("Classified Tracks")
+ax.set_ylabel("Turning Angle in degrees")
+ax.set_xlabel(r"Speed in $\frac{\mathrm{px}}{\mathrm{s}}$")
+ax.set_ylim([-1,181])
+ax.set_xlim([1e-1,1e3])
+# ax.scatter(speeds2[mask2], 180/np.pi*np.arccos(angles2)[mask2], s=100*(speeds2_std/speeds2)[mask2], color="green", edgecolors="k", label="Birds(Ground Truth)")
+
+# ax.scatter(speeds[mask], 180/np.pi*np.arccos(angles[mask]), s=100*(speeds_std/speeds)[mask], label="System Tracks")
+
+ax.scatter(speeds[mask3], 180/np.pi*np.arccos(angles)[mask3], s=100*(speeds_std/speeds)[mask3], color=cpal[1], label="Class Bird", edgecolors="k")
+ax.scatter(speeds[mask4], 180/np.pi*np.arccos(angles)[mask4], s=100*(speeds_std/speeds)[mask4], color=cpal[3], label="Class Ship", edgecolors="k")
+ax.scatter(speeds[mask5], 180/np.pi*np.arccos(angles)[mask5], s=100*(speeds_std/speeds)[mask5], color="gray", label="Class Wind Turbines \n (False Positive)", edgecolors="k")
+
+ax.legend(loc="best")
+ax.semilogx()
+my_plot.setAxisSizeMM(fig, ax, 147, 90)
+my_plot.despine(ax)
+plt.tight_layout()
+# plt.savefig("/home/birdflight/Desktop/BirdResults_classified.png")
+# plt.savefig("/home/birdflight/Desktop/BirdResults_classified.pdf")
+plt.show()

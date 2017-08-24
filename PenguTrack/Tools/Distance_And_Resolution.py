@@ -10,7 +10,7 @@ my_plot.set_style("white_clickpoints")
 
 import clickpoints
 from PenguTrack.Detectors import SiAdViBeSegmentation
-db_start = clickpoints.DataFile("/home/birdflight/Desktop/252_GT_Detections.cdb")
+db_start = clickpoints.DataFile("/home/birdflight/Desktop/Adelie_Evaluation/252_GT_Detections.cdb")
 
 images = db_start.getImageIterator()
 init_buffer = []
@@ -87,8 +87,8 @@ ax.plot(d, np.ones_like(d)*2, label="detection threshold", color="gray")
 ax.scatter(camera_height*np.tan(np.arctan((image_height/2.-pos_img)/image_height*sensor_height/focal_length) - camera_tilt + np.pi/2.), size_img, label=r"$\approx 0.5\mathrm{m}$ Height (measured)")
 ax.legend(loc="best", prop={"size":12})
 my_plot.despine(ax)
-plt.savefig("/home/birdflight/Desktop/Adelie_DistanceResolution_img.svg")
-plt.savefig("/home/birdflight/Desktop/Adelie_DistanceResolution_img.png")
+plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Adelie_DistanceResolution_img.pdf")
+plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Adelie_DistanceResolution_img.png")
 
 
 s = np.arange(1,500.)
@@ -110,8 +110,8 @@ ax.plot(s, px2, label=r"$\approx 0.5\mathrm{m}$ Height (theory)")
 ax.scatter(500-pos_lin*500./2592., size_lin, label=r"$\approx 0.5\mathrm{m}$Height (measured)")
 ax.legend(loc="best", prop={"size":12})
 my_plot.despine(ax)
-plt.savefig("/home/birdflight/Desktop/Adelie_DistanceResolution_lin.svg")
-plt.savefig("/home/birdflight/Desktop/Adelie_DistanceResolution_lin.png")
+plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Adelie_DistanceResolution_lin.pdf")
+plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Adelie_DistanceResolution_lin.png")
 
 
 s = np.arange(1,500.)
@@ -131,6 +131,6 @@ ax.plot(s, np.ones_like(s)*VB.Penguin_Size, label=r"$\approx 0.5\mathrm{m}$ Heig
 ax.scatter(y_min*(y_max/y_min)**(1.-pos_log/2592.), size_log, label=r"$\approx 0.5\mathrm{m}$ Height (measured)")
 ax.legend(loc="upper left", prop={"size":12})
 my_plot.despine(ax)
-plt.savefig("/home/birdflight/Desktop/Adelie_DistanceResolution_log.svg")
-plt.savefig("/home/birdflight/Desktop/Adelie_DistanceResolution_log.png")
+plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Adelie_DistanceResolution_log.pdf")
+plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Adelie_DistanceResolution_log.png")
 

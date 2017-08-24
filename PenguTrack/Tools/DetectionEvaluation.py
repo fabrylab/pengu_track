@@ -216,23 +216,25 @@ if __name__ == "__main__":
         plt.show()
     elif version == "birdflight":
         import os
+        def std_err(l):
+            return np.std(l)/len(l)**0.5
         with open("/home/birdflight/Desktop/DetectionEvaluation_bf.txt", "w") as myfile:
-            myfile.write("n,\tr,\t NegativeRate, \t MissedRate, \t TruePositive, \t Precision \n")
+            myfile.write("n,\tr,\t NegativeRate, \t MissedRate, \t TruePositive, \t Precision, \t TruePositiveError, \t PrecisionError \n")
         for r in [20]:
             for f in [1,2,3,4,5]:
                 if os.path.exists("/mnt/mmap/Starter_n3_3_r%s_F%s.cdb" % (r, f)):
                     pass
                 else:
                     continue
-                evaluation = Yin_Evaluator(10, spacial_threshold=0.05)
+                evaluation = Yin_Evaluator(10, spacial_threshold=0.1)
                 evaluation.load_GT_marker_from_clickpoints(path="/mnt/mmap/GT_Starter.cdb",
                                                            type="GT_Bird")
                 evaluation.load_System_marker_from_clickpoints(
                     path="/mnt/mmap/Starter_n3_3_r%s_F%s.cdb" % (r, f), type="PT_Track_Marker")
                 evaluation.match()
-                print("bla")
+                # print("bla")
                 try:
-                    print("blabla")
+                    # print("blabla")
                     print(np.mean(evaluation.Negative_Rate.values()))
                     print(np.mean(evaluation.Missed_Rate.values()))
                     with open("/home/birdflight/Desktop/DetectionEvaluation_bf.txt", "a") as myfile:
@@ -241,7 +243,9 @@ if __name__ == "__main__":
                                                  str(np.mean(evaluation.Negative_Rate.values())),
                                                  str(np.mean(evaluation.Missed_Rate.values())),
                                                  str(np.mean(evaluation.True_Positive_Rate.values())),
-                                                 str(np.mean(evaluation.Precision.values()))]))
+                                                 str(np.mean(evaluation.Precision.values())),
+                                                 str(std_err(evaluation.True_Positive_Rate.values())),
+                                                 str(std_err(evaluation.Precision.values()))]))
                         myfile.write("\n")
                     print("-----------------")
                 except KeyError:
@@ -264,15 +268,15 @@ if __name__ == "__main__":
         # plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_bf.png")
 
         fig, ax = plt.subplots()
-        ax.set_xlim([0, 55])
+        ax.set_xlim([0, 5])
         ax.set_ylim([-0.05, 1.05])
         ax.set_xlabel("ViBe Sensititivity Parameter")
         ax.set_ylabel("True Positive Rate")
         c = sn.color_palette(n_colors=3)
-        for n in [1, 2, 3]:
+        for j,n in enumerate([20]):
             mask = data.T[0] == n
-            ax.plot(data[mask].T[1], data[mask].T[4], '-o', color=c[n - 1], label=r"$N_{min}=%s$" % n)
-        ax.legend()
+            ax.plot(data[mask].T[1], data[mask].T[4], '-o', color=c[j - 1], label=r"$N_{min}=3$ \n $N=3$")
+        ax.legend(loc="best")
         my_plot.despine(ax)
         my_plot.setAxisSizeMM(fig, ax, 147, 90)
         plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_TPR_bf.pdf")
@@ -280,17 +284,81 @@ if __name__ == "__main__":
 
         fig = plt.figure()
         ax = plt.subplot(111)
-        ax.set_xlim([0, 55])
+        ax.set_xlim([0, 5])
         ax.set_ylim([-0.05, 1.05])
         ax.set_xlabel("ViBe Sensititivity Parameter")
         ax.set_ylabel("Precision")
         c = sn.color_palette(n_colors=3)
-        for n in [1, 2, 3]:
+        for j,n in enumerate([20]):
             mask = data.T[0] == n
-            ax.plot(data[mask].T[1], data[mask].T[5], '-o', color=c[n - 1], label=r"$N_{min}=%s$" % n)
+            ax.plot(data[mask].T[1], data[mask].T[5], '-o', color=c[j - 1], label=r"$N_{min}=3$ \n $N=3$")
         ax.legend(loc="best")
         my_plot.despine(ax)
         my_plot.setAxisSizeMM(fig, ax, 147, 90)
         plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_PRE_bf.pdf")
         plt.savefig("/home/birdflight/Desktop/DetectionEvaluation_PRE_bf.png")
         plt.show()
+
+
+
+        # fig, ax = plt.subplots()
+        N = len(data)
+        means = tuple(data.T[5])#(1.975373213, 2.25414394, 2.363441898, 2.620267547)
+        std = [tuple(np.zeros(N)), tuple(data.T[7])]#[(0, 0, 0, 0), (0.095275084, 0.091739906, 0.126287507, 0.026789034)]
+
+        ind = np.arange(0.5, 0.5*(N+1), 0.5)#0.5, 1, 1.5, 2, 2.5)  # the x locations for the groups
+
+        fig = plt.figure()
+        # fig.set_size_inches(147*0.039370, 90*0.039370)
+        ax = plt.subplot(111)
+
+        rects1 = ax.bar(ind, means,
+                        width=0.4,
+                        color= c[-1],#'#BAB6B4',
+                        yerr=std,
+                        edgecolor='black',
+                        linewidth=1.5,
+                        error_kw=dict(ecolor='black',
+                                      lw=1.5,
+                                      capsize=4,
+                                      capthick=1.5))
+
+        ax.set_ylabel('Precision', fontsize=13)
+        ax.set_xlabel('Number of Consecutive Detection-Filters', fontsize=13)
+
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+
+        ax.spines['bottom'].set_linewidth(1.5)
+        ax.spines['left'].set_linewidth(1.5)
+        ax.xaxis.set_tick_params(width=1.5)
+
+        ax.yaxis.major.locator.set_params(nbins=4)
+        ax.yaxis.set_tick_params(width=1.5)
+
+        plt.xticks(ind, ("       pure Area", "      + Solidity", "  + Eccentricity", "     + Visibility", "+ Mean Intensity"), ha="center", rotation=45)
+        plt.yticks()
+        plt.tick_params(axis='both', which='major', labelsize=13)
+
+
+
+        def MoveLabels(value):
+            import types
+            import matplotlib
+            for label in plt.gca().xaxis.get_majorticklabels():
+                label.customShiftValue = value
+                label.set_x = types.MethodType(
+                    lambda self, x: matplotlib.text.Text.set_x(self, x - self.customShiftValue), label)
+
+
+        MoveLabels(-0.)
+        plt.ylim([0, 0.1])
+        plt.xlim([0.25, N/2.+0.5])
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig, ax, 147, 90)
+        fig1 = plt.gcf()
+        plt.tight_layout()
+        plt.show()
+        plt.draw()
+        fig1.savefig('/home/birdflight/Desktop/DetectionEvaluation_PRE_BAR_bf.png', dpi=300)
+        fig1.savefig('/home/birdflight/Desktop/DetectionEvaluation_PRE_BAR_bf.pdf')

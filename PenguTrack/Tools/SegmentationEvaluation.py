@@ -213,7 +213,7 @@ if __name__ == "__main__":
         for n in [3]:
             mask = data.T[0] == n
             # n = 5 if n==43 else n
-            ax.plot(1 - data[mask].T[3], data[mask].T[2], '-o', color=c[n - 1], label=r"$N_{min}=%s$" % n)
+            ax.plot(1 - data[mask].T[3], data[mask].T[2], '-o', color=c[n - 1], label=r"$N_{min}=3$")
             # for xyr in zip(1-data[mask].T[3],data[mask].T[2],data[mask].T[1]):
             #     ax.annotate('%s' %xyr[-1], xy=xyr[:-1], textcoords='data')
         # ax.ticklabel_format(axis='x', style='sci', scilimits=(-2, 2))
@@ -232,10 +232,11 @@ if __name__ == "__main__":
         for n in [3]:
             mask = data.T[0] == n
             # n = 5 if n==43 else n
-            ax.plot(data[mask].T[1], data[mask].T[2], '-o', color=c[n - 1], label=r"$N_{min}=%s$" % n)
-        ax.legend()
+            ax.plot(data[mask].T[1], data[mask].T[2], '-o', color=c[n - 1], label=r"$N_{min}=3$")
+        ax.legend(loc="best")
         my_plot.despine(ax)
-        my_plot.setAxisSizeMM(fig, ax, 147, 90)
+        my_plot.setAxisSizeMM(fig, ax, 147/2, 90/2)
+        plt.tight_layout()
         plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_TPR_bf.pdf")
         plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_TPR_bf.png")
 
@@ -249,10 +250,12 @@ if __name__ == "__main__":
         for n in [3]:
             mask = data.T[0] == n
             # n = 5 if n==43 else n
-            ax.plot(data[mask].T[1], data[mask].T[4], '-o', color=c[n - 1], label=r"$N_{min}=%s$" % n)
-        ax.legend(loc="center right")
+            ax.plot(data[mask].T[1], data[mask].T[4], '-o', color=c[n - 1], label=r"$N_{min}=3$")
+        ax.legend(loc="best")
+        ax.ticklabel_format(style="sci", axis="y", sci_limits=(-2,2))
         my_plot.despine(ax)
-        my_plot.setAxisSizeMM(fig, ax, 147, 90)
+        my_plot.setAxisSizeMM(fig, ax, 147/2, 90/2)
+        plt.tight_layout()
         plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_PRE_bf.pdf")
         plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_PRE_bf.png")
         plt.show()

@@ -10,6 +10,7 @@ from PenguTrack.Models import VariableSpeed
 from PenguTrack.DataFileExtended import DataFileExtended
 
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import seaborn as sn
 import my_plot
 
@@ -452,7 +453,7 @@ class Alex_Evaluator(Yin_Evaluator):
         v=self.relative_velocity(trackA)
         v_n = np.linalg.norm(v, axis=0)
         v_max = np.amax(v_n)
-        return v_n<tresh
+        return v_n<thresh
 
     def rTE(self, trackA, trackB):
         trackA = self._handle_Track_(trackA)
@@ -509,14 +510,15 @@ if __name__ == "__main__":
     # evaluation = Yin_Evaluator(100, temporal_threshold=0.8, spacial_threshold=0.6)
     evaluation = Alex_Evaluator(0.525, 37.9, 0.24, 2592, 9e-3, 14e-3
                                 ,temporal_threshold=0.01, spacial_threshold=0.4, tolerance=1)
-    evaluation.load_GT_tracks_from_clickpoints(path="/home/birdflight/Desktop/Adelie_Evaluation/252Horizon.cdb", type="GT")
+    evaluation.load_GT_tracks_from_clickpoints(path="/home/birdflight/Desktop/Adelie_Evaluation/252Horizon.cdb", type="GT_under_limit")
     evaluation.load_System_tracks_from_clickpoints(path="/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb", type="PT_Track_Marker")
     evaluation.system_db = clickpoints.DataFile("/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb")
-    evaluation.system_db.setMarkerType(name="GT", color="#FFFFFF", mode=evaluation.system_db.TYPE_Track)
+    evaluation.system_db.setMarkerType(name="GT_under_limit", color="#FFFFFF", mode=evaluation.system_db.TYPE_Track)
     evaluation.system_db.setMarkerType(name="Match", color="#FF8800", mode=evaluation.system_db.TYPE_Track)
-    evaluation.save_GT_tracks_to_db(path="/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb", type="GT")
+    evaluation.save_GT_tracks_to_db(path="/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb", type="GT_under_limit")
 
-    for f in sorted(evaluation.GT_Tracks[1].X.keys())[:20]:
+    # for f in sorted(evaluation.GT_Tracks.values()[0].X.keys())[:20]:
+    for f in sorted(set(np.hstack([track.X.keys() for track in evaluation.GT_Tracks.values()])))[:20]:
         for m in evaluation.GT_Tracks:
             evaluation.GT_Tracks[m].downfilter(f)
 # >>>>>>> source
@@ -574,11 +576,20 @@ if __name__ == "__main__":
     print("activity",np.mean(a), np.std(a)/len(a)**0.5)
 
 
+    def total_hits(k):
+        return evaluation.TC(k)*len(evaluation.GT_Tracks[k].X.keys()) if (len(evaluation.GT_Tracks[k].X.keys()) > 10
+                                                                          and len(evaluation.Matches[k])<11) else 0.
+        # return np.random.rand()
+
+    plotted = dict([[k, evaluation.Matches[k]] for k in sorted(evaluation.Matches.keys(), key=total_hits)[-5:]])
+
     from datetime import timedelta
-    fig, axes = plt.subplots(len(evaluation.Matches.keys()), 1)
+
+    fig, axes = plt.subplots(len(plotted), 1)
 
     all_times = set()
-    for m in evaluation.GT_Tracks:
+    # for m in evaluation.GT_Tracks:
+    for m in plotted:
         all_times.update(evaluation.GT_Tracks[m].X.keys())
     all_times = sorted(all_times)
     x_min = min(all_times)
@@ -587,7 +598,7 @@ if __name__ == "__main__":
     pal = sn.color_palette(n_colors=max_len)
     fig.suptitle("Track Coverage", y=1.)
     lines={}
-    for i, m in enumerate(evaluation.Matches):
+    for i, m in enumerate(plotted):
         axes[i].set_xlim([x_min,x_max])
         axes[i].set_ylim([0,2])
         # axes[i].set_title("Ground Truth Track %s"%m, size=12)
@@ -607,6 +618,7 @@ if __name__ == "__main__":
             my_plot.setAxisSizeMM(fig, axes[i], 147, 180/len(axes))
     axes[-1].set_xlabel("Timestamp")
     plt.tight_layout()
+    axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     fig.autofmt_xdate()
     fig.legend([lines[k] for k in sorted(lines.keys())], [k[:-2] for k in sorted(lines.keys())], ncol=3, loc="lower center", prop={"size":12})
     plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Pictures/Adelie_TrackEvaluation.pdf")
