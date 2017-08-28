@@ -1,24 +1,26 @@
 if __name__ == '__main__':
-    import clickpoints
-    from PenguTrack.Filters import KalmanFilter
-    from PenguTrack.Filters import MultiFilter
-    from PenguTrack.Models import VariableSpeed
-    from PenguTrack.Detectors import ViBeSegmentation
-    from PenguTrack.Detectors import AreaDetector
-    from PenguTrack.Detectors import Measurement as Pengu_Measurement
+    from PenguTrack.Filters import MultiFilter  # Tracker (assignment and data handling)
+    from PenguTrack.Filters import KalmanFilter  # Kalman Filter (storage of data, prediction, representation of tracks)
+    from PenguTrack.Models import VariableSpeed  # Physical Model (used for predictions)
+    from PenguTrack.Detectors import ThresholdSegmentation  # Segmentation Modul (splits image into fore and background
+    from PenguTrack.Detectors import RegionFilter, RegionPropDetector  # Detector (finds and filters objects in segmented image)
+    # from PenguTrack.Detectors import Measurement as Pengu_Measurement  #
+    from PenguTrack.DataFileExtended import DataFileExtended
 
     import scipy.stats as ss
     import numpy as np
-    import matplotlib.pyplot as plt
+    # import matplotlib.pyplot as plt
 
-    object_size = 16  # Object diameter (smallest)
-    object_area = 200  # Object area in px
-    object_number = 20  # Number of Objects in First Track
+    object_size = 8  # Object diameter (smallest)
+    object_area = 40  # Object area in px
+    intensity_threshold = 150
 
     # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
-    model = VariableSpeed(1, 1, dim=2, timeconst=1)
-    q = 2
-    r = 2
+    model = VariableSpeed(1, 1, dim=2, timeconst=2)
+
+    # Set up Kalman filter
+    q = 1
+    r = 1
     X = np.zeros(4).T  # Initial Value for Position
     Q = np.diag([q*object_size, q*object_size])  # Prediction uncertainty
     R = np.diag([r*object_size, r*object_size])  # Measurement uncertainty
@@ -26,116 +28,61 @@ if __name__ == '__main__':
     State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filter
     Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
 
-    # Initialize Filter
+    # Initialize Filter/Tracker
     MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
                            np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
+    MultiKal.LogProbabilityThreshold = -20.
 
     # Open ClickPoints Database
-    db = clickpoints.DataFile("./cell_data.cdb")
-    # db = clickpoints.DataFile("./penguin_data.cdb")
-    # db = clickpoints.DataFile("./pillar_data.cdb")
+    db = DataFileExtended(".\ExampleData\ExampleData\cell_data.cdb")
 
-    # Init_Background from Image_Median
-    N = db.getImages().count()
-    init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
-                               for j in np.random.randint(0, N, 20)], axis=0), dtype=np.int)
-
-    # Init Segmentation Module with Init_Image
-    VB = ViBeSegmentation(init_image=init, n=20, n_min=18, r=10, phi=1)
-    for i in np.random.randint(0, N, 5):
-        VB.detect(db.getImage(frame=i).data)
+    # Init Segmentation Module
+    TS = ThresholdSegmentation(intensity_threshold)
 
     # Init Detection Module
-    AD = AreaDetector(object_area)
+    rf = RegionFilter("area", object_area, var=0.8*object_area, lower_limit=0.5*object_area, upper_limit=1.5*object_area)
+    AD = RegionPropDetector([rf])
     print('Initialized')
 
     # Define ClickPoints Marker
-
-    marker_type = db.setMarkerType(name="Detection_Marker", color="#FF0000", style='{"scale":1.2}')
-    db.deleteMarkers(type=marker_type)
-    marker_type2 = db.setMarkerType(name="Track_Marker", color="#00FF00", mode=db.TYPE_Track)
-    db.deleteMarkers(type=marker_type2)
-    marker_type3 = db.setMarkerType(name="Prediction_Marker", color="#0000FF")
-    db.deleteMarkers(type=marker_type3)
+    detection_marker_type = db.setMarkerType(name="Detection_Marker", color="#FF0000", style='{"scale":1.2}')
+    db.deleteMarkers(type=detection_marker_type)
+    track_marker_type = db.setMarkerType(name="Track_Marker", color="#00FF00", mode=db.TYPE_Track)
+    db.deleteMarkers(type=track_marker_type)
+    prediction_marker_type = db.setMarkerType(name="Prediction_Marker", color="#0000FF")
+    db.deleteMarkers(type=prediction_marker_type)
 
     # Delete Old Tracks
-    db.deleteTracks()
-
-    # append Database if necessary
-    import peewee
-
-
-    class Measurement(db.base_model):
-        # full definition here - no need to use migrate
-        marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name="measurement",
-                                        on_delete='CASCADE')  # reference to frame and track via marker!
-        log = peewee.FloatField(default=0)
-        x = peewee.FloatField()
-        y = peewee.FloatField()
-
-
-    if "measurement" not in db.db.get_tables():
-        try:
-            db.db.connect()
-        except peewee.OperationalError:
-            pass
-        Measurement.create_table()  # important to respect unique constraint
-
-    db.table_measurement = Measurement  # for consistency
-
-
-    def setMeasurement(marker=None, log=None, x=None, y=None):
-        assert not (marker is None), "Measurement must refer to a marker."
-        try:
-            item = db.table_measurement.get(marker=marker)
-        except peewee.DoesNotExist:
-            item = db.table_measurement()
-
-        dictionary = dict(marker=marker, x=x, y=y)
-        for key in dictionary:
-            if dictionary[key] is not None:
-                setattr(item, key, dictionary[key])
-        item.save()
-        return item
-
-
-    db.setMeasurement = setMeasurement
+    db.deleteTracks(type=track_marker_type)
 
     # Start Iteration over Images
     print('Starting Iteration')
     images = db.getImageIterator()
+    # areas = []
     for image in images:
 
         i = image.get_id()
-        # Prediction step
+        # Prediction step, without applied control(vector of zeros)
         MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
 
         # Detection step
-        # SegMap = VB.detect(image.data, do_neighbours=False)
-        SegMap = VB.segmentate(image.data, do_neighbours=False)
-        Detected_Regions = AD.detect(SegMap, return_regions=True)
-        Positions = [Pengu_Measurement(1., prop.centroid) for prop in Detected_Regions]
-        for prop in Detected_Regions:
-            plt.imshow(SegMap[prop.bbox[0]:prop.bbox[2], prop.bbox[1]:prop.bbox[1]])
-            plt.figure()
-        plt.show()
-        break
-            # SegMap[prop.bbox[0]:prop.bbox[2], prop.bbox[1]:prop.bbox[3]] = True
-        VB.update(SegMap, image.data, do_neighbours=False)
-        print(len(Positions))
+        SegMap = TS.detect(image.data)
+        Positions = AD.detect(SegMap)
+        # import matplotlib.pyplot as plt
+        # areas.extend([pos.Data['area'][0] for pos in Positions])
+        # if len(areas)>1000:
+        #     plt.hist(areas, bins=100)
+        #     plt.show()
+        print("Found %s Objects!"%len(Positions))
 
-        # Setting Mask in ClickPoints
+        # Write Segmentation Mask to Database
         db.setMask(image=image, data=(~SegMap).astype(np.uint8))
         print("Mask save")
-        n = 1
 
-
-        if np.all(Positions != np.array([])):
+        if len(Positions)>0:
             # Update Filter with new Detections
-            try:
-                MultiKal.update(z=Positions, i=i)
-            except IndexError:
-                continue
+            MultiKal.update(z=Positions, i=i)
+
             # Get Tracks from Filters
             for k in MultiKal.Filters.keys():
                 x = y = np.nan
@@ -144,51 +91,24 @@ if __name__ == '__main__':
                     meas = MultiKal.Filters[k].Measurements[i]
                     x = meas.PositionX
                     y = meas.PositionY
-                    # rescale to pixel coordinates
-                    x_px = x
-                    y_px = y
-                    prob = MultiKal.Filters[k].log_prob(keys=[i], compare_bel=False)
+                    prob = MultiKal.Filters[k].log_prob(keys=[i])
 
-                # Case 3: we want to see the prediction markers
-                if i in MultiKal.Filters[k].Predicted_X.keys():
-                    pred_x, pred_y = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])
-                    # rescale to pixel coordinates
-                    pred_x_px = pred_x
-                    pred_y_px = pred_y
-
-                # For debugging detection step we set markers at the log-scale detections
-                try:
-                    yy, xx = [y_px, x_px]
-                    db.setMarker(image=image, x=yy, y=xx, text="Detection %s" % k, type=marker_type)
-                except:
-                    pass
-
-                # Warp back to image coordinates
-                x_img, y_img = [y_px, x_px]
-                pred_x_img, pred_y_img = [pred_y_px, pred_x_px]
-
-                # Write assigned tracks to ClickPoints DataBase
-                if i in MultiKal.Filters[k].Predicted_X.keys():
-                    pred_marker = db.setMarker(image=image, x=pred_x_img, y=pred_y_img, text="Track %s" % (100 + k),
-                                               type=marker_type3)
-                if np.isnan(x) or np.isnan(y):
-                    pass
-                else:
                     if db.getTrack(k + 100):
-                        track_marker = db.setMarker(image=image, type=marker_type2, track=(100 + k), x=x_img, y=y_img,
-                                                    text='Track %s, Prob %.2f' % ((100 + k), prob))
-                        print('Set Track(%s)-Marker at %s, %s' % ((100 + k), x_img, y_img))
+                        print('Setting Track(%s)-Marker at %s, %s' % ((100 + k), x, y))
                     else:
-                        db.setTrack(marker_type2, id=100 + k)
-                        if k == MultiKal.CriticalIndex:
-                            db.setMarker(image=image, type=marker_type, x=x_img, y=y_img,
-                                         text='Track %s, Prob %.2f, CRITICAL' % ((100 + k), prob))
-                        track_marker = db.setMarker(image=image, type=marker_type2, track=100 + k, x=x_img, y=y_img,
-                                                    text='Track %s, Prob %.2f' % ((100 + k), prob))
-                        print('Set new Track %s and Track-Marker at %s, %s' % ((100 + k), x_img, y_img))
+                        db.setTrack(track_marker_type, id=100 + k)
+                        print('Setting new Track %s and Track-Marker at %s, %s' % ((100 + k), x, y))
+                    track_marker = db.setMarker(image=image, type=track_marker_type, track=100 + k, x=y, y=x,
+                                                text='Track %s, Prob %.2f' % ((100 + k), prob))
 
                     # Save measurement in Database
                     db.setMeasurement(marker=track_marker, log=prob, x=x, y=y)
+
+                # Case 2: we want to see the prediction markers
+                if i in MultiKal.Filters[k].Predicted_X.keys():
+                    pred_x, pred_y = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])
+                    pred_marker = db.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
+                                               type=prediction_marker_type)
 
         print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
 
