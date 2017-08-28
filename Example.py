@@ -1,49 +1,50 @@
 if __name__ == '__main__':
-    from PenguTrack.Filters import MultiFilter  # Tracker (assignment and data handling)
-    from PenguTrack.Filters import KalmanFilter  # Kalman Filter (storage of data, prediction, representation of tracks)
-    from PenguTrack.Models import VariableSpeed  # Physical Model (used for predictions)
-    from PenguTrack.Detectors import ThresholdSegmentation  # Segmentation Modul (splits image into fore and background
-    from PenguTrack.Detectors import RegionFilter, RegionPropDetector  # Detector (finds and filters objects in segmented image)
-    # from PenguTrack.Detectors import Measurement as Pengu_Measurement  #
-    from PenguTrack.DataFileExtended import DataFileExtended
-
-    import scipy.stats as ss
-    import numpy as np
-    # import matplotlib.pyplot as plt
-
     object_size = 8  # Object diameter (smallest)
     object_area = 40  # Object area in px
-    intensity_threshold = 150
+    intensity_threshold = 150 # Segmentation Threshold
+    q = 1.  # Variability of object speed relative to object size
+    r = 1.  # Error of object detection relative to object size
+    log_prob_threshold = -20.   # Threshold for track stopping
 
+    # Physical Model (used for predictions)
+    from PenguTrack.Models import VariableSpeed
     # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
-    model = VariableSpeed(1, 1, dim=2, timeconst=2)
+    model = VariableSpeed(dim=2, timeconst=2)
 
-    # Set up Kalman filter
-    q = 1
-    r = 1
-    X = np.zeros(4).T  # Initial Value for Position
-    Q = np.diag([q*object_size, q*object_size])  # Prediction uncertainty
-    R = np.diag([r*object_size, r*object_size])  # Measurement uncertainty
-
-    State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filter
-    Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
-
-    # Initialize Filter/Tracker
-    MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
-                           np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
-    MultiKal.LogProbabilityThreshold = -20.
-
-    # Open ClickPoints Database
-    db = DataFileExtended(".\ExampleData\ExampleData\cell_data.cdb")
-
+    # Segmentation Modul (splits image into fore and background
+    from PenguTrack.Detectors import TresholdSegmentation
     # Init Segmentation Module
-    TS = ThresholdSegmentation(intensity_threshold)
+    TS = TresholdSegmentation(intensity_threshold)
 
+    # Detector (finds and filters objects in segmented image)
+    from PenguTrack.Detectors import RegionFilter, RegionPropDetector
     # Init Detection Module
     rf = RegionFilter("area", object_area, var=0.8*object_area, lower_limit=0.5*object_area, upper_limit=1.5*object_area)
     AD = RegionPropDetector([rf])
     print('Initialized')
 
+    # Tracker (assignment and data handling)
+    from PenguTrack.Filters import MultiFilter
+    # Kalman Filter (storage of data, prediction, representation of tracks)
+    from PenguTrack.Filters import KalmanFilter
+    #Standard Modules for parametrization
+    import scipy.stats as ss
+    import numpy as np
+    # Set up Kalman filter
+    X = np.zeros(4).T  # Initial Value for Position
+    Q = np.diag([q*object_size, q*object_size])  # Prediction uncertainty
+    R = np.diag([r*object_size, r*object_size])  # Measurement uncertainty
+    State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filter
+    Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
+    # Initialize Filter/Tracker
+    MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
+                           np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
+    MultiKal.LogProbabilityThreshold = log_prob_threshold
+
+    # Extended Clickpoints Database for usage with pengutack
+    from PenguTrack.DataFileExtended import DataFileExtended
+    # Open ClickPoints Database
+    db = DataFileExtended(".\ExampleData\ExampleData\cell_data.cdb")
     # Define ClickPoints Marker
     detection_marker_type = db.setMarkerType(name="Detection_Marker", color="#FF0000", style='{"scale":1.2}')
     db.deleteMarkers(type=detection_marker_type)
@@ -51,28 +52,21 @@ if __name__ == '__main__':
     db.deleteMarkers(type=track_marker_type)
     prediction_marker_type = db.setMarkerType(name="Prediction_Marker", color="#0000FF")
     db.deleteMarkers(type=prediction_marker_type)
-
     # Delete Old Tracks
     db.deleteTracks(type=track_marker_type)
 
     # Start Iteration over Images
     print('Starting Iteration')
     images = db.getImageIterator()
-    # areas = []
     for image in images:
 
         i = image.get_id()
         # Prediction step, without applied control(vector of zeros)
-        MultiKal.predict(u=np.zeros((model.Control_dim,)).T, i=i)
+        MultiKal.predict(i=i)
 
         # Detection step
         SegMap = TS.detect(image.data)
         Positions = AD.detect(SegMap)
-        # import matplotlib.pyplot as plt
-        # areas.extend([pos.Data['area'][0] for pos in Positions])
-        # if len(areas)>1000:
-        #     plt.hist(areas, bins=100)
-        #     plt.show()
         print("Found %s Objects!"%len(Positions))
 
         # Write Segmentation Mask to Database

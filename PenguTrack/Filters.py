@@ -113,7 +113,7 @@ class Filter(object):
             try:
                 u = self.Controls[i-1]
             except KeyError:
-                u = np.zeros(self.Model.Control_dim)
+                u = np.zeros(self.Model.Control_dim,).T
         else:
             self.Controls.update({i-1: u})
 
