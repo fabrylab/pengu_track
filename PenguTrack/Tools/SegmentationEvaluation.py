@@ -10,6 +10,7 @@ from PenguTrack.DataFileExtended import DataFileExtended
 import matplotlib.pyplot as plt
 import seaborn as sn
 import my_plot
+sn.set_style("white")
 
 class SegmentationEvaluator(object):
     def __init__(self):
@@ -89,32 +90,34 @@ class SegmentationEvaluator(object):
 
 
 if __name__ == "__main__":
-    version="cell"
+    version="birdflight"
+    calc=False
     if version == "Adelie":
-        import os
-        with open("/home/birdflight/Desktop/SegmentationEvaluation.txt", "w") as myfile:
-            myfile.write("n,\t r,\t Sensitivity, \t Specificity, \t Precision \n")
-        for n in [1,2,3]:
-            for r in [1,5,7,10,12,15,20,30,40,50]:
-                if os.path.exists("/home/birdflight/Desktop/PT_Test_n%s_r%s.cdb"%(n,r)):
-                    pass
-                else:
-                    continue
-                seg = SegmentationEvaluator()
-                seg.load_GT_masks_from_clickpoints("/home/birdflight/Desktop/252_GT_Detections_Proj.cdb")
-                seg.load_System_masks_from_clickpoints("/home/birdflight/Desktop/PT_Test_n%s_r%s.cdb"%(n,r))
-                seg.match()
-                print(np.mean(seg.sensitivity.values()))
-                print(np.mean(seg.specificity.values()))
-                with open("/home/birdflight/Desktop/SegmentationEvaluation.txt", "a") as myfile:
-                    myfile.write(",\t".join([str(n),
-                                             str(r),
-                                             str(np.mean(seg.sensitivity.values())),
-                                             str(np.mean(seg.specificity.values())),
-                                             str(np.mean(seg.precision.values()))]))
-                    myfile.write("\n")
+        if calc:
+            import os
+            with open("/home/birdflight/Desktop/SegmentationEvaluation.txt", "w") as myfile:
+                myfile.write("n,\t r,\t Sensitivity, \t Specificity, \t Precision \n")
+            for n in [1,2,3]:
+                for r in [1,5,7,10,12,15,20,30,40,50]:
+                    if os.path.exists("/home/birdflight/Desktop/PT_Test_n%s_r%s.cdb"%(n,r)):
+                        pass
+                    else:
+                        continue
+                    seg = SegmentationEvaluator()
+                    seg.load_GT_masks_from_clickpoints("/home/birdflight/Desktop/252_GT_Detections_Proj.cdb")
+                    seg.load_System_masks_from_clickpoints("/home/birdflight/Desktop/PT_Test_n%s_r%s.cdb"%(n,r))
+                    seg.match()
+                    print(np.mean(seg.sensitivity.values()))
+                    print(np.mean(seg.specificity.values()))
+                    with open("/home/birdflight/Desktop/SegmentationEvaluation.txt", "a") as myfile:
+                        myfile.write(",\t".join([str(n),
+                                                 str(r),
+                                                 str(np.mean(seg.sensitivity.values())),
+                                                 str(np.mean(seg.specificity.values())),
+                                                 str(np.mean(seg.precision.values()))]))
+                        myfile.write("\n")
 
-        data = np.genfromtxt("/home/birdflight/Desktop/SegmentationEvaluation.txt", delimiter=",")[1:]
+        data = np.genfromtxt("/home/alex/Masterarbeit/Data/Adelies/Evaluation/SegmentationEvaluation.txt", delimiter=",")[1:]
         fig, ax = plt.subplots()
         ax.set_xlim([1e-7, 5e-3])
         ax.set_xscale('log')
@@ -133,11 +136,12 @@ if __name__ == "__main__":
             # for xyr in zip(1-data[mask].T[3],data[mask].T[2],data[mask].T[1]):
             #     ax.annotate('%s' %xyr[-1], xy=xyr[:-1], textcoords='data')
         # ax.ticklabel_format(axis='x', style='sci', scilimits=(-2, 2))
-        plt.legend(loc='best')
+        ax.legend(loc="best", prop={"size":10})
         my_plot.despine(ax)
-        my_plot.setAxisSizeMM(fig,ax,147,90)
-        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation.pdf")
-        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation.png")
+        my_plot.setAxisSizeMM(fig, ax, 147/2, 90/2)
+        plt.tight_layout()
+        plt.savefig("/home/alex/Desktop/SegmentationEvaluation.pdf")
+        plt.savefig("/home/alex/Desktop/SegmentationEvaluation.png")
 
         fig, ax = plt.subplots()
         ax.set_xlim([0, 55])
@@ -149,14 +153,16 @@ if __name__ == "__main__":
             mask = data.T[0]==n
             # n = 5 if n==43 else n
             ax.plot(data[mask].T[1],data[mask].T[2], '-o', color=c[n-1], label=r"$N_{min}=%s$"%n)
-        ax.legend()
+        ax.legend(loc="best", prop={"size":10})
         my_plot.despine(ax)
-        my_plot.setAxisSizeMM(fig,ax,147,90)
-        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_TPR.pdf")
-        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_TPR.png")
+        my_plot.setAxisSizeMM(fig, ax, 147/2, 90/2)
+        plt.tight_layout()
+        plt.savefig("/home/alex/Desktop/SegmentationEvaluation_TPR.pdf")
+        plt.savefig("/home/alex/Desktop/SegmentationEvaluation_TPR.png")
 
         fig = plt.figure()
         ax = plt.subplot(111)
+        # ax.grid(False)
         ax.set_xlim([0, 55])
         ax.set_ylim([-0.05, 1.05])
         ax.set_xlabel("ViBe Sensititivity Parameter")
@@ -166,37 +172,39 @@ if __name__ == "__main__":
             mask = data.T[0]==n
             # n = 5 if n==43 else n
             ax.plot(data[mask].T[1],data[mask].T[4], '-o', color=c[n-1], label=r"$N_{min}=%s$"%n)
-        ax.legend(loc="center right")
+        lg = ax.legend(loc="center right", prop={"size":10}, bbox_to_anchor=(1.15,0.55))
         my_plot.despine(ax)
-        my_plot.setAxisSizeMM(fig,ax,147,90)
-        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_PRE.pdf")
-        plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_PRE.png")
+        my_plot.setAxisSizeMM(fig, ax, 147/2, 90/2)
+        plt.tight_layout()
+        plt.savefig("/home/alex/Desktop/SegmentationEvaluation_PRE.pdf", bbox_extra_artists=(lg,), bbox_inches='tight')
+        plt.savefig("/home/alex/Desktop/SegmentationEvaluation_PRE.png", bbox_extra_artists=(lg,), bbox_inches='tight')
         plt.show()
     elif version == "birdflight":
-        import os
+        if calc:
+            import os
 
-        with open("/home/birdflight/Desktop/SegmentationEvaluation_bf.txt", "w") as myfile:
-            myfile.write("n,\t r,\t Sensitivity, \t Specificity, \t Precision \n")
-        for n in [3]:
-            for r in [5,10, 20, 30, 40, 50]:
-                if os.path.exists("/mnt/mmap/Starter_n%s_%s_r%s.cdb" % (n, n, r)):
-                    pass
-                else:
-                    continue
-                seg = SegmentationEvaluator()
-                seg.load_GT_masks_from_clickpoints("/mnt/mmap/GT_Starter.cdb")
-                # seg.load_System_masks_from_clickpoints("/mnt/mmap/GT_Starter.cdb")
-                seg.load_System_masks_from_clickpoints("/mnt/mmap/Starter_n%s_%s_r%s.cdb" % (n, n, r))
-                seg.match(gt_inverse=False)
-                print(np.mean(seg.sensitivity.values()))
-                print(np.mean(seg.specificity.values()))
-                with open("/home/birdflight/Desktop/SegmentationEvaluation_bf.txt", "a") as myfile:
-                    myfile.write(",\t".join([str(n),
-                                             str(r),
-                                             str(np.mean(seg.sensitivity.values())),
-                                             str(np.mean(seg.specificity.values())),
-                                             str(np.mean(seg.precision.values()))]))
-                    myfile.write("\n")
+            with open("/home/birdflight/Desktop/SegmentationEvaluation_bf.txt", "w") as myfile:
+                myfile.write("n,\t r,\t Sensitivity, \t Specificity, \t Precision \n")
+            for n in [3]:
+                for r in [5,10, 20, 30, 40, 50]:
+                    if os.path.exists("/mnt/mmap/Starter_n%s_%s_r%s.cdb" % (n, n, r)):
+                        pass
+                    else:
+                        continue
+                    seg = SegmentationEvaluator()
+                    seg.load_GT_masks_from_clickpoints("/mnt/mmap/GT_Starter.cdb")
+                    # seg.load_System_masks_from_clickpoints("/mnt/mmap/GT_Starter.cdb")
+                    seg.load_System_masks_from_clickpoints("/mnt/mmap/Starter_n%s_%s_r%s.cdb" % (n, n, r))
+                    seg.match(gt_inverse=False)
+                    print(np.mean(seg.sensitivity.values()))
+                    print(np.mean(seg.specificity.values()))
+                    with open("/home/birdflight/Desktop/SegmentationEvaluation_bf.txt", "a") as myfile:
+                        myfile.write(",\t".join([str(n),
+                                                 str(r),
+                                                 str(np.mean(seg.sensitivity.values())),
+                                                 str(np.mean(seg.specificity.values())),
+                                                 str(np.mean(seg.precision.values()))]))
+                        myfile.write("\n")
 
         data = np.genfromtxt("/home/birdflight/Desktop/SegmentationEvaluation_bf.txt", delimiter=",")[1:]
         fig, ax = plt.subplots()
@@ -260,57 +268,58 @@ if __name__ == "__main__":
         plt.savefig("/home/birdflight/Desktop/SegmentationEvaluation_PRE_bf.png")
         plt.show()
     elif version == "cell":
+        if calc:
+            import os
+            with open("/home/alex/Desktop/SegmentationEvaluation_ce.txt", "w") as myfile:
+                myfile.write("n,\t r,\t Sensitivity, \t Specificity, \t Precision \n")
+            for t in [700,800,825,850,875,900,1000,1100,1200]:
+                for a in [20]:
+                    if os.path.exists("/home/alex/Desktop/PT_Cell_T%s.cdb"%(t)):
+                        pass
+                    else:
+                        continue
+                    seg = SegmentationEvaluator()
+                    seg.load_GT_masks_from_clickpoints("/home/alex/Desktop/PT_Cell_Test_GT.cdb")
+                    # seg.load_System_masks_from_clickpoints("/mnt/mmap/GT_Starter.cdb")
+                    seg.load_System_masks_from_clickpoints("/home/alex/Desktop/PT_Cell_T%s.cdb"%(t))
+                    seg.match()
+                    print(np.mean(seg.sensitivity.values()))
+                    print(np.mean(seg.specificity.values()))
+                    with open("/home/alex/Desktop/SegmentationEvaluation_ce.txt", "a") as myfile:
+                        myfile.write(",\t".join([str(t),
+                                                 str(a),
+                                                 str(np.mean(seg.sensitivity.values())),
+                                                 str(np.mean(seg.specificity.values())),
+                                                 str(np.mean(seg.precision.values()))]))
+                        myfile.write("\n")
 
-        import os
-        with open("/home/alex/Desktop/SegmentationEvaluation_ce.txt", "w") as myfile:
-            myfile.write("n,\t r,\t Sensitivity, \t Specificity, \t Precision \n")
-        for t in [700,800,825,850,875,900,1000,1100,1200]:
-            for a in [20]:
-                if os.path.exists("/home/alex/Desktop/PT_Cell_T%s.cdb"%(t)):
-                    pass
-                else:
-                    continue
-                seg = SegmentationEvaluator()
-                seg.load_GT_masks_from_clickpoints("/home/alex/Desktop/PT_Cell_Test_GT.cdb")
-                # seg.load_System_masks_from_clickpoints("/mnt/mmap/GT_Starter.cdb")
-                seg.load_System_masks_from_clickpoints("/home/alex/Desktop/PT_Cell_T%s.cdb"%(t))
-                seg.match()
-                print(np.mean(seg.sensitivity.values()))
-                print(np.mean(seg.specificity.values()))
-                with open("/home/alex/Desktop/SegmentationEvaluation_ce.txt", "a") as myfile:
-                    myfile.write(",\t".join([str(t),
-                                             str(a),
-                                             str(np.mean(seg.sensitivity.values())),
-                                             str(np.mean(seg.specificity.values())),
-                                             str(np.mean(seg.precision.values()))]))
-                    myfile.write("\n")
-
-        data = np.genfromtxt("/home/alex/Desktop/SegmentationEvaluation_ce.txt", delimiter=",")[1:]
-        fig, ax = plt.subplots()
-        # ax.set_xlim([1e-7, 5e-3])
-        # ax.set_xscale('log')
-        ax.set_ylim([-0.05, 1.05])
-        ax.set_xlim([-0.05, 1.05])
-        ax.set_xlabel("False Positive Rate")
-        ax.set_ylabel("True Positive Rate")
-        c = sn.color_palette(n_colors=6)
-        for j, a in enumerate([20]):
-            mask = data.T[1] == a
-            # n = 5 if n==43 else n
-            ax.fill_between(1. - data[mask].T[3], data[mask].T[2], color=c[j - 1], alpha=0.2)
-        for j, a in enumerate([20]):
-            mask = data.T[1] == a
-            # n = 5 if n==43 else n
-            ax.plot(1 - data[mask].T[3], data[mask].T[2], '-o', color=c[j - 1], label="Cell Data")
-            # for xyr in zip(1-data[mask].T[3],data[mask].T[2],data[mask].T[1]):
-            #     ax.annotate('%s' %xyr[-1], xy=xyr[:-1], textcoords='data')
-        # ax.ticklabel_format(axis='x', style='sci', scilimits=(-2, 2))
-        plt.legend(loc='best')
-        my_plot.despine(ax)
-        my_plot.setAxisSizeMM(fig, ax, 147, 90)
-        plt.savefig("/home/alex/Desktop/SegmentationEvaluation_ce.pdf")
-        plt.savefig("/home/alex/Desktop/SegmentationEvaluation_ce.png")
-
+        data = np.genfromtxt("/home/alex/Masterarbeit/Data/Cells/Evaluation/SegmentationEvaluation_ce.txt", delimiter=",")[1:]
+        # fig, ax = plt.subplots()
+        # # ax.set_xlim([1e-7, 5e-3])
+        # # ax.set_xscale('log')
+        # ax.set_ylim([-0.05, 1.05])
+        # ax.set_xlim([-0.05, 1.05])
+        # ax.set_xlabel("False Positive Rate")
+        # ax.set_ylabel("True Positive Rate")
+        # c = sn.color_palette(n_colors=6)
+        # for j, a in enumerate([20]):
+        #     mask = data.T[1] == a
+        #     # n = 5 if n==43 else n
+        #     ax.fill_between(1. - data[mask].T[3], data[mask].T[2], color=c[j - 1], alpha=0.2)
+        # for j, a in enumerate([20]):
+        #     mask = data.T[1] == a
+        #     # n = 5 if n==43 else n
+        #     ax.plot(1 - data[mask].T[3], data[mask].T[2], '-o', color=c[j - 1], label="Cell Data")
+        #     # for xyr in zip(1-data[mask].T[3],data[mask].T[2],data[mask].T[1]):
+        #     #     ax.annotate('%s' %xyr[-1], xy=xyr[:-1], textcoords='data')
+        # # ax.ticklabel_format(axis='x', style='sci', scilimits=(-2, 2))
+        # plt.legend(loc='best')
+        # my_plot.despine(ax)
+        # my_plot.setAxisSizeMM(fig, ax, 147, 90)
+        # plt.savefig("/home/alex/Desktop/SegmentationEvaluation_ce.pdf")
+        # plt.savefig("/home/alex/Desktop/SegmentationEvaluation_ce.png")
+# if True:
+#     if True:
         fig, ax = plt.subplots()
         ax.set_xlim([600,1300])
         ax.set_ylim([-0.05, 1.05])
@@ -320,12 +329,16 @@ if __name__ == "__main__":
         for j, a in enumerate([20]):
             mask = data.T[1] == a
             # n = 5 if n==43 else n
-            ax.plot(data[mask].T[0], data[mask].T[2], '-o', color=c[j - 1], label="Cell Data")
-        ax.legend("best")
+            l = ax.plot(data[mask].T[0], data[mask].T[2], '-o', color=c[j - 1], label="Cell Data")
+            # ax.plot(data[mask].T[0], data[mask].T[2], '-o', color=c[j - 1], label="Cell Data")
+        ax.legend(loc="best", prop={"size":10})
+        # fig.legend((l),("Cell Data",), loc="best")
         my_plot.despine(ax)
-        my_plot.setAxisSizeMM(fig, ax, 147, 90)
+        my_plot.setAxisSizeMM(fig, ax, 147/2, 90/2)
+        plt.tight_layout()
         plt.savefig("/home/alex/Desktop/SegmentationEvaluation_TPR_ce.pdf")
         plt.savefig("/home/alex/Desktop/SegmentationEvaluation_TPR_ce.png")
+        plt.show()
 
         fig = plt.figure()
         ax = plt.subplot(111)
@@ -337,10 +350,12 @@ if __name__ == "__main__":
         for j, a in enumerate([20]):
             mask = data.T[1] == a
             # n = 5 if n==43 else n
-            ax.plot(data[mask].T[0], data[mask].T[3], '-o', color=c[j - 1], label="Cell Data")
-        ax.legend(loc="best")
+            l= ax.plot(data[mask].T[0], data[mask].T[4], '-o', color=c[j - 1], label="Cell Data")
+        ax.legend(loc="best", prop={"size":10})
+        # fig.legend((l),("Cell Data",), loc="best")
         my_plot.despine(ax)
-        my_plot.setAxisSizeMM(fig, ax, 147, 90)
+        my_plot.setAxisSizeMM(fig, ax, 147/2, 90/2)
+        plt.tight_layout()
         plt.savefig("/home/alex/Desktop/SegmentationEvaluation_PRE_ce.pdf")
         plt.savefig("/home/alex/Desktop/SegmentationEvaluation_PRE_ce.png")
         plt.show()

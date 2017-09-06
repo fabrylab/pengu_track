@@ -47,65 +47,149 @@ class Evaluator(object):
 
     def load_GT_tracks_from_clickpoints(self, path, type, use_measurements=False):
         self.GT_db = DataFileExtended(path)
+        N = self.GT_db.getMarkers(type=type).count()
+        i=0
         if self.GT_db.getTracks(type=type)[0].markers[0].measurement is not None and \
             len(self.GT_db.getTracks(type=type)[0].markers[0].measurement)>0 and \
                 use_measurements:
             for track in self.GT_db.getTracks(type=type):
+                print(i/N)
+                i+=track.markers.count()
                 self.GT_Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
-                for m in track.markers:
-                    meas = Measurement(1., [m.measurement[0].x,
-                                            m.measurement[0].y,
-                                            m.measurement[0].z])
-                    # self.GT_Tracks[track.id].update(z=meas, i=m.image.timestamp)
-                    if np.any([im.timestamp is None for im in self.GT_db.getImages()]):
-                        self.GT_Tracks[track.id].update(z=meas, i=m.image.filename)
-                    else:
-                        self.GT_Tracks[track.id].update(z=meas, i=m.image.timestamp)
+                if np.any([im.timestamp is None for im in self.GT_db.getImages()]):
+                    self.GT_Tracks[track.id].X = dict(
+                        [[m.image.sort_index,
+                          np.array([m.measurement[0].x,
+                           m.measurement[0].y,
+                           m.measurement[0].z])]
+                         for m in track.markers]
+                    )
+                else:
+                    self.GT_Tracks[track.id].X = dict(
+                        [[m.image.timestamp,
+                          np.array([m.measurement[0].x,
+                           m.measurement[0].y,
+                           m.measurement[0].z])]
+                         for m in track.markers]
+                    )
+                # for m in track.markers:
+                #     print(i/N)
+                #     i += 1
+                #     meas = Measurement(1., [m.measurement[0].x,
+                #                             m.measurement[0].y,
+                #                             m.measurement[0].z])
+                #     # self.GT_Tracks[track.id].update(z=meas, i=m.image.timestamp)
+                #     if np.any([im.timestamp is None for im in self.GT_db.getImages()]):
+                #         self.GT_Tracks[track.id].update(z=meas, i=m.image.filename)
+                #     else:
+                #         self.GT_Tracks[track.id].update(z=meas, i=m.image.timestamp)
 
         else:
             for track in self.GT_db.getTracks(type=type):
+                print(i/N)
+                i+=track.markers.count()
                 self.GT_Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
-                for m in track.markers:
-                    meas = Measurement(1., [m.x,
-                                            m.y,
-                                            0])
-
-                    if np.any([im.timestamp is None for im in self.GT_db.getImages()]):
-                        self.GT_Tracks[track.id].update(z=meas, i=m.image.sort_index)
-                    else:
-                        self.GT_Tracks[track.id].update(z=meas, i=m.image.timestamp)
+                if np.any([im.timestamp is None for im in self.GT_db.getImages()]):
+                    self.GT_Tracks[track.id].X = dict(
+                        [[m.image.sort_index,
+                          np.array([m.x,
+                           m.y,
+                           0.])]
+                         for m in track.markers]
+                    )
+                else:
+                    self.GT_Tracks[track.id].X = dict(
+                        [[m.image.timestamp,
+                          np.array([m.x,
+                           m.y,
+                           0.])]
+                         for m in track.markers]
+                    )
+                # for m in track.markers:
+                #     print(i/N)
+                #     i += 1
+                #     meas = Measurement(1., [m.x,
+                #                             m.y,
+                #                             0])
+                #
+                #     if np.any([im.timestamp is None for im in self.GT_db.getImages()]):
+                #         self.GT_Tracks[track.id].update(z=meas, i=m.image.sort_index)
+                #     else:
+                #         self.GT_Tracks[track.id].update(z=meas, i=m.image.timestamp)
 
 
     def load_System_tracks_from_clickpoints(self, path, type, use_measurements=False):
         self.System_db = DataFileExtended(path)
+        N = self.System_db.getMarkers(type=type).count()
+        i=0
         if self.System_db.getTracks(type=type)[0].markers[0].measurement is not None and \
             len(self.System_db.getTracks(type=type)[0].markers[0].measurement)>0 and \
             use_measurements:
             for track in self.System_db.getTracks(type=type):
+                print(i/N)
+                i+=track.markers.count()
                 self.System_Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
-                for m in track.markers:
-                    meas = Measurement(1., [m.measurement[0].x,
-                                            m.measurement[0].y,
-                                            m.measurement[0].z],
-                                       frame=m.image.sort_index)
-                    # self.System_Tracks[track.id].update(z=meas, i=m.image.timestamp)
-                    if np.any([im.timestamp is None for im in self.System_db.getImages()]):
-                        self.System_Tracks[track.id].update(z=meas, i=m.image.sort_index)
-                    else:
-                        self.System_Tracks[track.id].update(z=meas, i=m.image.timestamp)
+                if np.any([im.timestamp is None for im in self.System_db.getImages()]):
+                    self.System_Tracks[track.id].X=dict(
+                        [[m.image.sort_index,
+                          np.array([m.measurement[0].x,
+                           m.measurement[0].y,
+                           m.measurement[0].z])]
+                        for m in track.markers]
+                    )
+                else:
+                    self.System_Tracks[track.id].X=dict(
+                        [[m.image.timestamp,
+                          np.array([m.measurement[0].x,
+                           m.measurement[0].y,
+                           m.measurement[0].z])]
+                        for m in track.markers]
+                    )
+                # for m in track.markers:
+                #     print(i/N)
+                #     i += 1
+                #     meas = Measurement(1., [m.measurement[0].x,
+                #                             m.measurement[0].y,
+                #                             m.measurement[0].z],
+                #                        frame=m.image.sort_index)
+                #     # self.System_Tracks[track.id].update(z=meas, i=m.image.timestamp)
+                #     if np.any([im.timestamp is None for im in self.System_db.getImages()]):
+                #         self.System_Tracks[track.id].update(z=meas, i=m.image.sort_index)
+                #     else:
+                #         self.System_Tracks[track.id].update(z=meas, i=m.image.timestamp)
 
         else:
             for track in self.System_db.getTracks(type=type):
+                print(i/N)
+                i+=track.markers.count()
                 self.System_Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
-                for m in track.markers:
-                    meas = Measurement(1., [m.x,
-                                            m.y,
-                                            0], frame=m.image.sort_index)
-                    # self.System_Tracks[track.id].update(z=meas, i=m.image.timestamp)
-                    if np.any([im.timestamp is None for im in self.System_db.getImages()]):
-                        self.System_Tracks[track.id].update(z=meas, i=m.image.sort_index)
-                    else:
-                        self.System_Tracks[track.id].update(z=meas, i=m.image.timestamp)
+                if np.any([im.timestamp is None for im in self.System_db.getImages()]):
+                    self.System_Tracks[track.id].X=dict(
+                        [[m.image.sort_index,
+                          np.array([m.x,
+                           m.y,
+                           0.])]
+                        for m in track.markers]
+                    )
+                else:
+                    self.System_Tracks[track.id].X=dict(
+                        [[m.image.timestamp,
+                          np.array([m.x,
+                           m.y,
+                           0.])]
+                        for m in track.markers]
+                    )
+                # for m in track.markers:
+                #     print(i/N)
+                #     i += 1
+                #     meas = Measurement(1., [m.x,
+                #                             m.y,
+                #                             0], frame=m.image.sort_index)
+                #     # self.System_Tracks[track.id].update(z=meas, i=m.image.timestamp)
+                #     if np.any([im.timestamp is None for im in self.System_db.getImages()]):
+                #         self.System_Tracks[track.id].update(z=meas, i=m.image.sort_index)
+                #     else:
+                #         self.System_Tracks[track.id].update(z=meas, i=m.image.timestamp)
 
 
     def save_tracks_to_db(self, path, type, function=None):
@@ -554,13 +638,13 @@ if __name__ == "__main__":
 
         evaluation = Alex_Evaluator(0.525, 37.9, 0.24, 2592, 9e-3, 14e-3
                                     ,temporal_threshold=0.01, spacial_threshold=0.4, tolerance=1)
-        evaluation.load_GT_tracks_from_clickpoints(path="/home/birdflight/Desktop/Adelie_Evaluation/252Horizon.cdb", type="GT_under_limit")
-        evaluation.load_System_tracks_from_clickpoints(path="/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb", type="PT_Track_Marker")
-        evaluation.load_System_tracks_from_clickpoints(path="/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb", type="PT_Track_Marker")
-        evaluation.system_db = clickpoints.DataFile("/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb")
+        evaluation.load_GT_tracks_from_clickpoints(path="/home/alex/Masterarbeit/Data/Adelies/DataBases/252Horizon.cdb", type="GT_under_limit")
+        evaluation.load_System_tracks_from_clickpoints(path="/home/alex/Masterarbeit/Data/Adelies/DataBases/PT_Test_full_n3_r7_A20.cdb", type="PT_Track_Marker")
+        # evaluation.load_System_tracks_from_clickpoints(path="/home/alex/Masterarbeit/Data/Adelies/DataBases/PT_Test_full_n3_r7_A20.cdb", type="PT_Track_Marker")
+        evaluation.system_db = clickpoints.DataFile("/home/alex/Masterarbeit/Data/Adelies/DataBases/PT_Test_full_n3_r7_A20.cdb")
         evaluation.system_db.setMarkerType(name="GT_under_limit", color="#FFFFFF", mode=evaluation.system_db.TYPE_Track)
         evaluation.system_db.setMarkerType(name="Match", color="#FF8800", mode=evaluation.system_db.TYPE_Track)
-        evaluation.save_GT_tracks_to_db(path="/home/birdflight/Desktop/Adelie_Evaluation/PT_Test_full_n3_r7_A20.cdb", type="GT_under_limit")
+        evaluation.save_GT_tracks_to_db(path="/home/alex/Masterarbeit/Data/Adelies/DataBases/PT_Test_full_n3_r7_A20.cdb", type="GT_under_limit")
 
         # for f in sorted(evaluation.GT_Tracks.values()[0].X.keys())[:20]:
         for f in sorted(set(np.hstack([track.X.keys() for track in evaluation.GT_Tracks.values()])))[:20]:
@@ -580,12 +664,12 @@ if __name__ == "__main__":
         idc = []
         a = []
 
-        print(evaluation.Matches)
+        print_save(evaluation.Matches)
         for m in evaluation.Matches:
-            print("------------")
-            print(m)
-            tmemt.append(evaluation.TMEMT(m))
-            tmemtd.append(evaluation.TMEMTD(m))
+            print_save("------------")
+            print_save(m)
+            tmemt.append(evaluation.rTMEMT(m))
+            tmemtd.append(evaluation.rTMEMTD(m))
             tc.append(evaluation.TC(m))
             r2.append(evaluation.R2(m))
             r3.append(evaluation.R3(m))
@@ -594,33 +678,33 @@ if __name__ == "__main__":
             lt.append(evaluation.LT(m))
             idc.append(evaluation.IDC(m))
             a.append(evaluation.activity(m))
-            print("TMEMT", tmemt[-1], tmemtd[-1])
-            print("TMEMT coeff", tmemtd[-1] / tmemt[-1])
-            print("TC", tc[-1])
-            print("corrected TC", tc[-1] / a[-1])
-            print("R2", r2[-1])
-            print("R3", r3[-1])
-            print("CTM", ctm[-1])
-            print("CTD", ctd[-1])
-            print("LT", lt[-1])
-            print("IDC", idc[-1])
-            print("activity", a[-1])
+            print_save("TMEMT", tmemt[-1], tmemtd[-1])
+            print_save("TMEMT coeff", tmemtd[-1] / tmemt[-1])
+            print_save("TC", tc[-1])
+            print_save("corrected TC", tc[-1] / a[-1])
+            print_save("R2", r2[-1])
+            print_save("R3", r3[-1])
+            print_save("CTM", ctm[-1])
+            print_save("CTD", ctd[-1])
+            print_save("LT", lt[-1])
+            print_save("IDC", idc[-1])
+            print_save("activity", a[-1])
 
-        print("------------")
-        print("----mean----")
-        print("TMEMT", np.mean(tmemt), np.std(tmemtd) / len(tmemtd) ** 0.5)
-        print("TMEMT coeff", np.mean(np.asarray(tmemtd) / np.asarray(tmemt)),
-              np.std(np.asarray(tmemtd) / np.asarray(tmemt)) / len(tmemt) ** 0.5)
-        print("TC", np.mean(tc), np.std(tc) / len(tc) ** 0.5)
-        print("corrected TC", np.mean(np.asarray(tc) / np.asarray(a)),
-              np.std(np.asarray(tc) / np.asarray(a)) / len(a) ** 0.5)
-        print("R2", np.mean(r2), np.std(r2) / len(r2) ** 0.5)
-        print("R3", np.mean(r3), np.std(r3) / len(r3) ** 0.5)
-        print("CTM", np.mean(ctm), np.std(ctm) / len(ctm) ** 0.5)
-        print("CTD", np.mean(ctd), np.std(ctd) / len(ctd) ** 0.5)
-        print("LT", np.mean([l.seconds for l in lt]), np.std([l.seconds for l in lt]) / len(lt) ** 0.5)
-        print("IDC", np.mean(idc), np.std(idc) / len(idc) ** 0.5)
-        print("activity", np.mean(a), np.std(a) / len(a) ** 0.5)
+        print_save("------------")
+        print_save("----mean----")
+        print_save("TMEMT", np.nanmean(tmemt), np.nanstd(tmemtd) / len(tmemtd) ** 0.5)
+        print_save("TMEMT coeff", np.nanmean(np.asarray(tmemtd) / np.asarray(tmemt)),
+              np.nanstd(np.asarray(tmemtd) / np.asarray(tmemt)) / len(tmemt) ** 0.5)
+        print_save("TC", np.nanmean(tc), np.nanstd(tc) / len(tc) ** 0.5)
+        print_save("corrected TC", np.nanmean(np.asarray(tc) / np.asarray(a)),
+              np.nanstd(np.asarray(tc) / np.asarray(a)) / len(a) ** 0.5)
+        print_save("R2", np.nanmean(r2), np.nanstd(r2) / len(r2) ** 0.5)
+        print_save("R3", np.nanmean(r3), np.nanstd(r3) / len(r3) ** 0.5)
+        print_save("CTM", np.nanmean(ctm), np.nanstd(ctm) / len(ctm) ** 0.5)
+        print_save("CTD", np.nanmean(ctd), np.nanstd(ctd) / len(ctd) ** 0.5)
+        print_save("LT", np.nanmean([l.total_seconds() for l in lt]), np.nanstd([l.total_seconds() for l in lt]) / len(lt) ** 0.5)
+        print_save("IDC", np.nanmean(idc), np.nanstd(idc) / len(idc) ** 0.5)
+        print_save("activity", np.nanmean(a), np.nanstd(a) / len(a) ** 0.5)
 
         from datetime import timedelta
 
@@ -671,8 +755,8 @@ if __name__ == "__main__":
         fig.autofmt_xdate()
         fig.legend([lines[k] for k in sorted(lines.keys())], [k[:-2] for k in sorted(lines.keys())], ncol=3, loc="lower center",
                    prop={"size": 12})
-        plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Pictures/Adelie_TrackEvaluation.pdf")
-        plt.savefig("/home/birdflight/Desktop/Adelie_Evaluation/Pictures/Adelie_TrackEvaluation.png")
+        plt.savefig("/home/alex/Masterarbeit/Data/Adelies/Evaluation/Adelie_TrackEvaluation.pdf")
+        plt.savefig("/home/alex/Masterarbeit/Data/Adelies/EvaluationAdelie_TrackEvaluation.png")
         plt.show()
 
     elif version == "cell":
@@ -694,15 +778,15 @@ if __name__ == "__main__":
         # evaluation = Alex_Evaluator(0.525, 37.9, 0.24, 2592, 9e-3, 14e-3
         #                             , temporal_threshold=0.01, spacial_threshold=0.4, tolerance=1)
         evaluation = Yin_Evaluator(16, temporal_threshold=0.01, spacial_threshold=0.4)
-        evaluation.load_GT_tracks_from_clickpoints(path="/home/alex/Desktop/PT_Cell_GT_Track.cdb",
+        evaluation.load_GT_tracks_from_clickpoints(path="/home/alex/Masterarbeit/Data/Cells/DataBases/PT_Cell_GT_Track.cdb",
                                                    type="GroundTruth")
         evaluation.load_System_tracks_from_clickpoints(
-            path="/home/alex/Desktop/PT_Cell_T850_A75_inf_3d.cdb", type="PT_Track_Marker")
+            path="/home/alex/Masterarbeit/Data/Cells/DataBases/PT_Cell_T850_A75_inf_3d.cdb", type="PT_Track_Marker")
         evaluation.system_db = clickpoints.DataFile(
-            "/home/alex/Desktop/PT_Cell_T850_A75_inf_3d.cdb")
+            "/home/alex/Masterarbeit/Data/Cells/DataBases/PT_Cell_T850_A75_inf_3d.cdb")
         evaluation.system_db.setMarkerType(name="GT", color="#FFFFFF", mode=evaluation.system_db.TYPE_Track)
         evaluation.system_db.setMarkerType(name="Match", color="#FF8800", mode=evaluation.system_db.TYPE_Track)
-        evaluation.save_GT_tracks_to_db(path="/home/alex/Desktop/PT_Cell_T850_A75_inf_3d.cdb",
+        evaluation.save_GT_tracks_to_db(path="/home/alex/Masterarbeit/Data/Cells/DataBases/PT_Cell_T850_A75_inf_3d.cdb",
                                         type="GT")
 
         # for f in sorted(evaluation.GT_Tracks[1].X.keys())[:20]:
@@ -754,23 +838,23 @@ if __name__ == "__main__":
 
         print_save("------------")
         print_save("----mean----")
-        print_save("TMEMT", np.mean(tmemt), np.std(tmemtd) / len(tmemtd) ** 0.5)
-        print_save("TMEMT coeff", np.mean(np.asarray(tmemtd) / np.asarray(tmemt)),
-              np.std(np.asarray(tmemtd) / np.asarray(tmemt)) / len(tmemt) ** 0.5)
-        print_save("TC", np.mean(tc), np.std(tc) / len(tc) ** 0.5)
-        print_save("corrected TC", np.mean(np.asarray(tc) / np.asarray(a)),
-              np.std(np.asarray(tc) / np.asarray(a)) / len(a) ** 0.5)
-        print_save("R2", np.mean(r2), np.std(r2) / len(r2) ** 0.5)
-        print_save("R3", np.mean(r3), np.std(r3) / len(r3) ** 0.5)
-        print_save("CTM", np.mean(ctm), np.std(ctm) / len(ctm) ** 0.5)
-        print_save("CTD", np.mean(ctd), np.std(ctd) / len(ctd) ** 0.5)
-        print_save("LT", np.mean([l.seconds for l in lt]), np.std([l.seconds for l in lt]) / len(lt) ** 0.5)
-        print_save("IDC", np.mean(idc), np.std(idc) / len(idc) ** 0.5)
-        print_save("activity", np.mean(a), np.std(a) / len(a) ** 0.5)
+        print_save("TMEMT", np.nanmean(tmemt), np.nanstd(tmemtd) / len(tmemtd) ** 0.5)
+        print_save("TMEMT coeff", np.nanmean(np.asarray(tmemtd) / np.asarray(tmemt)),
+              np.nanstd(np.asarray(tmemtd) / np.asarray(tmemt)) / len(tmemt) ** 0.5)
+        print_save("TC", np.nanmean(tc), np.nanstd(tc) / len(tc) ** 0.5)
+        print_save("corrected TC", np.nanmean(np.asarray(tc) / np.asarray(a)),
+              np.nanstd(np.asarray(tc) / np.asarray(a)) / len(a) ** 0.5)
+        print_save("R2", np.nanmean(r2), np.nanstd(r2) / len(r2) ** 0.5)
+        print_save("R3", np.nanmean(r3), np.nanstd(r3) / len(r3) ** 0.5)
+        print_save("CTM", np.nanmean(ctm), np.nanstd(ctm) / len(ctm) ** 0.5)
+        print_save("CTD", np.nanmean(ctd), np.nanstd(ctd) / len(ctd) ** 0.5)
+        print_save("LT", np.nanmean([l.seconds for l in lt]), np.nanstd([l.seconds for l in lt]) / len(lt) ** 0.5)
+        print_save("IDC", np.nanmean(idc), np.nanstd(idc) / len(idc) ** 0.5)
+        print_save("activity", np.nanmean(a), np.nanstd(a) / len(a) ** 0.5)
 
     # elif version == "beer":
-if True:
-    if True:
+# if True:
+#     if True:
         eve = evaluation
         from datetime import timedelta
         import matplotlib.dates as md
@@ -853,11 +937,27 @@ if True:
                    prop={"size": 12})
 
         plt.tight_layout(pad=1.2)
-        plt.savefig("/home/alex/Masterarbeit/Pictures/Cell_TrackEvaluation3d.pdf", bbox_extra_artists=(lgd, title,), bbox_inches='tight')
-        plt.savefig("/home/alex/Masterarbeit/Pictures/Cell_TrackEvaluation3d.png", bbox_extra_artists=(lgd, title,), bbox_inches='tight')
+        plt.savefig("/home/alex/Masterarbeit/Data/Cells/Evaluation/Cell_TrackEvaluation3d.pdf", bbox_extra_artists=(lgd, title,), bbox_inches='tight')
+        plt.savefig("/home/alex/Masterarbeit/Data/Cells/Evaluation/Cell_TrackEvaluation3d.png", bbox_extra_artists=(lgd, title,), bbox_inches='tight')
         plt.show()
 
     elif version == "bird":
+
+        text_file = "/home/alex/Desktop/TrackingEvaluation_bird.txt"
+        with open("/home/alex/Desktop/TrackingEvaluation_bird.txt", "w") as myfile:
+            myfile.write("Tracking evaluation\n")
+
+
+        def print_save(*args):
+            try:
+                string = "\t".join([str(l) for l in args])
+            except TypeError:
+                string = str(args)
+            with open(text_file, "a") as my_file:
+                my_file.write(string)
+                my_file.write("\n")
+            print(string)
+
         import clickpoints
         import numpy as np
         import matplotlib.pyplot as plt
@@ -865,11 +965,11 @@ if True:
         import my_plot
 
         eve = Yin_Evaluator(10, spacial_threshold=0.01, temporal_threshold=0.1)
-        eve.load_GT_tracks_from_clickpoints("/mnt/mmap/GT_Starter.cdb", "GT_Bird")
+        eve.load_GT_tracks_from_clickpoints("/home/alex/Masterarbeit/Data/Birds/DataBases/GT_Starter.cdb", "GT_Bird")
         # eve.load_System_tracks_from_clickpoints("/mnt/mmap/Starter_n3_3_r20.cdb", type="PT_Track_Marker")
-        eve.load_System_tracks_from_clickpoints("/mnt/mmap/Starter_n3_3_r20_F5_q200_r100.cdb", type="PT_Track_Marker")
+        eve.load_System_tracks_from_clickpoints("/home/alex/Masterarbeit/Data/Birds/DataBases/Starter_n3_3_r20_F5_q200_r100.cdb", type="PT_Track_Marker")
         eve.match()
-        print(eve.Matches)
+        print_save(eve.Matches)
 
         tmemt = []
         tmemtd = []
@@ -882,11 +982,11 @@ if True:
         idc = []
         a = []
 
-        print(eve.Matches)
+        print_save(eve.Matches)
         TC = {}
         for m in eve.Matches:
-            print("------------")
-            print(m)
+            print_save("------------")
+            print_save(m)
             tmemt.append(eve.TMEMT(m))
             tmemtd.append(eve.TMEMTD(m))
             tc.append(eve.TC(m))
@@ -897,34 +997,34 @@ if True:
             lt.append(eve.LT(m))
             idc.append(eve.IDC(m))
             a.append(eve.activity(m))
-            print("TMEMT", tmemt[-1], tmemtd[-1])
-            print("TMEMT coeff", tmemtd[-1] / tmemt[-1])
-            print("TC", tc[-1])
+            print_save("TMEMT", tmemt[-1], tmemtd[-1])
+            print_save("TMEMT coeff", tmemtd[-1] / tmemt[-1])
+            print_save("TC", tc[-1])
             TC.update({m: tc[-1]})
-            print("corrected TC", tc[-1] / a[-1])
-            print("R2", r2[-1])
-            print("R3", r3[-1])
-            print("CTM", ctm[-1])
-            print("CTD", ctd[-1])
-            print("LT", lt[-1])
-            print("IDC", idc[-1])
-            print("activity", a[-1])
+            print_save("corrected TC", tc[-1] / a[-1])
+            print_save("R2", r2[-1])
+            print_save("R3", r3[-1])
+            print_save("CTM", ctm[-1])
+            print_save("CTD", ctd[-1])
+            print_save("LT", lt[-1])
+            print_save("IDC", idc[-1])
+            print_save("activity", a[-1])
 
-        print("------------")
-        print("----mean----")
-        print("TMEMT", np.mean(tmemt), np.std(tmemtd) / len(tmemtd) ** 0.5)
-        print("TMEMT coeff", np.mean(np.asarray(tmemtd) / np.asarray(tmemt)),
-              np.std(np.asarray(tmemtd) / np.asarray(tmemt)) / len(tmemt) ** 0.5)
-        print("TC", np.mean(tc), np.std(tc) / len(tc) ** 0.5)
-        print("corrected TC", np.mean(np.asarray(tc) / np.asarray(a)),
-              np.std(np.asarray(tc) / np.asarray(a)) / len(a) ** 0.5)
-        print("R2", np.mean(r2), np.std(r2) / len(r2) ** 0.5)
-        print("R3", np.mean(r3), np.std(r3) / len(r3) ** 0.5)
-        print("CTM", np.mean(ctm), np.std(ctm) / len(ctm) ** 0.5)
-        print("CTD", np.mean(ctd), np.std(ctd) / len(ctd) ** 0.5)
-        print("LT", np.mean([l.seconds for l in lt]), np.std([l.seconds for l in lt]) / len(lt) ** 0.5)
-        print("IDC", np.mean(idc), np.std(idc) / len(idc) ** 0.5)
-        print("activity", np.mean(a), np.std(a) / len(a) ** 0.5)
+        print_save("------------")
+        print_save("----mean----")
+        print_save("TMEMT", np.nanmean(tmemt), np.nanstd(tmemtd) / len(tmemtd) ** 0.5)
+        print_save("TMEMT coeff", np.nanmean(np.asarray(tmemtd) / np.asarray(tmemt)),
+              np.nanstd(np.asarray(tmemtd) / np.asarray(tmemt)) / len(tmemt) ** 0.5)
+        print_save("TC", np.nanmean(tc), np.nanstd(tc) / len(tc) ** 0.5)
+        print_save("corrected TC", np.nanmean(np.asarray(tc) / np.asarray(a)),
+              np.nanstd(np.asarray(tc) / np.asarray(a)) / len(a) ** 0.5)
+        print_save("R2", np.nanmean(r2), np.nanstd(r2) / len(r2) ** 0.5)
+        print_save("R3", np.nanmean(r3), np.nanstd(r3) / len(r3) ** 0.5)
+        print_save("CTM", np.nanmean(ctm), np.nanstd(ctm) / len(ctm) ** 0.5)
+        print_save("CTD", np.nanmean(ctd), np.nanstd(ctd) / len(ctd) ** 0.5)
+        print_save("LT", np.nanmean([l.total_seconds() for l in lt]), np.nanstd([l.total_seconds() for l in lt]) / len(lt) ** 0.5)
+        print_save("IDC", np.nanmean(idc), np.nanstd(idc) / len(idc) ** 0.5)
+        print_save("activity", np.nanmean(a), np.nanstd(a) / len(a) ** 0.5)
 
         from datetime import timedelta
         import matplotlib.dates as md
@@ -989,6 +1089,6 @@ if True:
         fig.legend([lines[k] for k in sorted(lines.keys())], [k[:-2] for k in sorted(lines.keys())], ncol=1,
                    loc="center right",
                    prop={"size": 12})
-        plt.savefig("/home/birdflight/Desktop/Birdflight_TrackEvaluation.pdf")
-        plt.savefig("/home/birdflight/Desktop/Birdflight_TrackEvaluation.png")
+        plt.savefig("/home/alex/Masterarbeit/Data/Birds/Evaluation/Birdflight_TrackEvaluation.pdf")
+        plt.savefig("/home/alex/Masterarbeit/Data/Birds/Evaluation/Birdflight_TrackEvaluation.png")
         plt.show()
