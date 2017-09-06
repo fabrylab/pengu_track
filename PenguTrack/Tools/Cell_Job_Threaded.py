@@ -12,6 +12,7 @@ from qimage2ndarray import array2qimage
 
 
 input_file = "/home/alex/2017-03-10_Tzellen_microwells_bestdata/30sec/max_Proj.cdb"
+input_file2 = "/home/alex/2017-03-10_Tzellen_microwells_bestdata/30sec/min_Indizes.cdb"
 
 
 def int8(input):
@@ -39,12 +40,13 @@ import scipy.stats as ss
 # Load Database
 a_min=75
 a_max=np.inf
-file_path = "/home/alex/Desktop/PT_Cell_T850_A%s_%s.cdb"%(a_min,a_max)
+file_path = "/home/alex/Desktop/PT_Cell_T850_A%s_%s_3d.cdb"%(a_min,a_max)
 
 global db
 db = DataFileExtended(file_path,"w")
 
 db_start = DataFileExtended(input_file)
+db_start2 = DataFileExtended(input_file2)
 images = db_start.getImageIterator()
 
 def getImage():
@@ -52,16 +54,28 @@ def getImage():
         im = images.next()
     except StopIteration:
         # print("Done! First!")
-        return None, None
+        return None, None, None
     fname = im.filename
     d = im.timestamp
+    print(fname)
+    print(fname.replace("MaxProj","MinIndices289"))
+    try:
+        indizes = db_start2.getImages(filename=fname.replace("MaxProj","MinIndices289"))[0]
+    except IndexError:
+        try:
+            indizes = db_start2.getImages(filename=fname.replace("MaxProj", "MinIndices290"))[0]
+        except IndexError:
+            try:
+                indizes = db_start2.getImages(filename=fname.replace("MaxProj", "MinIndices288"))[0]
+            except IndexError:
+                indizes = db_start2.getImages(filename=fname.replace("MaxProj", "MinIndices2"))[0]
     time_unix = np.uint32(time.mktime(d.timetuple()))
     time_ms = 0
     meta = {'time': time_unix,
             'time_ms': time_ms,
             'file_name': fname,
             'path': im.path.path}
-    return im.data, meta
+    return im.data,indizes.data, meta
 
 # Tracking Parameters
 q = 3
@@ -70,11 +84,11 @@ r = 1
 object_size=20
 
 # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
-model = RandomWalk(dim=2)
+model = RandomWalk(dim=3)
 
-X = np.zeros(4).T  # Initial Value for Position
-Q = np.diag([q*object_size, q*object_size])  # Prediction uncertainty
-R = np.diag([r*object_size, r*object_size])  # Measurement uncertainty
+X = np.zeros(6).T  # Initial Value for Position
+Q = np.diag([q*object_size,q*object_size, q*object_size])  # Prediction uncertainty
+R = np.diag([r*object_size, r*object_size, r*object_size])  # Measurement uncertainty
 
 State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filter
 Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
@@ -180,11 +194,11 @@ from datetime import datetime, timedelta
 def load(load_cam):
     i = 1
     while True:
-        img, meta = getImage()
+        img, index_img, meta = getImage()
         if img is not None:
             timestamp = datetime.fromtimestamp(meta["time"])
             timestamp += timedelta(milliseconds=int(meta["time_ms"]))
-            segmentation_pipe_in.send([i, img])
+            segmentation_pipe_in.send([i, img, index_img])
             Image_write_queue.put([timestamp, i, meta])
             Timer_in.put([i, time.time()])
             print("loaded image %s" % i)
@@ -203,7 +217,7 @@ def load(load_cam):
 def segmentate():
     LastMap = None
     while True:
-        i, img = segmentation_pipe_out.recv()
+        i, img, index_image = segmentation_pipe_out.recv()
         # if i is None and img is None:
         #     SegMap_write_queue.put([None, None])
         #     detection_pipe_in.send([None,None,None])
@@ -212,7 +226,7 @@ def segmentate():
         SegMap = VB.segmentate(img)
         SegMap = binary_opening(SegMap)
         SegMap_write_queue.put([i, SegMap])
-        detection_pipe_in.send([i, SegMap, img])
+        detection_pipe_in.send([i, SegMap, img, index_image])
         print("Segmentated Image %s"%i)
     print("Done Segmenation!")
 
@@ -220,19 +234,32 @@ def segmentate():
 def detect():
     Map = None
     while True:
-        i, SegMap, img = detection_pipe_out.recv()
+        i, SegMap, img, index_image = detection_pipe_out.recv()
         # if i is None and SegMap is None and img is None:
         #     Detection_write_queue.put([None,None])
         #     tracking_pipe_in.send([None,None])
         #     break
-        Positions = AD.detect(SegMap, intensity_image=img)
+        combi = np.zeros_like(index_image)
+        combi[SegMap] = index_image[SegMap]
+        from skimage.measure import label
+        combi = np.sum(label(np.array([combi==z+1 for z in range(int(np.amax(combi)))], dtype=bool)), axis=0)
+        # plt.ioff()
+        # plt.imshow(combi)
+        # plt.show()
+        Positions = AD.detect(combi)#, intensity_image=img)
+        New_Positions = []
+        from PenguTrack.Detectors import Measurement as PT_Measurement
+        for pos in Positions:
+            z = index_image[int(pos.PositionX), int(pos.PositionY)]
+            New_Positions.append(PT_Measurement(pos.Log_Probability, [pos.PositionX,pos.PositionY, z*13/0.645],
+                                                data=pos.Data, frame=pos.Frame, track_id=pos.Track_Id))
         # for pos in Positions:
         #     pos.PositionY, pos.PositionX = VB.log_to_orth([pos.PositionY/float(VB.SubSampling)
         #                                                       , pos.PositionX/float(VB.SubSampling)])
         #     pos.PositionX *= (VB.Max_Dist / VB.height)
         #     pos.PositionY *= (VB.Max_Dist / VB.height)
         Detection_write_queue.put([i, Positions])
-        tracking_pipe_in.send([i, Positions])
+        tracking_pipe_in.send([i, New_Positions])
         print("Found %s animals in %s!"%(len(Positions), i))
     print("DoneDetection!")
 
@@ -359,17 +386,19 @@ def DB_write():
                             meas = Measurement
                             x = meas.PositionX
                             y = meas.PositionY
+                            z = meas.PositionZ
                             # x_px = x * (VB.height / VB.Max_Dist)
                             # y_px = y * (VB.height / VB.Max_Dist)
                             # x_img, y_img = VB.warp_orth([VB.Res * (y_px - VB.width / 2.), VB.Res * (VB.height - x_px)])
                             # prob = ActiveFilters[k].log_prob(keys=[i], compare_bel=False)
                             prob = LogProb#ActiveFilters[k].log_prob(keys=[i])
-                            db.setMarker(image=db.getImage(id=image_dict[i]), x=y, y=x,
+                            marker = db.setMarker(image=db.getImage(id=image_dict[i]), x=y, y=x,
                                          track=track,
                                          text="Track %s, Prob %.2f" % (k, prob),
                                          type=PT_Track_Type)
+                            db.setMeasurement(marker, log=prob, x=y, y=x, z=z)
                         if Prediction is not None:
-                            pred_x, pred_y = MultiKal.Model.measure(Prediction)
+                            pred_x, pred_y, pred_z = MultiKal.Model.measure(Prediction)
                             # pred_x_px = pred_x *(VB.height / VB.Max_Dist)
                             # pred_y_px = pred_y *(VB.height / VB.Max_Dist)
                             # pred_x_img, pred_y_img = VB.warp_orth([VB.Res * (pred_y_px - VB.width / 2.), VB.Res * (VB.height - pred_x_px)])
