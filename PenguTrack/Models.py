@@ -1,25 +1,23 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# Detectors.py
+# Models.py
 
-# Copyright (c) 2016, Red Hulk Productions
+# Copyright (c) 2016-2017, Alexander Winterl
 #
 # This file is part of PenguTrack
 #
-# PenguTrack is beer software: you can serve it and/or drink
-# it under the terms of the Book of Revelation as published by
-# the evangelist John, either version 3 of the Book, or
+# PenguTrack is free software: you can redistribute and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the Licensem, or
 # (at your option) any later version.
 #
 # PenguTrack is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. It may cause
-# penguins to explode. It may also cause further harm on coworkers,
-# advisors or even lab equipment. See the Book of Revelation for
-# more details.
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
 #
-# You should have received a copy of the Book of Revelation
-# along with PenguTrack. If not, see <http://trumpdonald.org/>
+# You should have received a copy of the GNU General Public License
+# along with PenguTrack. If not, see <http://www.gnu.org/licenses/>.
 
 """
 Module containing model classes to be used with pengu-track detectors and filters.

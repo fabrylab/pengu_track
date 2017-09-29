@@ -1,3 +1,24 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# Example.py
+
+# Copyright (c) 2016-2017, Alexander Winterl
+#
+# This file is part of PenguTrack
+#
+# PenguTrack is free software: you can redistribute and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the Licensem, or
+# (at your option) any later version.
+#
+# PenguTrack is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with PenguTrack. If not, see <http://www.gnu.org/licenses/>.
+
 if __name__ == '__main__':
     object_size = 8  # Object diameter (smallest)
     object_area = 40  # Object area in px
@@ -44,7 +65,7 @@ if __name__ == '__main__':
     # Extended Clickpoints Database for usage with pengutack
     from PenguTrack.DataFileExtended import DataFileExtended
     # Open ClickPoints Database
-    db = DataFileExtended(".\ExampleData\ExampleData\cell_data.cdb")
+    db = DataFileExtended("./ExampleData/cell_data.cdb")
     # Define ClickPoints Marker
     detection_marker_type = db.setMarkerType(name="Detection_Marker", color="#FF0000", style='{"scale":1.2}')
     db.deleteMarkers(type=detection_marker_type)
