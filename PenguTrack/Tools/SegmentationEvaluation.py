@@ -90,7 +90,7 @@ class SegmentationEvaluator(object):
 
 
 if __name__ == "__main__":
-    version="birdflight"
+    version="cell_clean"
     calc=False
     if version == "Adelie":
         if calc:
@@ -359,3 +359,95 @@ if __name__ == "__main__":
         plt.savefig("/home/alex/Desktop/SegmentationEvaluation_PRE_ce.pdf")
         plt.savefig("/home/alex/Desktop/SegmentationEvaluation_PRE_ce.png")
         plt.show()
+    elif version == "cell_clean":
+        if calc:
+            import os
+            with open("/home/alex/Desktop/SegmentationEvaluation_ce.txt", "w") as myfile:
+                myfile.write("n,\t r,\t Sensitivity, \t Specificity, \t Precision \n")
+            for t in [700,800,825,850,875,900,1000,1100,1200]:
+                for a in [20]:
+                    if os.path.exists("/home/alex/Desktop/PT_Cell_T%s.cdb"%(t)):
+                        pass
+                    else:
+                        continue
+                    seg = SegmentationEvaluator()
+                    seg.load_GT_masks_from_clickpoints("/home/alex/Desktop/PT_Cell_Test_GT.cdb")
+                    # seg.load_System_masks_from_clickpoints("/mnt/mmap/GT_Starter.cdb")
+                    seg.load_System_masks_from_clickpoints("/home/alex/Desktop/PT_Cell_T%s.cdb"%(t))
+                    seg.match()
+                    print(np.mean(seg.sensitivity.values()))
+                    print(np.mean(seg.specificity.values()))
+                    with open("/home/alex/Desktop/SegmentationEvaluation_ce.txt", "a") as myfile:
+                        myfile.write(",\t".join([str(t),
+                                                 str(a),
+                                                 str(np.mean(seg.sensitivity.values())),
+                                                 str(np.mean(seg.specificity.values())),
+                                                 str(np.mean(seg.precision.values()))]))
+                        myfile.write("\n")
+
+        data = np.genfromtxt("/home/alex/Masterarbeit/Data/Cells/Evaluation/SegmentationEvaluation_ce.txt", delimiter=",")[1:]
+        # fig, ax = plt.subplots()
+        # # ax.set_xlim([1e-7, 5e-3])
+        # # ax.set_xscale('log')
+        # ax.set_ylim([-0.05, 1.05])
+        # ax.set_xlim([-0.05, 1.05])
+        # ax.set_xlabel("False Positive Rate")
+        # ax.set_ylabel("True Positive Rate")
+        # c = sn.color_palette(n_colors=6)
+        # for j, a in enumerate([20]):
+        #     mask = data.T[1] == a
+        #     # n = 5 if n==43 else n
+        #     ax.fill_between(1. - data[mask].T[3], data[mask].T[2], color=c[j - 1], alpha=0.2)
+        # for j, a in enumerate([20]):
+        #     mask = data.T[1] == a
+        #     # n = 5 if n==43 else n
+        #     ax.plot(1 - data[mask].T[3], data[mask].T[2], '-o', color=c[j - 1], label="Cell Data")
+        #     # for xyr in zip(1-data[mask].T[3],data[mask].T[2],data[mask].T[1]):
+        #     #     ax.annotate('%s' %xyr[-1], xy=xyr[:-1], textcoords='data')
+        # # ax.ticklabel_format(axis='x', style='sci', scilimits=(-2, 2))
+        # plt.legend(loc='best')
+        # my_plot.despine(ax)
+        # my_plot.setAxisSizeMM(fig, ax, 147, 90)
+        # plt.savefig("/home/alex/Desktop/SegmentationEvaluation_ce.pdf")
+        # plt.savefig("/home/alex/Desktop/SegmentationEvaluation_ce.png")
+# if True:
+#     if True:
+        fig, ax = plt.subplots()
+        ax.set_xlim([600,1300])
+        ax.set_ylim([-0.05, 1.05])
+        ax.set_xlabel("Gray-Value Threshold")
+        ax.set_ylabel("Rate")
+        c = sn.color_palette(n_colors=2)
+        for j, a in enumerate([20]):
+            mask = data.T[1] == a
+            # n = 5 if n==43 else n
+            l = ax.plot(data[mask].T[0], data[mask].T[2], '-o', color=c[j - 1], label="Sensitivity")
+            # ax.plot(data[mask].T[0], data[mask].T[2], '-o', color=c[j - 1], label="Cell Data")
+        for j, a in enumerate([20]):
+            mask = data.T[1] == a
+            # n = 5 if n==43 else n
+            l= ax.plot(data[mask].T[0], data[mask].T[4], '-o', color=c[j], label="Precision")
+        ax.legend(loc="best", prop={"size":10})
+        # fig.legend((l),("Cell Data",), loc="best")
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig, ax, 147, 90/2)
+        plt.tight_layout()
+        plt.savefig("/home/alex/Masterarbeit/Pictures/SegmentationEvaluation_clean_ce.pdf")
+        plt.savefig("/home/alex/Masterarbeit/Pictures/SegmentationEvaluation_clean_ce.png")
+        plt.show()
+
+        # fig = plt.figure()
+        # ax = plt.subplot(111)
+        # ax.set_xlim([600,1300])
+        # ax.set_ylim([-0.05,1.05])
+        # ax.set_xlabel("Intensity Threshold")
+        # ax.set_ylabel("Precision")
+        # c = sn.color_palette(n_colors=6)
+        # ax.legend(loc="best", prop={"size":10})
+        # # fig.legend((l),("Cell Data",), loc="best")
+        # my_plot.despine(ax)
+        # my_plot.setAxisSizeMM(fig, ax, 147/2, 90/2)
+        # plt.tight_layout()
+        # plt.savefig("/home/alex/Desktop/SegmentationEvaluation_PRE_ce.pdf")
+        # plt.savefig("/home/alex/Desktop/SegmentationEvaluation_PRE_ce.png")
+        # plt.show()

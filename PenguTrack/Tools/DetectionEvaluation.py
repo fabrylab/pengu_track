@@ -137,7 +137,7 @@ class Yin_Evaluator(Evaluator):
 
 
 if __name__ == "__main__":
-    version = "Adelie"
+    version = "cell_clean"
     calc=False
     if version == "Adelie":
         if calc:
@@ -479,4 +479,61 @@ if __name__ == "__main__":
         plt.tight_layout()
         plt.savefig("/home/alex/Desktop/DetectionEvaluation_PRE_ce.pdf")
         plt.savefig("/home/alex/Desktop/DetectionEvaluation_PRE_ce.png")
+        plt.show()
+    elif version == "cell_clean":
+        if calc:
+            import os
+
+            with open("/home/alex/Desktop/DetectionEvaluation_ce.txt", "w") as myfile:
+                myfile.write("A_min,\tA_max,\t NegativeRate, \t MissedRate, \t TruePositive, \t Precision \n")
+            for A_min in [0,25,50,75,100,150,200]:
+                for A_max in [300,400,np.inf]:
+                    if os.path.exists("/home/alex/Desktop/PT_Cell_T850_A%s_%s.cdb"%(A_min,A_max)):
+                        pass
+                    else:
+                        continue
+                    evaluation = Yin_Evaluator(10, spacial_threshold=0.05)
+                    evaluation.load_GT_marker_from_clickpoints(path="/home/alex/Desktop/PT_Cell_Test_GT.cdb",
+                                                               type="GroundTruth")
+                    evaluation.load_System_marker_from_clickpoints(
+                        path="/home/alex/Desktop/PT_Cell_T850_A%s_%s.cdb"%(A_min,A_max), type="PT_Track_Marker")
+                    evaluation.match()
+                    # print("bla")
+                    try:
+                        # print("blabla")
+                        print(np.mean(evaluation.Negative_Rate.values()))
+                        print(np.mean(evaluation.Missed_Rate.values()))
+                        with open("/home/alex/Desktop/DetectionEvaluation_ce.txt", "a") as myfile:
+                            myfile.write(",\t".join([str(A_min),
+                                                     str(A_max),
+                                                     str(np.mean(evaluation.Negative_Rate.values())),
+                                                     str(np.mean(evaluation.Missed_Rate.values())),
+                                                     str(np.mean(evaluation.True_Positive_Rate.values())),
+                                                     str(np.mean(evaluation.Precision.values()))]))
+                            myfile.write("\n")
+                        print("-----------------")
+                    except KeyError:
+                        pass
+
+        data = np.genfromtxt("/home/alex/Masterarbeit/Data/Cells/Evaluation/DetectionEvaluation_ce.txt", delimiter=",")[1:]
+
+
+        fig, ax = plt.subplots()
+        ax.set_xlim([-1, 250])
+        ax.set_ylim([0.55+-0.05, 1.05])
+        ax.set_xlabel("Lower Area Threshold")
+        ax.set_ylabel("Rate")
+        c = sn.color_palette(n_colors=2)
+        for j, A_max in enumerate([np.inf][::-1]):
+            mask = data.T[1] == A_max
+            ax.plot(data[mask].T[0], data[mask].T[4], '-o', color=c[j], label=r"Sensitivity")
+        for j, A_max in enumerate([np.inf][::-1]):
+            mask = data.T[1] == A_max
+            ax.plot(data[mask].T[0], data[mask].T[5], '-o', color=c[j+1], label=r"Precision")
+        ax.legend(loc="best", prop={"size":10})
+        my_plot.despine(ax)
+        my_plot.setAxisSizeMM(fig, ax, 147/2, 90/2)
+        plt.tight_layout()
+        plt.savefig("/home/alex/Masterarbeit/Pictures/DetectionEvaluation_clean_ce.pdf")
+        plt.savefig("/home/alex/Masterarbeit/Pictures/DetectionEvaluation_clean_ce.png")
         plt.show()
