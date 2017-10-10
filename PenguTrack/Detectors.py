@@ -25,7 +25,6 @@ Module containing detector classes to be used with pengu-track filters and model
 from __future__ import division, print_function
 
 import numpy as np
-import cv2
 import skimage.feature
 import skimage.transform
 import skimage.measure
@@ -53,6 +52,14 @@ from skimage.feature import peak_local_max
 
 from skimage.filters import threshold_niblack
 
+# If we really need this function, better take it from skiamge. Maybe cv2 is not available.
+try:
+    from cv2 import bilateralFilter
+except ImportError:
+    from skimage.restoration import denoise_bilateral
+    bilateralFilter = lambda src, d, sigmaColor, sigmaSpace: denoise_bilateral(src, win_size=d,
+                                                                               sigma_color=sigmaColor,
+                                                                               sigma_spatial=sigmaSpace)
 
 # import theano
 # import theano.tensor as T
@@ -319,6 +326,7 @@ class TCellDetector(Detector):
         maskedMinIndices = maskedMinIndices.astype('uint8')
         # maskedMinIndices = minIndices.data[:] + 1
         # maskedMinIndices = np.round(gaussian_filter(maskedMinIndices, 1)).astype(np.int)
+        maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
         maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
         maskedMinIndices[~mask] = 0
         j_max = np.amax(maskedMinIndices)
