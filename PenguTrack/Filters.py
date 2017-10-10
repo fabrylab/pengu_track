@@ -1200,7 +1200,7 @@ class MultiFilter(Filter):
             if k in gain_dict and (
                             probability_gain[k, m] > LogProbabilityThreshold or
                             (len(self.ActiveFilters[gain_dict[k]].X) < 2 and
-                                     min([i-k for k in self.ActiveFilters[gain_dict[k]].X.keys() if i>k]) < 2)) :
+                                     min([i-o for o in self.ActiveFilters[gain_dict[k]].X.keys() if i>o]) < 2)) :
                 self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
@@ -1210,10 +1210,7 @@ class MultiFilter(Filter):
                 if k in gain_dict:
                     print("DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (gain_dict[k], probability_gain[k, m], i))
                 else:
-                    try:
-                        print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
-                    except IndexError:
-                        print("Started new track in frame %s" % i)
+                    print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
                 try:
                     n = len(self.ActiveFilters[gain_dict[k]].X.keys())
                 except KeyError:
