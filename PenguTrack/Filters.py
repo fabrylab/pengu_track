@@ -1210,7 +1210,10 @@ class MultiFilter(Filter):
                 if k in gain_dict:
                     print("DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (gain_dict[k], probability_gain[k, m], i))
                 else:
-                    print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
+                    try:
+                        print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
+                    except IndexError:
+                        print("Started new track in frame %s" % i)
                 try:
                     n = len(self.ActiveFilters[gain_dict[k]].X.keys())
                 except KeyError:
