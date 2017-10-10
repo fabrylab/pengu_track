@@ -51,6 +51,8 @@ from scipy.ndimage.filters import gaussian_filter
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max
 
+from skimage.filters import threshold_niblack
+
 
 # import theano
 # import theano.tensor as T
