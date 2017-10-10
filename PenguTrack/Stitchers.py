@@ -26,6 +26,7 @@ from Detectors import Measurement
 from Filters import Filter
 from Models import VariableSpeed
 from DataFileExtended import DataFileExtended
+import time
 
 
 
@@ -47,6 +48,7 @@ class Stitcher(object):
             self.Tracks.update({i: tracks[i]})
 
     def load_tracks_from_clickpoints(self, path, type):
+        time1 = time.clock()
         self.db = DataFileExtended(path)
         if self.db.getTracks(type=type)[0].markers[0].measurement is not None:
             for track in self.db.getTracks(type=type):
@@ -64,11 +66,15 @@ class Stitcher(object):
                                             m.y,
                                             0])
                     self.Tracks[track.id].update(z=meas, i=m.image.sort_index)
+        time2 = time.clock()
+        self.db.db.close()
+        print("Load Tracks Time:",time2 - time1)
 
     def stitch(self):
         pass
 
     def save_tracks_to_db(self, path, type, function=None):
+        time1 = time.clock()
         if function is None:
             function = lambda x : x
         self.db = DataFileExtended(path)
@@ -86,6 +92,9 @@ class Stitcher(object):
                     meas = self.Tracks[track].Measurements[m]
                     self.db.setMeasurement(marker=marker, log=meas.Log_Probability,
                                            x=meas.PositionX, y=meas.PositionY, z=meas.PositionZ)
+        time2 = time.clock()
+        self.db.db.close()
+        print("save tracks time:", time2 - time1)
 
 class Heublein_Stitcher(Stitcher):
     """
@@ -130,6 +139,8 @@ class Heublein_Stitcher(Stitcher):
         self.a4 = float(a4)
         self.a5 = float(a5)
 
+        self.end_frame = None
+
     def __ndargmin__(self,array):
         """
         Works like numpy.argmin, but returns array of indices for multi-dimensional input arrays. Ignores NaN entries.
@@ -153,9 +164,9 @@ class Heublein_Stitcher(Stitcher):
         a4 = self.a4
         a5 = self.a5
         # end_frame = self.end_frame
-        end_frame = max([max(track.Measurements) for track in self.Tracks.values()])
+        # end_frame = max([max(track.Measurements) for track in self.Tracks.values()])
         default = np.nan
-        if track1["end"] == end_frame:
+        if track1["end"] == self.end_frame:
             x = default
         elif track1["id"] == track2["id"] or track1["end"] == track1["start"] or track2["end"] <= track1["end"]:
             x = default
@@ -205,6 +216,7 @@ class Heublein_Stitcher(Stitcher):
             list of track ids.
         """
         # ids = [x['id'] for x in Tracks]
+        time1 = time.clock()
         max_cost = self.max_cost
         distance_matrix = np.zeros((len(Tracks), len(Tracks)))
         for i, track1 in enumerate(Tracks):
@@ -227,6 +239,8 @@ class Heublein_Stitcher(Stitcher):
                 distance_matrix[j, :] = np.nan
             else:
                 break
+        time2 = time.clock()
+        print("find matches time:", time2 - time1)
         return matches
 
     def Delete_Tracks_with_length_1(self):
@@ -252,6 +266,9 @@ class Heublein_Stitcher(Stitcher):
         """
         Uses all the functions and runs the main process
         """
+        self.end_frame = max([max(track.Measurements) for track in self.Tracks.values()])
+        print (self.end_frame)
+        start_time = time.clock()
         len_test = 0
         len_test2 = 1
         limit = 1
@@ -309,25 +326,28 @@ class Heublein_Stitcher(Stitcher):
             limit += 1
 
         self.Delete_Tracks_with_length_1()
+        end_time = time.clock()
+        print("stitch time:", end_time - start_time)
         print ("-----------Done with stitching-----------")
 
 
 
 if __name__ == '__main__':
     import shutil
-    shutil.copy("/home/user/CellTracking/layers_2017_06_07_SCA_stitched.cdb",
-                "/home/user/CellTracking/layers_2017_06_07_SCA_stitched_test.cdb")
+    shutil.copy("/home/user/Bachelor Bilder/layers_2017_07_18_1h_24hiG_CU_ALJ_24Gel.cdb",
+                "/home/user/Bachelor Bilder/layers_stitchparam_0.cdb")
 
     def resulution_correction(pos):
         x, y, z = pos
         res = 6.45/10
         return y/res, x/res, z/10.
 
-    stitcher = Heublein_Stitcher(5,2,20,30,100,10,10)
-    stitcher.load_tracks_from_clickpoints("/home/user/CellTracking/layers_2017_06_07_SCA_stitched_test.cdb", "PT_Track_Marker")
+    stitcher = Heublein_Stitcher(5,2,20,30,1,1,10)
+    # stitcher = Heublein_Stitcher(10,5,10,10,1,100,10)
+    stitcher.load_tracks_from_clickpoints("/home/user/Bachelor Bilder/layers_stitchparam_0.cdb", "PT_Track_Marker")
     stitcher.stitch()
-    db = clickpoints.DataFile("/home/user/CellTracking/layers_2017_06_07_SCA_stitched_test.cdb")
+    db = clickpoints.DataFile("/home/user/Bachelor Bilder/layers_stitchparam_0.cdb")
     track_type = db.getMarkerType(name="PT_Track_Marker")
-    stitcher.save_tracks_to_db("/home/user/CellTracking/layers_2017_06_07_SCA_stitched_test.cdb", track_type, function=resulution_correction)
+    stitcher.save_tracks_to_db("/home/user/Bachelor Bilder/layers_stitchparam_0.cdb", track_type, function=resulution_correction)
     print ("-----------Written to DB-----------")
 

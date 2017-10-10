@@ -1,0 +1,5 @@
+[addon]
+name=Cell_Track_Add
+file=AddonWrapper.py
+icon=fa.coffee
+description=Tolles addon

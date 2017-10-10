@@ -140,25 +140,6 @@ class Addon(clickpoints.Addon):
         self.cp.reloadTypes()
         self.cp.reloadMarker()
 
-    def optionsChanged(self):
-        self.pt_set_lum_treshold(self.getOption(key="Luminance_Threshold"))
-        self.pt_set_var_treshold(self.getOption(key="Variance_Threshold"))
-        self.pt_set_distxy_boundary(self.getOption(key="Pre_Stitching_Dist_XY"))
-        self.pt_set_distz_boundary(self.getOption(key="Pre_Stitching_Dist_Z"))
-        self.pt_set_number(self.getOption(key="Object_Number"))
-        self.pt_set_minsize(self.getOption(key="Min_Object_Size"))
-        self.pt_set_maxsize(self.getOption(key="Max_Object_Size"))
-        self.pt_set_q(self.getOption(key="Prediction_Error"))
-        self.pt_set_r(self.getOption(key="Detection_Error"))
-
-        SegMap = self.segmentate()
-        self.db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
-        Positions = self.detect()
-        self.db.deleteMarkers(frame=self.current_frame, type=self.detection_marker_type)
-        for pos in Positions:
-            self.db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX / res, x=pos.PositionY / res, type=self.detection_marker_type)
-
-
     # def optionsChanged(self):
     #     self.pt_set_lum_treshold(self.getOption(key="Luminance_Threshold"))
     #     self.pt_set_var_treshold(self.getOption(key="Variance_Threshold"))
@@ -170,19 +151,39 @@ class Addon(clickpoints.Addon):
     #     self.pt_set_q(self.getOption(key="Prediction_Error"))
     #     self.pt_set_r(self.getOption(key="Detection_Error"))
     #
-    #     self.current_frame = self.cp.window.data_file.get_current_image()
-    #     self.current_layer = self.cp.window.data_file.get_current_layer()
-    #     self.current_image = self.db.getImage(frame=self.current_frame, layer=self.current_layer)
-    #
-    #     db = self.db
-    #
-    #     minProj = db.getImage(frame=self.current_frame, layer=0)
-    #     minIndices = db.getImage(frame=self.current_frame, layer=1)
-    #     Positions, mask = TCellDetector().detect(minProj, minIndices)
-    #     self.db.setMask(frame=self.current_frame, layer=0, data=(~mask).astype(np.uint8))
+    #     SegMap = self.segmentate()
+    #     self.db.setMask(frame=self.current_frame, layer=0, data=((~SegMap).astype(np.uint8)))
+    #     Positions = self.detect()
     #     self.db.deleteMarkers(frame=self.current_frame, type=self.detection_marker_type)
     #     for pos in Positions:
     #         self.db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX / res, x=pos.PositionY / res, type=self.detection_marker_type)
+
+
+    def optionsChanged(self):
+        self.pt_set_lum_treshold(self.getOption(key="Luminance_Threshold"))
+        self.pt_set_var_treshold(self.getOption(key="Variance_Threshold"))
+        self.pt_set_distxy_boundary(self.getOption(key="Pre_Stitching_Dist_XY"))
+        self.pt_set_distz_boundary(self.getOption(key="Pre_Stitching_Dist_Z"))
+        self.pt_set_number(self.getOption(key="Object_Number"))
+        self.pt_set_minsize(self.getOption(key="Min_Object_Size"))
+        self.pt_set_maxsize(self.getOption(key="Max_Object_Size"))
+        self.pt_set_q(self.getOption(key="Prediction_Error"))
+        self.pt_set_r(self.getOption(key="Detection_Error"))
+
+        self.current_frame = self.cp.window.data_file.get_current_image()
+        self.current_layer = self.cp.window.data_file.get_current_layer()
+        self.current_image = self.db.getImage(frame=self.current_frame, layer=self.current_layer)
+
+        db = self.db
+
+        minProj = db.getImage(frame=self.current_frame, layer=0)
+        minIndices = db.getImage(frame=self.current_frame, layer=1)
+        self.db.deleteMasks(frame=self.current_frame, layer=0)
+        Positions, mask = TCellDetector().detect(minProj, minIndices)
+        self.db.setMask(frame=self.current_frame, layer=0, data=(~mask).astype(np.uint8))
+        self.db.deleteMarkers(frame=self.current_frame, type=self.detection_marker_type)
+        for pos in Positions:
+            self.db.setMarker(frame=self.current_frame, layer=0, y=pos.PositionX / res, x=pos.PositionY / res, type=self.detection_marker_type)
 
     def pt_set_lum_treshold(self, value):
         self.luminance_treshold = float(value)/2**12
@@ -275,6 +276,7 @@ class Addon(clickpoints.Addon):
     def detect(self, frame=None):
         self.current_frame = self.cp.window.data_file.get_current_image()
         self.current_layer = self.cp.window.data_file.get_current_layer()
+
         if frame is None:
             frame= self.current_frame
         self.current_image = self.db.getImage(frame=self.current_frame, layer=self.current_layer)
@@ -291,6 +293,7 @@ class Addon(clickpoints.Addon):
         # com.ReloadMarker()
 
     def _update_filter_params_(self):
+        self.current_frame = self.cp.window.data_file.get_current_image()
         Q = np.diag([self.q * self.object_size * res,
                      self.q * self.object_size * res,
                      self.q * self.object_size * res])  # Prediction uncertainty
@@ -303,14 +306,16 @@ class Addon(clickpoints.Addon):
 
         self.Tracker.filter_args = [np.diag(Q), np.diag(R)]
         self.Tracker.filter_kwargs = {"meas_dist":Meas_Dist, "state_dist":State_Dist}
-        for f in self.Tracker.Filters:
-            obj = self.Tracker.Filters.pop(f)
-            del obj
-        for f in self.Tracker.ActiveFilters:
-            obj = self.Tracker.Filters.pop(f)
-            del obj
+        # for f in self.Tracker.Filters:
+        #     obj = self.Tracker.Filters.pop(f)
+        #     del obj
+        self.Tracker.Filters.clear()
+        # for f in self.Tracker.ActiveFilters:
+        #     obj = self.Tracker.Filters.pop(f)
+        #     del obj
+        self.Tracker.ActiveFilters.clear()
 
-        self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=frame)
+        self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=self.current_frame)
 
     # def _update_filter_params_(self, *args, **kwargs):
     #     self.Tracker.filter_args = args
@@ -344,15 +349,15 @@ class Addon(clickpoints.Addon):
             # Prediction step
             self.Tracker.predict(u=np.zeros((self.model.Control_dim,)).T, i=i)
 
-            SegMap = self.segmentate(frame=i)
-            self.db.setMask(frame=i, layer=0, data=((~SegMap).astype(np.uint8)))
-            Positions = self.detect(frame=i)
+            # SegMap = self.segmentate(frame=i)
+            # self.db.setMask(frame=i, layer=0, data=((~SegMap).astype(np.uint8)))
+            # Positions = self.detect(frame=i)
 
             #
-            # minIndices = db.getImage(frame=i, layer=1)
-            # minProj = db.getImage(frame=i, layer=0)
-            # Positions, mask = TCellDetector().detect(minProj,minIndices)
-            # self.db.setMask(frame=i, layer=0, data=(~mask).astype(np.uint8))
+            minIndices = db.getImage(frame=i, layer=1)
+            minProj = db.getImage(frame=i, layer=0)
+            Positions, mask = TCellDetector().detect(minProj,minIndices)
+            self.db.setMask(frame=i, layer=0, data=(~mask).astype(np.uint8))
             #
 
             for pos in Positions:
@@ -387,7 +392,7 @@ class Addon(clickpoints.Addon):
                         # Write predictions to Database
                         if i in self.Tracker.Filters[k].Predicted_X.keys():
                             pred_x, pred_y, pred_z = self.Tracker.Model.measure(self.Tracker.Filters[k].Predicted_X[i])
-                            prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
+                            # prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
 
                             pred_x_img = pred_y / res
                             pred_y_img = pred_x / res
@@ -431,6 +436,8 @@ class Addon(clickpoints.Addon):
 
             # check if we should terminate
             if self.cp.hasTerminateSignal():
+                #TODO: Fix this correctly. THis is just a hack...
+                self.optionsChanged()
                 print("Cancelled Tracking")
                 return
 

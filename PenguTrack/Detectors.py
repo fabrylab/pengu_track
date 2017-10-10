@@ -25,12 +25,14 @@ Module containing detector classes to be used with pengu-track filters and model
 from __future__ import division, print_function
 
 import numpy as np
+import cv2
 import skimage.feature
 import skimage.transform
 import skimage.measure
 import skimage.color
 import skimage.filters as filters
 import skimage.morphology
+import re
 
 from skimage import transform
 from scipy.ndimage.interpolation import map_coordinates
@@ -177,6 +179,96 @@ class BlobDetector(Detector):
         else:
             return []
 
+
+class NKCellDetector(Detector):
+    def __init__(self):
+        super(NKCellDetector, self).__init__()
+
+    def enhance(self, image, percentile):
+        image -= np.percentile(image, percentile)
+        image /= np.percentile(image, 100. - percentile)
+        image[image < 0.] = 0.
+        image[image > 1.] = 1.
+        return image
+
+    def detect(self, minProj, minIndices, minProjPrvs, maxIndices):
+        maxZ = int(re.sub("[^0-9]","", maxIndices.filename[-8:-4]))
+
+        data = gaussian_filter(minProj.data.astype(float)-minProjPrvs.data.astype(float), 5)
+        data[data > 0] = 0.
+        data = self.enhance(data, 1.)
+        data = 1. - data
+        mask = data > 0.5
+        labeled, num_objects = label(mask)
+        data2 = gaussian_filter(0.5 * (minIndices.data + maxIndices.data).astype(float), 5)
+
+        regions = regionprops(labeled, intensity_image=data)
+        regions = [r for r in regions if r.area > 100]
+
+        out = []
+        mu = np.mean([prop.area for prop in regions])
+        for prop in regions:
+            sigma = np.sqrt(prop.area)  # assuming Poisson distributed areas
+            prob = np.log(len(regions) / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((prop.area - mu) / sigma) ** 2
+            intensities = prop.intensity_image[prop.image]
+            mean_int = np.mean(intensities)
+            std_int = np.std(intensities)
+            out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
+
+        Positions3D = []
+        res = 6.45 / 10
+        for pos in out:
+            posZ = pos.PositionZ
+            Positions3D.append(Measurement(pos.Log_Probability,
+                                           [pos.PositionX * res, pos.PositionY * res, posZ * 10]))
+
+        return Positions3D, mask
+
+class NKCellDetector2(Detector):
+    def __init__(self):
+        super(NKCellDetector2, self).__init__()
+
+    def enhance(self, image, percentile):
+        image = image.astype(np.float)
+        image -= np.percentile(image, percentile)
+        image /= np.percentile(image, 100. - percentile)
+        image[image < 0.] = 0.
+        image[image > 1.] = 1.
+        return image
+
+    def detect(self, minProj, minProjPrvs):
+
+        minProjPrvs = self.enhance(minProjPrvs.data, 0.1)
+        minProj = self.enhance(minProj.data, 0.1)
+
+        data = gaussian_filter(minProj-minProjPrvs, 5)
+        data[data > 0] = 0.
+        data = -1. * data
+        mask = data > 0.1
+        labeled, num_objects = label(mask)
+
+        regions = regionprops(labeled, intensity_image=data)
+        regions = [r for r in regions if r.area > 100]
+
+        out = []
+        mu = np.mean([prop.area for prop in regions])
+        for prop in regions:
+            sigma = np.sqrt(prop.area)  # assuming Poisson distributed areas
+            prob = np.log(len(regions) / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((prop.area - mu) / sigma) ** 2
+            intensities = prop.intensity_image[prop.image]
+            mean_int = np.mean(intensities)
+            std_int = np.std(intensities)
+            out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
+
+        Positions3D = []
+        res = 6.45 / 10
+        for pos in out:
+            posZ = pos.PositionZ
+            Positions3D.append(Measurement(pos.Log_Probability,
+                                           [pos.PositionX * res, pos.PositionY * res, posZ * 10]))
+
+        return Positions3D, mask
+
 class TCellDetector(Detector):
     """
     Detector classifying objects by area and number to be used with pengu-track modules.
@@ -222,8 +314,10 @@ class TCellDetector(Detector):
         # mask = remove_small_objects(mask, 24)
 
         maskedMinIndices = minIndices.data.copy() + 1
+        maskedMinIndices = maskedMinIndices.astype('uint8')
         # maskedMinIndices = minIndices.data[:] + 1
-        maskedMinIndices = np.round(gaussian_filter(maskedMinIndices, 2)).astype(np.int)
+        # maskedMinIndices = np.round(gaussian_filter(maskedMinIndices, 1)).astype(np.int)
+        maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
         maskedMinIndices[~mask] = 0
         j_max = np.amax(maskedMinIndices)
         stack = np.zeros((j_max, minProj.data.shape[0], minProj.data.shape[1]), dtype=np.bool)
@@ -236,9 +330,11 @@ class TCellDetector(Detector):
 
         regions = regionprops(labels2D, maskedMinIndices)
         areas = np.array([r.area for r in regions])
-        area_thres = threshold_otsu(areas) * 0.8
-        if area_thres > 100:
+        area_thres = threshold_otsu(areas) * 0.7
+        if area_thres > 60:
             area_thres = 38.0
+        if area_thres < 10:
+            area_thres = 10.0
         regions = [r for r in regions if r.area >= area_thres]
         #centroids = np.array([r.centroid for r in regions]).T
 
