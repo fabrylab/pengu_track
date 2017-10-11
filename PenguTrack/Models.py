@@ -101,6 +101,8 @@ class Model(object):
         
         self.Evolution_Matrix = np.identity(max(self.Evolution_dim,
                                                 self.State_dim))[:self.State_dim, :self.Evolution_dim]
+
+        self.Extensions = []
         
     def predict(self, state_vector, control_vector):
         """
@@ -200,6 +202,28 @@ class Model(object):
         """
         matrix = np.asarray(matrix)
         return np.dot(matrix.T, np.linalg.inv(np.dot(matrix, matrix.T)))
+
+    def add_variable(self, var):
+        self.Extensions.append(var)
+        self.Meas_dim += 1
+        self.Evolution_dim += 1
+        self.State_dim += 1
+        e_mat = np.zeros((self.State_dim, self.Evolution_dim), dtype=float)
+        e_mat[:-1, :-1] = self.Evolution_Matrix
+        e_mat[-1, -1] = 1.
+        self.Evolution_Matrix = e_mat
+        s_mat = np.zeros((self.State_dim, self.State_dim), dtype=float)
+        s_mat[:-1, :-1] = self.State_Matrix
+        s_mat[-1, -1] = 1.
+        self.State_Matrix = s_mat
+        m_mat = np.zeros((self.Meas_dim, self.State_dim), dtype=float)
+        m_mat[:-1, :-1] = self.Measurement_Matrix
+        m_mat[-1, -1] = 1.
+        self.Measurement_Matrix = m_mat
+        c_mat = np.identity(max(self.State_dim, self.Control_dim))[:self.State_dim, : self.Control_dim]
+        c_mat[:-1, :] = self.Control_Matrix
+        self.Control_Matrix = c_mat
+
 
 
 class RandomWalk(Model):

@@ -31,6 +31,8 @@ if __name__ == '__main__':
     from PenguTrack.Models import VariableSpeed
     # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
     model = VariableSpeed(dim=2, timeconst=2)
+    model.add_variable("area")
+
 
     # Segmentation Modul (splits image into fore and background
     from PenguTrack.Detectors import TresholdSegmentation
@@ -52,9 +54,9 @@ if __name__ == '__main__':
     import scipy.stats as ss
     import numpy as np
     # Set up Kalman filter
-    X = np.zeros(4).T  # Initial Value for Position
-    Q = np.diag([q*object_size, q*object_size])  # Prediction uncertainty
-    R = np.diag([r*object_size, r*object_size])  # Measurement uncertainty
+    X = np.zeros(model.State_dim).T  # Initial Value for Position
+    Q = np.diag([q*object_size*np.ones(model.Evolution_dim)])  # Prediction uncertainty
+    R = np.diag([r*object_size*np.ones(model.Meas_dim)])  # Measurement uncertainty
     State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filter
     Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
     # Initialize Filter/Tracker
@@ -121,7 +123,7 @@ if __name__ == '__main__':
 
                 # Case 2: we want to see the prediction markers
                 if i in MultiKal.Filters[k].Predicted_X.keys():
-                    pred_x, pred_y = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])
+                    pred_x, pred_y = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])[:2]
                     pred_marker = db.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
                                                type=prediction_marker_type)
 

@@ -173,7 +173,14 @@ class Filter(object):
         else:
             self.Measurements.update({i: z})
         # simplest possible update
-        self.X.update({i: np.asarray([z.PositionX, z.PositionY])})
+        try:
+            self.X.update({i: np.asarray([z.PositionX, z.PositionY, z.PositionZ])})
+        except(ValueError, AttributeError):
+            try:
+                self.X.update({i: np.asarray([z.PositionX, z.PositionY])})
+            except(ValueError, AttributeError):
+                self.X.update({i: np.asarray([z.PositionX])})
+
         return z, i
 
     def filter(self, u=None, z=None, i=None):
@@ -628,6 +635,10 @@ class KalmanFilter(Filter):
                 z = np.asarray([z.PositionX, z.PositionY])
             except ValueError:
                 z = np.asarray([z.PositionX])
+
+        if len(self.Model.Extensions) > 0:
+            z = np.hstack((z, [measurement.Data[var][0] for var in self.Model.Extensions]))
+
         try:
             x = self.Predicted_X[i]
         except KeyError:
@@ -674,9 +685,9 @@ class KalmanFilter(Filter):
     def _log_prob_(self, key):
         current_cov = np.copy(self.State_Distribution.cov)
         try:
-            self.State_Distribution.cov=self.X_error[key]
+            self.State_Distribution.cov = self.X_error[key]
         except KeyError:
-            self.State_Distribution.cov=self.P_0
+            self.State_Distribution.cov = self.P_0
         value = super(KalmanFilter, self)._log_prob_(key)
         self.State_Distribution.cov = current_cov
         return value
@@ -1079,19 +1090,35 @@ class MultiFilter(Filter):
             raise ValueError("No Measurements found!")
         measurements = list(z)
         try:
-            z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
+            if len(self.Model.Extensions) > 0:
+                z = np.array(
+                    [np.hstack((np.array([m.PositionX, m.PositionY, m.PositionZ]), np.array([m.Data[var][0] for var in self.Model.Extensions])))
+                              for m in measurements], ndmin=2)
+            else:
+                z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
         except (ValueError, AttributeError):
             try:
-                z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
+                if len(self.Model.Extensions) > 0:
+                    z = np.array(
+                        [np.hstack((np.array([m.PositionX, m.PositionY]), np.array([m.Data[var][0] for var in self.Model.Extensions])))
+                         for m in measurements], ndmin=2)
+                else:
+                    z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
             except (ValueError, AttributeError):
-                z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
+                if len(self.Model.Extensions) > 0:
+                    z = np.array(
+                        [np.hstack((np.array([m.PositionX]), np.array([m.Data[var][0] for var in self.Model.Extensions])))
+                         for m in measurements], ndmin=2)
+                else:
+                    z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
+
         M = z.shape[0]
 
         for j in range(M):
             _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
-	
-            _filter.Predicted_X.update({i: _filter.Model.infer_state(z[j])})
-            _filter.X.update({i: _filter.Model.infer_state(z[j])})
+            inferred_state = _filter.Model.infer_state(z[j])
+            _filter.Predicted_X.update({i: inferred_state})
+            _filter.X.update({i: inferred_state})
             _filter.Measurements.update({i: measurements[j]})
 
             try:
@@ -1125,13 +1152,35 @@ class MultiFilter(Filter):
         self.Measurements.update({i:z})
 
         meas_logp = np.array([m.Log_Probability for m in z])
+        # try:
+        #     z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
+        # except (ValueError, AttributeError):
+        #     try:
+        #         z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
+        #     except (ValueError, AttributeError):
+        #         z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
         try:
-            z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
+            if len(self.Model.Extensions) > 0:
+                z = np.array(
+                    [np.hstack((np.array([m.PositionX, m.PositionY, m.PositionZ]), np.array([m.Data[var][0] for var in self.Model.Extensions])))
+                              for m in measurements], ndmin=2)
+            else:
+                z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
         except (ValueError, AttributeError):
             try:
-                z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
+                if len(self.Model.Extensions) > 0:
+                    z = np.array(
+                        [np.hstack((np.array([m.PositionX, m.PositionY]), np.array([m.Data[var][0] for var in self.Model.Extensions])))
+                         for m in measurements], ndmin=2)
+                else:
+                    z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
             except (ValueError, AttributeError):
-                z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
+                if len(self.Model.Extensions) > 0:
+                    z = np.array(
+                        [np.hstack((np.array([m.PositionX]), np.array([m.Data[var][0] for var in self.Model.Extensions])))
+                         for m in measurements], ndmin=2)
+                else:
+                    z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
 
         mask = ~np.isneginf(meas_logp)
         if not np.all(~mask):
