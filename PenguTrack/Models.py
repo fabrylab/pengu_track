@@ -268,7 +268,7 @@ class RandomWalk(Model):
         dim: int, optional
             Number of dimensions in which the random walk happens.
         """
-        dim = kwargs.get('dim', 1)
+        dim = kwargs.get('dim', 2)
 
         kwargs.update({'state_dim': dim,
                        'control_dim': 0,
