@@ -2,11 +2,11 @@ from __future__ import division,print_function
 import clickpoints
 import glob
 import numpy as np
-from Detectors import Measurement
-from Filters import Filter
-from Models import VariableSpeed
+from PenguTrack.Detectors import Measurement
+from PenguTrack.Filters import Filter
+from PenguTrack.Models import VariableSpeed
 # from DataFileExtended import DataFileExtended as DataFile
-from Stitchers import Heublein_Stitcher
+from PenguTrack.Stitchers import Heublein_Stitcher
 
 import os.path
 import matplotlib.pyplot as plt
@@ -39,7 +39,7 @@ from PenguTrack.DataFileExtended import DataFileExtended
 import scipy.stats as ss
 from scipy.ndimage.measurements import label
 from scipy.ndimage.filters import gaussian_filter
-from skimage.filters import threshold_niblack
+from skimage.filters import threshold_otsu as threshold_niblack
 import time
 
 
@@ -166,8 +166,13 @@ def getZpos(Tracks,v_fac):
     return mean_z
 
 def Stitch(db_path,db_path2,a1,a2,a3,a4,a5,max_cost,limiter):
-    import shutil
-    shutil.copy(db_path,db_path2)
+    from shutil import copyfile
+    copyfile(db_path, db_path2)
+    if os.path.exists(db_path+"-shm"):
+        copyfile(db_path+"-shm", db_path2+"-shm")
+    if os.path.exists(db_path+"-wal"):
+        copyfile(db_path+"-wal", db_path2+"-wal")
+    # sys.path.c
     stitcher = Heublein_Stitcher(a1,a2,a3,a4,a5,max_cost,limiter)
     stitcher.load_tracks_from_clickpoints(db_path2, "PT_Track_Marker")
     stitcher.stitch()
@@ -344,7 +349,7 @@ def mean_plots(Velocity,Direction):
     plt.show()
     return
 
-def measure(step, dt, list):
+def measure(step, dt, list, Frames):
     dirt = 0
     v_factor = 0.645 / ((step - 1) * dt / 60)
     track_distances = []
@@ -480,8 +485,12 @@ def Drift(Frames,list2, percentile):
                 Drift_distance.append(np.sqrt((PT_maxx - PT_minx) ** 2. + (PT_maxy - PT_miny) ** 2.))
     Drift_distance = np.asarray(Drift_distance)
     if len(Drift_distance)<=25:
-        percentile+=10
-    p = np.percentile(Drift_distance, percentile)
+        percentile += 10
+    try:
+        p = np.percentile(Drift_distance, percentile)
+    except IndexError:
+        return np.zeros((Frames, 2)), [], 0
+
     for i, dist in enumerate(Drift_distance):
         if dist <= p:
             Drift_distance_cor.append(dist)
@@ -666,20 +675,21 @@ def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, d
         mask_type = db.getMaskType(name="PT_SegMask")
 
     images = db.getImageIterator(start_frame=start_frame)
+
     # model = RandomWalk(dim=3)    #### raus ####
     model = VariableSpeed(dim=3)   #### extra ####
     # Set uncertainties
     q = int(Detection_Error)
     r = int(Prediction_Error)
-    object_area = (Min_Size + Max_Size) / 2
+    min_area = int((Min_Size / 2.) ** 2 * np.pi)
+    max_area = int((Max_Size / 2.) ** 2 * np.pi)
+    object_area = int((min_area + max_area) / 2.)
     object_size = int(np.sqrt(object_area) / 2.)
 
-    Q = np.diag(
-        [q * object_size, q * object_size, q * object_size])  # Prediction uncertainty
-    R = np.diag([r * object_size, r * object_size,
-                 r * object_size])  # Measurement uncertainty
-    State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filter
-    Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
+    Q = np.diag([q * object_size * res, q * object_size * res, q * object_size * res])
+    R = np.diag([r * object_size * res, r * object_size * res, 10*r * object_size * res])    #### extra * 10 ####
+    State_Dist = ss.multivariate_normal(cov=Q)
+    Meas_Dist = ss.multivariate_normal(cov=R)
 
     # Initialize Tracker
     FilterType = KalmanFilter
@@ -690,26 +700,12 @@ def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, d
     Tracker.MeasurementProbabilityThreshold = 0.
     Tracker.LogProbabilityThreshold = Log_Prob_Tresh
 
-    q = int(Detection_Error)
-    r = int(Prediction_Error)
-    min_area = int((Min_Size / 2.) ** 2 * np.pi)
-    max_area = int((Max_Size / 2.) ** 2 * np.pi)
-    object_area = int((min_area + max_area) / 2.)
-    object_size = int(np.sqrt(object_area) / 2.)
-
-    Q = np.diag(
-        [q * object_size * res, q * object_size * res, q * object_size * res])
-    R = np.diag([r * object_size * res, r * object_size * res,
-                 10*r * object_size * res])    #### extra * 10 ####
-    State_Dist = ss.multivariate_normal(cov=Q)
-    Meas_Dist = ss.multivariate_normal(cov=R)
-
-    Tracker.filter_args = [np.diag(Q), np.diag(R)]
-    Tracker.filter_kwargs = {"meas_dist": Meas_Dist, "state_dist": State_Dist}
-    Tracker.Filters.clear()
-    Tracker.ActiveFilters.clear()
-    Tracker.predict(u=np.zeros((model.Control_dim,)).T, i=start_frame)
-
+    # Tracker.filter_args = [np.diag(Q), np.diag(R)]
+    # Tracker.filter_kwargs = {"meas_dist": Meas_Dist, "state_dist": State_Dist}
+    # Tracker.Filters.clear()
+    # Tracker.ActiveFilters.clear()
+    # Tracker.predict(u=np.zeros((model.Control_dim,)).T, i=start_frame)
+    #
     db.deleteTracks(type="PT_Track_Marker")
     # marker_type = db.getMarkerType(name="PT_Detection_Marker")
     # marker_type2 = db.getMarkerType(name="PT_Track_Marker")
@@ -718,36 +714,31 @@ def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, d
     db.deleteMarkers(type=marker_type2)
     db.deleteMarkers(type=marker_type3)
     for image in images:
+    # for i in sorted(set([img.sort_index for img in db.getImages() if img.sort_index > start_frame])):
         i = image.sort_index
         print("Doing Frame %s" % i)
         # i = image.get_id()
+        image = db.getImage(frame=i)
 
         Index_Image = db.getImage(frame=i, layer=1).data
 
         # Prediction step
         Tracker.predict(u=np.zeros((model.Control_dim,)).T, i=i)
 
-        # SegMap = self.segmentate(frame=i)
-        # self.db.setMask(frame=i, layer=0, data=((~SegMap).astype(np.uint8)))
-        # Positions = self.detect(frame=i)
-
-        #
-        # minIndices = db.getImage(frame=i, layer=1)   #### extra raus ####
         minProj = db.getImage(frame=i, layer=0)
 
+        # minIndices = db.getImage(frame=i, layer=1)   #### extra raus ####
         minProjPrvs = db.getImage(frame=i-1, layer=0)  #### extra for NK ####
-        Positions, mask = NKCellDetector2().detect(minProj, minProjPrvs)  #### extra for NK ####
 
         # Positions, mask = TCellDetector().detect(minProj, minIndices)    #### extra raus ####
+        Positions, mask = NKCellDetector2().detect(minProj, minProjPrvs)  #### extra for NK ####
+
         db.setMask(frame=i, layer=0, data=(~mask).astype(np.uint8))
-        #
 
         for pos in Positions:
-            db.setMarker(frame=i, layer=0, y=pos.PositionX / res, x=pos.PositionY / res,
-                              type=marker_type)
-        if len(Positions) != 0:
-            # if np.all(Positions != np.array([])):
+            db.setMarker(frame=i, layer=0, y=pos.PositionX / res, x=pos.PositionY / res, type=marker_type)
 
+        if len(Positions) > 0:
             # Update Filter with new Detections
             try:
                 Tracker.update(z=Positions, i=i)
@@ -766,7 +757,7 @@ def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, d
                         x = meas.PositionX
                         y = meas.PositionY
                         z = meas.PositionZ
-                        prob = Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
+                        prob = Tracker.Filters[k].log_prob(keys=[i])#, compare_bel=False)
                     else:
                         x = y = z = np.nan
                         prob = np.nan
@@ -784,6 +775,7 @@ def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, d
 
                     x_img = y / res
                     y_img = x / res
+
                     # Write assigned tracks to ClickPoints DataBase
                     if np.isnan(x) or np.isnan(y):
                         pass
@@ -809,166 +801,163 @@ def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, d
                                                             (1000 + k), prob, z))
                             print('Set new Track %s and Track-Marker at %s, %s' % ((1000 + k), x_img, y_img))
 
-                        # try:
-                        #     db.db.connect()
-                        # except peewee.OperationalError:
-                        #     pass
                         meas_entry = db.setMeasurement(marker=track_marker, log=prob, x=x, y=y, z=z)
                         meas_entry.save()
 
-######## Main Iteration over Folder
-path_list = glob.glob('/home/user/NK Test/DoubleStitchTest.cdb')
-# path_list2 = glob.glob('/home/user/TCell/2017-08-08/layers_2017_08_08_24h_24hiG*_1_pos0_12Gel.cdb')
-# path_list += path_list2
-path_list = [path for path in path_list if not path.count("stitched")]
-# path_list = [path for path in path_list if not path.count("24h_1hiG_MC_LIM")]
-# path_list = [path for path in path_list if not path.count("2017_07_25_24h_24hiG_Kon_SZ_12Gel.cdb")]
-File_Name ='/home/user/TCell/Analysis.txt'
-File_Name2 = '/home/user/NKCell/Analysis.txt'
-File_Name_Drift = '/home/user/TCell/AnalysisDrCor.txt'
-File_Name_Drift2 = '/home/user/NKCell/AnalysisDrCor.txt'
-File_Name_G = '/home/user/TCell/AnalysisG.txt'
-File_Name_G2 = '/home/user/NKCell/AnalysisG.txt'
-pic_path_T = '/home/user/TCell/Scatterplots/'
-pic_path_NK = '/home/user/NKCell/Scatterplots/'
-pic_path_T_Drift = '/home/user/TCell/ScatterplotsDrCor/'
-pic_path_NK_Drift = '/home/user/NKCell/ScatterplotsDrCor/'
-pic_path_T_Elip = '/home/user/TCell/Elipplots/'
-pic_path_NK_Elip ='/home/user/NKCell/Elipplots/'
-# with open(File_Name, 'wb') as f:
-#     f.write('Day       \t\t\tData                              \t\t\tMotile % true dist\t\t\tMotile in %\t\t\tMean velocity\t\t\tMean Directionality\t\t\t#Tracks\t\t\t#Evaluated Tracks\t\t\t#Dirt\n')
-# with open(File_Name2, 'wb') as f:
-#     f.write('Day       \t\t\tData                              \t\t\tMotile % true dist\t\t\tMotile in %\t\t\tMean velocity\t\t\tMean Directionality\t\t\t#Tracks\t\t\t#Evaluated Tracks\t\t\t#Dirt\n')
-# with open(File_Name_G, 'wb') as f:
-#     f.write('Day       \t\t\tData                              \t\t\tMotile %\t\t\tNon-Motile %\t\t\tDead %  \t\t\tMean velocity\t\t\tMean Directionality\t\t\tStandard Deviation Vel\t\t\tStandard Deviation Dir\t\t\tRho   \n')
-# with open(File_Name_G2, 'wb') as f:
-#     f.write('Day       \t\t\tData                              \t\t\tMotile %\t\t\tNon-Motile %\t\t\tDead %  \t\t\tMean velocity\t\t\tMean Directionality\t\t\tStandard Deviation Vel\t\t\tStandard Deviation Dir\t\t\tRho   \n')
-# with open(File_Name_Drift, 'wb') as f:
-#     f.write('Day       \t\t\tData                              \t\t\tMotile % true dist\t\t\tMotile in %\t\t\tMean velocity\t\t\tMean Directionality\t\t\tMean vel dt1\t\t\t#Tracks\t\t\t#Evaluated Tracks\t\t\t#Dirt\n')
-# with open(File_Name_Drift2, 'wb') as f:
-#     f.write('Day       \t\t\tData                              \t\t\tMotile % true dist\t\t\tMotile in %\t\t\tMean velocity\t\t\tMean Directionality\t\t\tMean vel dt1\t\t\t#Tracks\t\t\t#Evaluated Tracks\t\t\t#Dirt\n')
-print(path_list)
-for i in path_list:
-    if i.count('RB_1_') or i.count('RB_2_') or i.count('RB_3_') or i.count('RB_5_'):
-        time_step = 30
-    else:
-        time_step = 110
-    # time_step = 30
-    v_fac = 0.645 / (time_step / 60.)
-    perc = 30
-    type = 'PT_Track_Marker'
-    Scatterplot_Name = i[i.find("layers_"):][7:]
-    Scatterplot_Name = Scatterplot_Name.split('.')[0]
-    Text_Name = Scatterplot_Name[11:]
-    Scatterplot_Name = Scatterplot_Name[5:]
-    # Text_Name = Scatterplot_Name
-    Day = i.split("/")[4]
-    db_path = i
-    db_path2 = i.split('.')[0] + "_stitched.cdb"
-    db_path3 = i.split('.')[0] + "_stitched2.cdb"
-    # if os.path.isfile(db_path2):
-    #     os.remove(db_path2)
-    # if os.path.isfile(db_path3):
-    #     os.remove(db_path3)
-    step = 20
-    db = DataFileExtended(db_path)
-    images = db.getImageIterator(start_frame=0)
-    Frame_list = []
-    for m in images:
-        Frame_list.append(m.sort_index)
-    Frames = np.max(Frame_list)
-    res = 6.45 / 10
-    run(-19.,6,4,7,30,db,res, start_frame=101)            # Tracking    #### extra errors * 2 + start####
-    db.db.close()
-    try:
-        Stitch(db_path,db_path2,3,0.4,18,30,1,100,100)    # First Stitching   #### extra changed ####
-    except IndexError:
-        pass
-    try:
-        Stitch(db_path2,db_path3,10,5,10,10,1,100,100)  # Second Stitching
-    except IndexError:
-        pass
+if __name__ == "__main__":
+    ######## Main Iteration over Folder
+    path_list = glob.glob('/home/user/NK Test/DoubleStitchTest.cdb')
+    # path_list2 = glob.glob('/home/user/TCell/2017-08-08/layers_2017_08_08_24h_24hiG*_1_pos0_12Gel.cdb')
+    # path_list += path_list2
+    path_list = [path for path in path_list if not path.count("stitched")]
+    # path_list = [path for path in path_list if not path.count("24h_1hiG_MC_LIM")]
+    # path_list = [path for path in path_list if not path.count("2017_07_25_24h_24hiG_Kon_SZ_12Gel.cdb")]
+    File_Name ='/home/user/TCell/Analysis.txt'
+    File_Name2 = '/home/user/NKCell/Analysis.txt'
+    File_Name_Drift = '/home/user/TCell/AnalysisDrCor.txt'
+    File_Name_Drift2 = '/home/user/NKCell/AnalysisDrCor.txt'
+    File_Name_G = '/home/user/TCell/AnalysisG.txt'
+    File_Name_G2 = '/home/user/NKCell/AnalysisG.txt'
+    pic_path_T = '/home/user/TCell/Scatterplots/'
+    pic_path_NK = '/home/user/NKCell/Scatterplots/'
+    pic_path_T_Drift = '/home/user/TCell/ScatterplotsDrCor/'
+    pic_path_NK_Drift = '/home/user/NKCell/ScatterplotsDrCor/'
+    pic_path_T_Elip = '/home/user/TCell/Elipplots/'
+    pic_path_NK_Elip ='/home/user/NKCell/Elipplots/'
+    # with open(File_Name, 'wb') as f:
+    #     f.write('Day       \t\t\tData                              \t\t\tMotile % true dist\t\t\tMotile in %\t\t\tMean velocity\t\t\tMean Directionality\t\t\t#Tracks\t\t\t#Evaluated Tracks\t\t\t#Dirt\n')
+    # with open(File_Name2, 'wb') as f:
+    #     f.write('Day       \t\t\tData                              \t\t\tMotile % true dist\t\t\tMotile in %\t\t\tMean velocity\t\t\tMean Directionality\t\t\t#Tracks\t\t\t#Evaluated Tracks\t\t\t#Dirt\n')
+    # with open(File_Name_G, 'wb') as f:
+    #     f.write('Day       \t\t\tData                              \t\t\tMotile %\t\t\tNon-Motile %\t\t\tDead %  \t\t\tMean velocity\t\t\tMean Directionality\t\t\tStandard Deviation Vel\t\t\tStandard Deviation Dir\t\t\tRho   \n')
+    # with open(File_Name_G2, 'wb') as f:
+    #     f.write('Day       \t\t\tData                              \t\t\tMotile %\t\t\tNon-Motile %\t\t\tDead %  \t\t\tMean velocity\t\t\tMean Directionality\t\t\tStandard Deviation Vel\t\t\tStandard Deviation Dir\t\t\tRho   \n')
+    # with open(File_Name_Drift, 'wb') as f:
+    #     f.write('Day       \t\t\tData                              \t\t\tMotile % true dist\t\t\tMotile in %\t\t\tMean velocity\t\t\tMean Directionality\t\t\tMean vel dt1\t\t\t#Tracks\t\t\t#Evaluated Tracks\t\t\t#Dirt\n')
+    # with open(File_Name_Drift2, 'wb') as f:
+    #     f.write('Day       \t\t\tData                              \t\t\tMotile % true dist\t\t\tMotile in %\t\t\tMean velocity\t\t\tMean Directionality\t\t\tMean vel dt1\t\t\t#Tracks\t\t\t#Evaluated Tracks\t\t\t#Dirt\n')
+    print(path_list)
+    for i in path_list:
+        if i.count('RB_1_') or i.count('RB_2_') or i.count('RB_3_') or i.count('RB_5_'):
+            time_step = 30
+        else:
+            time_step = 110
+        # time_step = 30
+        v_fac = 0.645 / (time_step / 60.)
+        perc = 30
+        type = 'PT_Track_Marker'
+        Scatterplot_Name = i[i.find("layers_"):][7:]
+        Scatterplot_Name = Scatterplot_Name.split('.')[0]
+        Text_Name = Scatterplot_Name[11:]
+        Scatterplot_Name = Scatterplot_Name[5:]
+        # Text_Name = Scatterplot_Name
+        Day = i.split("/")[4]
+        db_path = i
+        db_path2 = i.split('.')[0] + "_stitched.cdb"
+        db_path3 = i.split('.')[0] + "_stitched2.cdb"
+        # if os.path.isfile(db_path2):
+        #     os.remove(db_path2)
+        # if os.path.isfile(db_path3):
+        #     os.remove(db_path3)
+        step = 20
+        db = DataFileExtended(db_path)
+        images = db.getImageIterator(start_frame=0)
+        Frame_list = []
+        for m in images:
+            Frame_list.append(m.sort_index)
+        Frames = np.max(Frame_list)
+        res = 6.45 / 10
+        run(-19.,6,4,7,30,db,res, start_frame=101)            # Tracking    #### extra errors * 2 + start####
+        db.db.close()
+        try:
+            Stitch(db_path,db_path2,3,0.4,18,30,1,100,100)    # First Stitching   #### extra changed ####
+        except IndexError:
+            pass
+        try:
+            Stitch(db_path2,db_path3,10,5,10,10,1,100,100)  # Second Stitching
+        except IndexError:
+            pass
 
+        db = clickpoints.DataFile(db_path3)
+        ### For Deleting Tracks above and below
+        Tracks = load_tracks(db_path3, type)
+        Z_posis = getZpos(Tracks, v_fac)
+        Z_posis = np.asarray(Z_posis)
+        tracks_to_delete = get_Tracks_to_delete(Z_posis, perc)
+        ###
+        list2 = create_list2(db)  # Create List for true dist
+        drift,drift_list, missing_frame = Drift(Frames, list2, 5)  # Create List with offsets
+        list2 = list2_with_drift(db,drift,tracks_to_delete,del_track=True) # Create list for true dist with drift_cor
+        list = create_list(Frames, db, drift=drift, Drift=True, Missing=missing_frame)  # Create List for analysis
+        ### For Deleting Tracks above and below
+        list_copy = list[:]
+        for l, m in enumerate(list):
+            keys = m.keys()
+            for k, j in enumerate(keys):
+                if j in tracks_to_delete:
+                    del list_copy[l][j]
+        ###
+        directions,velocities,dirt,alternative_vel, vel_mean, dir_mean, alt_vel_mean = measure(step,time_step,list)  # Calculate directions and velocities
+        # gaussian_data, gaussian_dataset, gaussian_weights, gaussian_means = Gaussian_mix(directions, alternative_vel, 100, 10000)
+        motile_percentage,mean_v,mean_dire,number,len_count,mo_p_al,me_v_al,me_d_al = values(directions,velocities,db,dirt,alternative_vel,tracks_to_delete,del_Tracks=True)
+        motile_per_true_dist, real_dirt = motiletruedist(list2)
+        # Vel_mean, Dir_mean = for_mean_plots(vel_mean,dir_mean)
+        # alt_Vel_mean = for_mean_plots(alt_vel_mean, dir_mean, Vel_and_Dir=False)
+        # mean_plots(Vel_mean,Dir_mean)
+        # mean_plots(alt_Vel_mean,Dir_mean)
+        # ind_max = np.argmax(gaussian_means[:,1])
+        # ind_min = np.argmin(gaussian_means[:,1])
+        # ind_b = 3-ind_max-ind_min
+        # cov = gaussian_dataset.covariances_
+        # std_vel = np.sqrt(cov[ind_max][0,0])
+        # std_dir = np.sqrt(cov[ind_max][1,1])
+        # rho = cov[ind_max][0,1]/np.sqrt(cov[ind_max][0,0]*cov[ind_max][0,0])
+        if i.count('TCell'):
+            Colorplot1(directions, velocities, Scatterplot_Name, path=pic_path_T_Drift, Save=True)
+            # Colorplot1(directions,velocities,Scatterplot_Name, path=pic_path_T, Save=True)
+            # Elip_plot(gaussian_data,gaussian_dataset, Scatterplot_Name, path=pic_path_T_Elip ,Save=True)
+            # with open(File_Name_G, 'ab') as f:
+            #     f.write('%s\t\t\t%34s\t\t\t%8f\t\t\t%12f\t\t\t%6f\t\t\t%13f\t\t\t%19f\t\t\t%22f\t\t\t%22f\t\t\t%6f\n'%(Day, Text_Name, gaussian_weights[ind_max], gaussian_weights[ind_b], gaussian_weights[ind_min], gaussian_means[:,1][ind_max], gaussian_means[:,0][ind_max], std_vel, std_dir, rho))
+            with open(File_Name_Drift, 'ab') as f:
+                f.write('%s\t\t\t%34s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%12f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n'%(Day, Text_Name,motile_per_true_dist, motile_percentage, mean_v,mean_dire, me_v_al, number, len_count, real_dirt))
+            # with open(File_Name, 'ab') as f:
+            #     f.write('%s\t\t\t%18s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n'%(Day, Text_Name,motile_per_true_dist, motile_percentage, mean_v,mean_dire, number, len_count, real_dirt))
+        elif i.count('NKCell'):
+            Colorplot1(directions, velocities, Scatterplot_Name, path=pic_path_NK_Drift, Save=True)
+            # Colorplot1(directions,velocities,Scatterplot_Name, path=pic_path_NK, Save=True)
+            # Elip_plot(gaussian_data, gaussian_dataset, Scatterplot_Name, path=pic_path_NK_Elip, Save=True)
+            # with open(File_Name_G2, 'ab') as f:
+            #     f.write('%s\t\t\t%34s\t\t\t%8f\t\t\t%12f\t\t\t%6f\t\t\t%13f\t\t\t%19f\t\t\t%22f\t\t\t%22f\t\t\t%6f\n'%(Day, Text_Name, gaussian_weights[ind_max], gaussian_weights[ind_b], gaussian_weights[ind_min], gaussian_means[:,1][ind_max], gaussian_means[:,0][ind_max], std_vel, std_dir, rho))
+            with open(File_Name_Drift2, 'ab') as f:
+                f.write('%s\t\t\t%34s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%12f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n'%(Day, Text_Name,motile_per_true_dist, motile_percentage, mean_v,mean_dire, me_v_al, number, len_count, real_dirt))
+            # with open(File_Name2, 'ab') as f:
+            #     f.write('%s\t\t\t%18s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n'%(Day, Text_Name,motile_per_true_dist, motile_percentage, mean_v,mean_dire, number, len_count, real_dirt))
+        db.db.close()
+        print("--- Done with db %s ---" %(i))
+    print("-------Done-------")
+    ########
+
+    ####### Main
+    # Scatterplot_Name = "SCA"
+    # Frames = 119
+    # # Name = "layers_2017_06_07_24h_SCA.cdb"# DB name
+    # # pic_path = "/mnt/cmark2/T-Cell-Motility/2017-06-07/24hnachMACS/Kontrolle/SCA/*.tif"# Path for the pictures
+    # # db_connection_path = "/mnt/cmark2/T-Cell-Motility/2017-06-07/24hnachMACS/Kontrolle/SCA/"
+    # db_path = "/home/user/TCell/2017-05-30/layers_2017_05_30_24h_1hiG_BIS.cdb"
+    # db_path2 = "/home/user/TCell/2017-05-30/layers_2017_05_30_24h_1hiG_BIS_stitched.cdb"
+    # db_path3 = "/home/user/TCell/2017-05-30/layers_2017_05_30_24h_1hiG_BIS_stitched2.cdb"
+    # # pic_pos = "pos01"
+    # step = 20
+    # # Create_DB(Name,pic_path,db_connection_path,pic_pos)       # Create DB with correct Layers
+    # # Tracking fehlt                               # Tracking
+    # Stitch(db_path,db_path2,5,2,20,30,1,100,10)    # First Stitching
+    # Stitch(db_path2,db_path3,10,5,10,10,1,100,10)  # Second Stitching
     # db = clickpoints.DataFile(db_path3)
-    # ### For Deleting Tracks above and below
-    # Tracks = load_tracks(db_path3, type)
-    # Z_posis = getZpos(Tracks, v_fac)
-    # Z_posis = np.asarray(Z_posis)
-    # tracks_to_delete = get_Tracks_to_delete(Z_posis, perc)
-    # ###
-    # list2 = create_list2(db)  # Create List for true dist
-    # drift,drift_list, missing_frame = Drift(Frames, list2, 5)  # Create List with offsets
-    # list2 = list2_with_drift(db,drift,tracks_to_delete,del_track=True) # Create list for true dist with drift_cor
-    # list = create_list(Frames, db, drift=drift, Drift=True, Missing=missing_frame)  # Create List for analysis
-    # ### For Deleting Tracks above and below
-    # list_copy = list[:]
-    # for l, m in enumerate(list):
-    #     keys = m.keys()
-    #     for k, j in enumerate(keys):
-    #         if j in tracks_to_delete:
-    #             del list_copy[l][j]
-    # ###
-    # directions,velocities,dirt,alternative_vel, vel_mean, dir_mean, alt_vel_mean = measure(step,time_step,list)  # Calculate directions and velocities
-    # # gaussian_data, gaussian_dataset, gaussian_weights, gaussian_means = Gaussian_mix(directions, alternative_vel, 100, 10000)
-    # motile_percentage,mean_v,mean_dire,number,len_count,mo_p_al,me_v_al,me_d_al = values(directions,velocities,db,dirt,alternative_vel,tracks_to_delete,del_Tracks=True)
-    # motile_per_true_dist, real_dirt = motiletruedist(list2)
-    # # Vel_mean, Dir_mean = for_mean_plots(vel_mean,dir_mean)
-    # # alt_Vel_mean = for_mean_plots(alt_vel_mean, dir_mean, Vel_and_Dir=False)
-    # # mean_plots(Vel_mean,Dir_mean)
-    # # mean_plots(alt_Vel_mean,Dir_mean)
-    # # ind_max = np.argmax(gaussian_means[:,1])
-    # # ind_min = np.argmin(gaussian_means[:,1])
-    # # ind_b = 3-ind_max-ind_min
-    # # cov = gaussian_dataset.covariances_
-    # # std_vel = np.sqrt(cov[ind_max][0,0])
-    # # std_dir = np.sqrt(cov[ind_max][1,1])
-    # # rho = cov[ind_max][0,1]/np.sqrt(cov[ind_max][0,0]*cov[ind_max][0,0])
-    # if i.count('TCell'):
-    #     Colorplot1(directions, velocities, Scatterplot_Name, path=pic_path_T_Drift, Save=True)
-    #     # Colorplot1(directions,velocities,Scatterplot_Name, path=pic_path_T, Save=True)
-    #     # Elip_plot(gaussian_data,gaussian_dataset, Scatterplot_Name, path=pic_path_T_Elip ,Save=True)
-    #     # with open(File_Name_G, 'ab') as f:
-    #     #     f.write('%s\t\t\t%34s\t\t\t%8f\t\t\t%12f\t\t\t%6f\t\t\t%13f\t\t\t%19f\t\t\t%22f\t\t\t%22f\t\t\t%6f\n'%(Day, Text_Name, gaussian_weights[ind_max], gaussian_weights[ind_b], gaussian_weights[ind_min], gaussian_means[:,1][ind_max], gaussian_means[:,0][ind_max], std_vel, std_dir, rho))
-    #     with open(File_Name_Drift, 'ab') as f:
-    #         f.write('%s\t\t\t%34s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%12f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n'%(Day, Text_Name,motile_per_true_dist, motile_percentage, mean_v,mean_dire, me_v_al, number, len_count, real_dirt))
-    #     # with open(File_Name, 'ab') as f:
-    #     #     f.write('%s\t\t\t%18s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n'%(Day, Text_Name,motile_per_true_dist, motile_percentage, mean_v,mean_dire, number, len_count, real_dirt))
-    # elif i.count('NKCell'):
-    #     Colorplot1(directions, velocities, Scatterplot_Name, path=pic_path_NK_Drift, Save=True)
-    #     # Colorplot1(directions,velocities,Scatterplot_Name, path=pic_path_NK, Save=True)
-    #     # Elip_plot(gaussian_data, gaussian_dataset, Scatterplot_Name, path=pic_path_NK_Elip, Save=True)
-    #     # with open(File_Name_G2, 'ab') as f:
-    #     #     f.write('%s\t\t\t%34s\t\t\t%8f\t\t\t%12f\t\t\t%6f\t\t\t%13f\t\t\t%19f\t\t\t%22f\t\t\t%22f\t\t\t%6f\n'%(Day, Text_Name, gaussian_weights[ind_max], gaussian_weights[ind_b], gaussian_weights[ind_min], gaussian_means[:,1][ind_max], gaussian_means[:,0][ind_max], std_vel, std_dir, rho))
-    #     with open(File_Name_Drift2, 'ab') as f:
-    #         f.write('%s\t\t\t%34s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%12f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n'%(Day, Text_Name,motile_per_true_dist, motile_percentage, mean_v,mean_dire, me_v_al, number, len_count, real_dirt))
-    #     # with open(File_Name2, 'ab') as f:
-    #     #     f.write('%s\t\t\t%18s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n'%(Day, Text_Name,motile_per_true_dist, motile_percentage, mean_v,mean_dire, number, len_count, real_dirt))
-    # db.db.close()
-    # print("--- Done with db %s ---" %(i))
-print("-------Done-------")
-########
-
-####### Main
-# Scatterplot_Name = "SCA"
-# Frames = 119
-# # Name = "layers_2017_06_07_24h_SCA.cdb"# DB name
-# # pic_path = "/mnt/cmark2/T-Cell-Motility/2017-06-07/24hnachMACS/Kontrolle/SCA/*.tif"# Path for the pictures
-# # db_connection_path = "/mnt/cmark2/T-Cell-Motility/2017-06-07/24hnachMACS/Kontrolle/SCA/"
-# db_path = "/home/user/TCell/2017-05-30/layers_2017_05_30_24h_1hiG_BIS.cdb"
-# db_path2 = "/home/user/TCell/2017-05-30/layers_2017_05_30_24h_1hiG_BIS_stitched.cdb"
-# db_path3 = "/home/user/TCell/2017-05-30/layers_2017_05_30_24h_1hiG_BIS_stitched2.cdb"
-# # pic_pos = "pos01"
-# step = 20
-# # Create_DB(Name,pic_path,db_connection_path,pic_pos)       # Create DB with correct Layers
-# # Tracking fehlt                               # Tracking
-# Stitch(db_path,db_path2,5,2,20,30,1,100,10)    # First Stitching
-# Stitch(db_path2,db_path3,10,5,10,10,1,100,10)  # Second Stitching
-# db = clickpoints.DataFile(db_path3)
-# list = create_list(Frames, db)                 # Create List for analysis
-# directions,velocities,dirt = measure(step,15,list)  # Calculate directions and velocities
-# motile_percentage,mean_v,mean_dire,number,len_count = values(directions,velocities,db,dirt)
-# print(motile_percentage,mean_v,mean_dire,number,len_count,dirt)
-#######
+    # list = create_list(Frames, db)                 # Create List for analysis
+    # directions,velocities,dirt = measure(step,15,list)  # Calculate directions and velocities
+    # motile_percentage,mean_v,mean_dire,number,len_count = values(directions,velocities,db,dirt)
+    # print(motile_percentage,mean_v,mean_dire,number,len_count,dirt)
+    #######
 
 
 

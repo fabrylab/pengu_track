@@ -50,7 +50,7 @@ from scipy.ndimage.filters import gaussian_filter
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max
 
-from skimage.filters import threshold_niblack
+from skimage.filters import threshold_otsu as threshold_niblack #threshold_niblack
 
 # If we really need this function, better take it from skiamge. Maybe cv2 is not available.
 try:
