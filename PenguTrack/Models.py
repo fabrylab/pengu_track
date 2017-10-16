@@ -271,7 +271,7 @@ class RandomWalk(Model):
         dim = kwargs.get('dim', 2)
 
         kwargs.update({'state_dim': dim,
-                       'control_dim': 0,
+                       'control_dim': dim,
                        'meas_dim': dim,
                        'evo_dim': dim})
 
@@ -339,7 +339,7 @@ class Ballistic(Model):
         """
         dim = kwargs.get('dim', 1)
         kwargs.update({'state_dim': dim*3,
-                       'control_dim': 0,
+                       'control_dim': dim*3,
                        'meas_dim': dim,
                        'evo_dim': dim})
 
@@ -429,7 +429,7 @@ class VariableSpeed(Model):
 
         dim = kwargs.get('dim', 1)
         kwargs.update({'state_dim': dim*2,
-                       'control_dim': 0,
+                       'control_dim': dim*2,
                        'meas_dim': dim,
                        'evo_dim': dim})
 
@@ -517,7 +517,7 @@ class AR(Model):
         order += 1
         dim = kwargs.get('dim', 1)
         kwargs.update({'state_dim': dim * order,
-                       'control_dim': 0,
+                       'control_dim': dim * order,
                        'meas_dim': dim,
                        'evo_dim': dim})
 
@@ -604,7 +604,7 @@ class MA(Model):
         order += 1
         dim = kwargs.get('dim', 1)
         kwargs.update({'state_dim': dim * (order+1),
-                       'control_dim': 0,
+                       'control_dim': dim * (order+1),
                        'meas_dim': dim,
                        'evo_dim': dim})
 

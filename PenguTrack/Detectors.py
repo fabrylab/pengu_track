@@ -1072,7 +1072,7 @@ class RegionPropDetector(Detector):
         regions = extended_regionprops(skimage.measure.label(image), intensity_image=intensity_image)
         return [Measurement(
             np.sum([filter.filter([region]) for filter in self.Filters]),
-            region.centroid, data=dict([[filter.prop, [region.__getattribute__(filter.prop), filter.filter([region])]] for filter in self.Filters]))
+            np.asarray(region.centroid)[:, None], data=dict([[filter.prop, [region.__getattribute__(filter.prop), filter.filter([region])]] for filter in self.Filters]))
             for region in regions]
 
 

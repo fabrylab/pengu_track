@@ -115,7 +115,7 @@ class Filter(object):
             try:
                 u = self.Controls[i-1]
             except KeyError:
-                u = np.zeros(self.Model.Control_dim,).T
+                u = np.zeros((self.Model.Control_dim, 1))
         else:
             self.Controls.update({i-1: u})
 
@@ -373,7 +373,7 @@ class Filter(object):
         return prob
 
     def _log_prob_(self, key):
-        return self.State_Distribution.logpdf(self.X[key]-self.Predicted_X[key])
+        return self.State_Distribution.logpdf((self.X[key]-self.Predicted_X[key]).T)
     # def _log_prob_(self, key):
     #     measurement = self.Measurements[key]
     #     try:
@@ -637,7 +637,7 @@ class KalmanFilter(Filter):
                 z = np.asarray([z.PositionX])
 
         if len(self.Model.Extensions) > 0:
-            z = np.hstack((z, [measurement.Data[var][0] for var in self.Model.Extensions]))
+            z = np.vstack((z, [[measurement.Data[var][0]] for var in self.Model.Extensions]))
 
         try:
             x = self.Predicted_X[i]
@@ -1092,7 +1092,7 @@ class MultiFilter(Filter):
         try:
             if len(self.Model.Extensions) > 0:
                 z = np.array(
-                    [np.hstack((np.array([m.PositionX, m.PositionY, m.PositionZ]), np.array([m.Data[var][0] for var in self.Model.Extensions])))
+                    [np.vstack((np.array([m.PositionX, m.PositionY, m.PositionZ]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
                               for m in measurements], ndmin=2)
             else:
                 z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
@@ -1100,14 +1100,14 @@ class MultiFilter(Filter):
             try:
                 if len(self.Model.Extensions) > 0:
                     z = np.array(
-                        [np.hstack((np.array([m.PositionX, m.PositionY]), np.array([m.Data[var][0] for var in self.Model.Extensions])))
+                        [np.vstack((np.array([m.PositionX, m.PositionY]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
                          for m in measurements], ndmin=2)
                 else:
                     z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
             except (ValueError, AttributeError):
                 if len(self.Model.Extensions) > 0:
                     z = np.array(
-                        [np.hstack((np.array([m.PositionX]), np.array([m.Data[var][0] for var in self.Model.Extensions])))
+                        [np.vstack((np.array([m.PositionX]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
                          for m in measurements], ndmin=2)
                 else:
                     z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
@@ -1162,7 +1162,7 @@ class MultiFilter(Filter):
         try:
             if len(self.Model.Extensions) > 0:
                 z = np.array(
-                    [np.hstack((np.array([m.PositionX, m.PositionY, m.PositionZ]), np.array([m.Data[var][0] for var in self.Model.Extensions])))
+                    [np.vstack((np.array([m.PositionX, m.PositionY, m.PositionZ]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
                               for m in measurements], ndmin=2)
             else:
                 z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
@@ -1170,14 +1170,14 @@ class MultiFilter(Filter):
             try:
                 if len(self.Model.Extensions) > 0:
                     z = np.array(
-                        [np.hstack((np.array([m.PositionX, m.PositionY]), np.array([m.Data[var][0] for var in self.Model.Extensions])))
+                        [np.vstack((np.array([m.PositionX, m.PositionY]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
                          for m in measurements], ndmin=2)
                 else:
                     z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
             except (ValueError, AttributeError):
                 if len(self.Model.Extensions) > 0:
                     z = np.array(
-                        [np.hstack((np.array([m.PositionX]), np.array([m.Data[var][0] for var in self.Model.Extensions])))
+                        [np.vstack((np.array([m.PositionX]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])[None, :]))
                          for m in measurements], ndmin=2)
                 else:
                     z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
