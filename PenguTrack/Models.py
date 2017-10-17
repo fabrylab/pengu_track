@@ -126,11 +126,12 @@ class Model(object):
         Function to predict next measurement from current state.
 
         Parameters
-        ––––––––––
+        ----------
         state_vector: array_like
             Latest state vector.
+
         Returns
-        ––––––––––
+        -------
         measurement: np.array
             Expected measurement vector.
         """
@@ -141,15 +142,16 @@ class Model(object):
         Function to predict next measurement from current state.
 
         Parameters
-        ––––––––––
+        ----------
         random_vector: array_like
             Vector containing the statistical fluctuations.
         state_vector: array_like, optional
             Latest state vector.
+
         Returns
-        ––––––––––
-        state: np.array
-            Calculated state vector.
+        -------
+            state: np.array
+                Calculated state vector.
         """
         if state_vector is None:
             state_vector = np.zeros(self.State_dim)
@@ -172,13 +174,15 @@ class Model(object):
         Tries to infer state from measurement.
 
         Parameters
-        ––––––––––
+        ----------
         meas_vector: array_like
             Vector containing the measurement.
+
         Returns
-        ––––––––––
+        -------
         state: np.array
             Calculated state vector.
+
         Raises
         ------
         LinAlgError
