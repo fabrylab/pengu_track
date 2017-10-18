@@ -30,7 +30,8 @@ MOCK_MODULES = ['imageio',
                 'scipy.integrate',
                 'numpy',
                 'numpy.lib',
-                'numpy.core.multiarray'
+                'numpy.core.multiarray',
+                'clickpoints',
                 'peewee', 'PIL', 'PIL._util', 'qimage2ndarray', 'sip', 'PyQt4', 'PyQt4.QtGui', 'qtpy', 'qtpy.QtGui', 'qtpy.QtCore', 'qtpy.QtWidgets', 'qtawesome', 'matplotlib', 'matplotlib.backends', 'matplotlib.backends.backend_qt4agg', 'matplotlib.backends.backend_qt4', 'matplotlib.figure']
 sys.modules.update((mod_name, mock.MagicMock()) for mod_name in MOCK_MODULES)
 
