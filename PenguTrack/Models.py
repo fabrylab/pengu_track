@@ -27,7 +27,7 @@ Module containing model classes to be used with pengu-track detectors and filter
 from __future__ import print_function, division
 import numpy as np
 #  import scipy.stats as ss
-#  import scipy.optimize as opt
+import scipy.optimize as opt
 
 
 class Model(object):
@@ -230,7 +230,84 @@ class Model(object):
         c_mat[:-1, :] = self.Control_Matrix
         self.Control_Matrix = c_mat
 
+    def optimize_mult(self, states, params=None):
+        if params is None:
+            params = self.Opt_Params
+        InitArgs = list(self.Initial_Args)
+        InitKWArgs = dict(self.Initial_KWArgs)
 
+        s = np.vstack([ss[:-1] for ss in states])
+        s_p1 = np.vstack([ss[1:] for ss in states])
+
+        p_opt, p_cov = opt.curve_fit(lambda s,*init_args : self.__opt_func__(s, params, *init_args),
+                                     s, s_p1.flatten(),
+                                     # p0=[self.Initial_KWArgs[o]*np.ones(self.Opt_Params_Shape[o]) for o in sorted(params)],
+                                     p0=self.__flatparams__(self.Initial_KWArgs, params=params),
+                                     # bounds=[self.Opt_Params_Borders[o] for o in sorted(params)])
+                                     bounds=self.__flatborders__(self.Opt_Params_Borders, params=params))
+        self.__init__(*InitArgs, **InitKWArgs)
+        return p_opt, p_cov
+
+
+    def optimize(self, states, params = None):
+        if params is None:
+            params = self.Opt_Params
+        InitArgs = list(self.Initial_Args)
+        InitKWArgs = dict(self.Initial_KWArgs)
+        s = states[:-1]
+        s_p1 = states[1:]
+        p_opt, p_cov = opt.curve_fit(lambda s,*init_args : self.__opt_func__(s, params, *init_args),
+                                     s, s_p1.flatten(),
+                                     # p0=[self.Initial_KWArgs[o]*np.ones(self.Opt_Params_Shape[o]) for o in sorted(params)],
+                                     p0=self.__flatparams__(self.Initial_KWArgs, params=params),
+                                     # bounds=[self.Opt_Params_Borders[o] for o in sorted(params)])
+                                     bounds=self.__flatborders__(self.Opt_Params_Borders, params=params))
+        self.__init__(*InitArgs, **InitKWArgs)
+        return p_opt, p_cov
+
+    # def __compare_measurements__(self, measurements):
+    #     m = measurements[:-1]
+    #     m_p1 = measurements[1:]
+    #     return np.mean(np.linalg.norm(m_p1-np.array([self.measure(self.predict(self.infer_state(mm),
+    #                                                                            np.zeros((self.Control_dim, 0)))) for mm in m]), axis=1))
+    # def __compare_states__(self, states):
+    #     s = states[:-1]
+    #     s_p1 = s[1:]
+    #     return np.mean(np.linalg.norm(s_p1-np.array([self.predict(ss,
+    #                                                               np.zeros((self.Control_dim, 0))) for ss in s]), axis=1))
+
+    def __opt_func__(self, states, params, *init_args):
+        if params is None:
+            params = self.Opt_Params
+        init_args = self.__unflatparams__(init_args, params=params)
+        kwargs = {}
+        kwargs.update(self.Initial_KWArgs)
+        for i,o in enumerate(sorted(params)):
+            kwargs[o] = init_args[i]
+        self.__init__(*self.Initial_Args, **kwargs)
+        return np.array([self.predict(ss,np.zeros((self.Control_dim, 1))) for ss in states]).flatten()
+
+    def __flatparams__(self, param_dict, params=None):
+        if params is None:
+            params = self.Opt_Params
+        param_list = [param_dict[o] * np.ones(self.Opt_Params_Shape[o]) for o in sorted(params)]
+        return np.hstack([p.flatten() for p in param_list])
+
+    def __unflatparams__(self, param_array, params=None):
+        if params is None:
+            params = self.Opt_Params
+        lens = [0]
+        lens.extend([len(np.ones(self.Opt_Params_Shape[o]).flatten()) for o in sorted(params)])
+        cum_lens = np.cumsum(lens)
+        # return dict([[o, np.array(param_array[c:l]).reshape(self.Opt_Params_Shape[o])]for l, c, o in zip(cum_lens[1:], cum_lens[:-1], sorted(params))])
+        return [np.array(param_array[c:l]).reshape(self.Opt_Params_Shape[o])for l, c, o in zip(cum_lens[1:], cum_lens[:-1], sorted(params))]
+
+    def __flatborders__(self, borderarray, params=None):
+        if params is None:
+            params = self.Opt_Params
+        border_0 = [borderarray[o][0] * np.ones(self.Opt_Params_Shape[o]) for o in sorted(params)]
+        border_1 = [borderarray[o][1] * np.ones(self.Opt_Params_Shape[o]) for o in sorted(params)]
+        return np.hstack([p.flatten() for p in border_0]),np.hstack([p.flatten() for p in border_1])
 
 class RandomWalk(Model):
     """
@@ -397,7 +474,7 @@ class VariableSpeed(Model):
         Number of entries in the measurement-vector.
     Evolution_dim: int
         Number of entries in the evolution-vector.
-    Opt_Params: list of strings
+    Opt_Params: list of strings    MultiKal.Model.optimize(state_dict[0])
         Parameters of model, which can be optimized.
     Opt_Params_Shape: dict
         Keys are Opt_Params, entries are tuples containing shapes of the corresponding Parameters.

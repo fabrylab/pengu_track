@@ -29,14 +29,17 @@ class SyntheticDataGenerator(object):
         self.Q = float(speed_variation)
         self.Model = model
         vec = np.random.rand(self.N, self.Model.State_dim, 1)
-        vec [:,::2] *= self.N*self.R
+        vec [:,::2] *= self.R
         vec [1:,::2] *= self.Q
         self.Objects = {0: vec}
+
+        for i in range(100):
+            self.step()
 
     def step(self):
         i = max(self.Objects.keys())
         positions = self.Objects[i]
-        self.Objects[i+1] = np.array([self.Model.predict(self.Model.evolute(Q*np.random.randn(self.Model.Evolution_dim, 1),
+        self.Objects[i+1] = np.array([self.Model.predict(self.Model.evolute(self.Q*np.random.randn(self.Model.Evolution_dim, 1),
                                                                             pos),
                                                          np.zeros((self.Model.Control_dim, 1))) for pos in positions])
         return [Measurement(1.0, self.Model.measure(pos)) for pos in self.Objects[i+1]]
@@ -50,9 +53,9 @@ if __name__ == '__main__':
     # Physical Model (used for predictions)
     from PenguTrack.Models import VariableSpeed
     # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
-    model = VariableSpeed(dim=2, timeconst=2)
+    model = VariableSpeed(dim=2, timeconst=1)
 
-    Generator = SyntheticDataGenerator(10, 10., 1., model)
+    Generator = SyntheticDataGenerator(10, 10., 1., VariableSpeed(dim=2, timeconst=0.5, damping=1.))
 
     # Tracker (assignment and data handling)
     from PenguTrack.Filters import MultiFilter
@@ -131,3 +134,20 @@ if __name__ == '__main__':
         print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
 
     print('done with Tracking')
+
+    state_dict = dict([[k, np.array([MultiKal.Filters[k].X[i] for i in MultiKal.Filters[k].X])] for k in MultiKal.Filters])
+    params = ["damping", "timeconst"]
+    # params = ["timeconst"]
+    # params = ["damping"]
+
+    print("Real Params: ",[Generator.Model.Initial_KWArgs[o] for o in sorted(params)])
+    new_mod = Generator.Model#VariableSpeed(dim=2, damping=1., timeconst=2)
+    print("Easy Start: ", [new_mod.Initial_KWArgs[o] for o in sorted(params)])
+    print(new_mod.__unflatparams__(new_mod.optimize_mult([s for s in state_dict.values() if len(s)>2], params=params)[0], params=params))
+
+    new_mod = VariableSpeed(dim=2, damping=1., timeconst=1)
+    print("Complex Start: ", [new_mod.Initial_KWArgs[o] for o in sorted(params)])
+    print(new_mod.__unflatparams__(new_mod.optimize_mult([s for s in state_dict.values() if len(s)>2], params=params)[0], params=params))
+    p_opt = new_mod.__unflatparams__(new_mod.optimize_mult([s for s in state_dict.values() if len(s)>2], params=params)[0], params=params)
+    new_mod = VariableSpeed(dim=2, damping=p_opt[0], timeconst=p_opt[1])
+    MultiKal.Model = new_mod
