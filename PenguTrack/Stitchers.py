@@ -22,10 +22,10 @@
 from __future__ import print_function, division
 import clickpoints
 import numpy as np
-from Detectors import Measurement
-from Filters import Filter
-from Models import VariableSpeed
-from DataFileExtended import DataFileExtended
+from .Detectors import Measurement
+from .Filters import Filter
+from .Models import VariableSpeed
+from .DataFileExtended import DataFileExtended
 import time
 
 

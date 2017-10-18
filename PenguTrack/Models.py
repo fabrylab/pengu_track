@@ -109,13 +109,14 @@ class Model(object):
         Function to predict next state from current state and external control.
 
         Parameters
-        ––––––––––
+        ----------
         state_vector: array_like
             Latest state vector.
         control_vector: array_like
             Latest control vector.
+
         Returns
-        ––––––––––
+        -------
         prediction: np.array
             New state vector.
         """
@@ -196,11 +197,12 @@ class Model(object):
         Calculates an alternative inverse for non square (non invertible) matrices.
 
         Parameters
-        ––––––––––
+        ----------
         matrix: array_like
             Non square Matrix to be inverted.
+
         Returns
-        ––––––––––
+        -------
         pseudo-inverse: np.array
             Calculated pseudo-inverse.
         """

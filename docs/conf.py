@@ -9,7 +9,29 @@ import shlex
 print(os.getcwd())
 
 import mock
-MOCK_MODULES = ['imageio', 'peewee', 'PIL', 'PIL._util', 'numpy', 'qimage2ndarray', 'sip', 'PyQt4', 'PyQt4.QtGui', 'qtpy', 'qtpy.QtGui', 'qtpy.QtCore', 'qtpy.QtWidgets', 'qtawesome', 'matplotlib', 'matplotlib.backends', 'matplotlib.backends.backend_qt4agg', 'matplotlib.backends.backend_qt4', 'matplotlib.figure']
+MOCK_MODULES = ['imageio',
+                'skimage',
+                'skimage.feature',
+                'skimage.measure',
+                'skimage.measure._regionprops',
+                'skimage.color',
+                'skimage.filters',
+                'skimage.morphology',
+                'skimage.transform',
+                'skimage.restoration',
+                'scipy',
+                'scipy.stats',
+                'scipy.ndimage',
+                'scipy.ndimage.interpolation',
+                'scipy.ndimage.interpolation.map_coordinates',
+                'scipy.ndimage.measurements',
+                'scipy.ndimage.filters',
+                'scipy.special',
+                'scipy.integrate',
+                'numpy',
+                'numpy.lib',
+                'numpy.core.multiarray'
+                'peewee', 'PIL', 'PIL._util', 'qimage2ndarray', 'sip', 'PyQt4', 'PyQt4.QtGui', 'qtpy', 'qtpy.QtGui', 'qtpy.QtCore', 'qtpy.QtWidgets', 'qtawesome', 'matplotlib', 'matplotlib.backends', 'matplotlib.backends.backend_qt4agg', 'matplotlib.backends.backend_qt4', 'matplotlib.figure']
 sys.modules.update((mod_name, mock.MagicMock()) for mod_name in MOCK_MODULES)
 
 # If extensions (or modules to document with autodoc) are in another directory,

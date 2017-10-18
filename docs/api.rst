@@ -2,10 +2,13 @@ PenguTrack API
 ==============
 
 
-Models
-------
+The different modules of PenguTrack.
 
-The different models for PenguTrack.
+.. toctree::
+    :caption: Modules
+    :maxdepth: 2
 
-.. automodule:: PenguTrack.Models
-   :members:
+    api_detectors
+    api_filters
+    api_models
+    api_stitchers
