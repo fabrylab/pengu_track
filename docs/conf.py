@@ -8,37 +8,31 @@ import shlex
 
 print(os.getcwd())
 
-import mock
-MOCK_MODULES = ['imageio',
-                'skimage',
-                'skimage.feature',
-                'skimage.measure',
-                'skimage.measure._regionprops',
-                'skimage.color',
-                'skimage.filters',
-                'skimage.morphology',
-                'skimage.transform',
-                'skimage.restoration',
-                'scipy',
-                'scipy.stats',
-                'scipy.ndimage',
-                'scipy.ndimage.interpolation',
-                'scipy.ndimage.interpolation.map_coordinates',
-                'scipy.ndimage.measurements',
-                'scipy.ndimage.filters',
-                'scipy.special',
-                'scipy.integrate',
-                'numpy',
-                'numpy.lib',
-                'numpy.core.multiarray',
-                'clickpoints',
-                'peewee', 'PIL', 'PIL._util', 'qimage2ndarray', 'sip', 'PyQt4', 'PyQt4.QtGui', 'qtpy', 'qtpy.QtGui', 'qtpy.QtCore', 'qtpy.QtWidgets', 'qtawesome', 'matplotlib', 'matplotlib.backends', 'matplotlib.backends.backend_qt4agg', 'matplotlib.backends.backend_qt4', 'matplotlib.figure']
-sys.modules.update((mod_name, mock.MagicMock()) for mod_name in MOCK_MODULES)
-
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath(os.path.join("..")))
+
+import mock
+# try to import the modules of the package and mock everything that is not found
+while True:
+    try:
+        # here are the modules that should be imported for the documentation
+        import PenguTrack.Models
+        import PenguTrack.Detectors
+        import PenguTrack.Filters
+        import PenguTrack.Stitchers
+    # if an import error occurs
+    except ImportError as err:
+        # get the module name from the error message
+        name = str(err).split("'")[1]
+        print("Mock:", name)
+        # and mock it
+        sys.modules.update((mod_name, mock.MagicMock()) for mod_name in [name])
+        # then try again to import it
+        continue
+    else:
+        break
 
 # -- General configuration ------------------------------------------------
 
