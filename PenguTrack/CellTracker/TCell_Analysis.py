@@ -39,7 +39,10 @@ from PenguTrack.DataFileExtended import DataFileExtended
 import scipy.stats as ss
 from scipy.ndimage.measurements import label
 from scipy.ndimage.filters import gaussian_filter
-from skimage.filters import threshold_otsu as threshold_niblack
+try:
+    from skimage.filters import threshold_niblack
+except IOError:
+    from skimage.filters import threshold_otsu as threshold_niblack
 import time
 
 

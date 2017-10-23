@@ -121,7 +121,7 @@ class Window(QtWidgets.QWidget):
         for item in self.Dirs.values():
             try:
                 included = self.TruthDict[item.text(1)]
-                exists = self.TruthDict[item.text(3)]
+                exists =  False #self.TruthDict[item.text(3)]
             except AttributeError:
                 continue
             if exists and included:

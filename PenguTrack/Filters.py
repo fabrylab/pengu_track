@@ -1128,7 +1128,7 @@ class MultiFilter(Filter):
             self.ActiveFilters.update({J: _filter})
             self.Filters.update({J: _filter})
 
-    def update(self, z=None, i=None):
+    def update(self, z=None, i=None, big_jumps=False):
         """
         Function to get updates to the corresponding model. Handles time-stamps and measurement-vectors.
         This function also handles the assignment of all incoming measurements to the active sub-filters.
@@ -1249,7 +1249,7 @@ class MultiFilter(Filter):
             if k in gain_dict and (
                             probability_gain[k, m] > LogProbabilityThreshold or
                             (len(self.ActiveFilters[gain_dict[k]].X) < 2 and
-                                     min([i-o for o in self.ActiveFilters[gain_dict[k]].X.keys() if i>o]) < 2)) :
+                                     min([i-o for o in self.ActiveFilters[gain_dict[k]].X.keys() if i>o]) < 2 and big_jumps)) :
                 self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})

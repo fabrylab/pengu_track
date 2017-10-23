@@ -50,7 +50,10 @@ from scipy.ndimage.filters import gaussian_filter
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max
 
-from skimage.filters import threshold_otsu as threshold_niblack #threshold_niblack
+try:
+    from skimage.filters import threshold_niblack
+except IOError:
+    from skimage.filters import threshold_otsu as threshold_niblack #threshold_niblack
 
 # If we really need this function, better take it from skiamge. Maybe cv2 is not available.
 try:
@@ -324,10 +327,13 @@ class TCellDetector(Detector):
 
         maskedMinIndices = minIndices.data.copy() + 1
         maskedMinIndices = maskedMinIndices.astype('uint8')
+        # maskedMinIndices = maskedMinIndices.astype(np.uint8)
         # maskedMinIndices = minIndices.data[:] + 1
         # maskedMinIndices = np.round(gaussian_filter(maskedMinIndices, 1)).astype(np.int)
-        maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
-        maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
+        # maskedMinIndices = np.round(bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
+        # maskedMinIndices = np.round(bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
+        maskedMinIndices = np.round(bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
+        # maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
         maskedMinIndices[~mask] = 0
         j_max = np.amax(maskedMinIndices)
         stack = np.zeros((j_max, minProj.data.shape[0], minProj.data.shape[1]), dtype=np.bool)
