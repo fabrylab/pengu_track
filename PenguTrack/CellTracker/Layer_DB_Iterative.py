@@ -185,6 +185,21 @@ class Window(QtWidgets.QWidget):
         TCell_Analysis.Stitch(m+".cdb",m+"_stitched.cdb",3,0.4,18,30,1,100,100)
         TCell_Analysis.Stitch(m+"_stitched.cdb",m+"_stitched2.cdb",10,5,10,10,1,100,100)
 
+    def getDateFromPath(self, path):
+        for s in path.split(os.path.sep):
+            if s.count("/"):
+                for ss in s.split("/"):
+                    try:
+                        return datetime.datetime.strptime(ss, "%Y-%M-%d")
+                    except ValueError:
+                        pass
+            else:
+                try:
+                    return datetime.datetime.strptime(s, "%Y-%M-%d")
+                except ValueError:
+                    pass
+        return None
+
     def AnalyzeDataBases(self):
         for m in self.Matches:
             if os.path.exists(m+"_stitched2.cdb"):
@@ -236,6 +251,32 @@ class Window(QtWidgets.QWidget):
                                                                                                         tracks_to_delete,
                                                                                                         del_Tracks=True)
             motile_per_true_dist, real_dirt = TCell_Analysis.motiletruedist(list2)
+
+            if not os.path.exists(db_path[:-4]+"_analyzed.txt"):
+                with open(db_path[:-4]+"_analyzed.txt", "w") as f:
+                    f.write('Day       \t\t\tData                              \t\t\tMotile % true dist\t\t\tMotile in %\t\t\tMean velocity\t\t\tMean Directionality\t\t\tMean vel dt1\t\t\t#Tracks\t\t\t#Evaluated Tracks\t\t\t#Dirt\n')
+
+            Day = self.getDateFromPath(db_path).strftime("%Y-%M-%d")
+            if db_path.count('TCell') or db_path.count('T-Cell'):
+                TCell_Analysis.Colorplot(directions, velocities, db_path,
+                                         path=os.path.sep.join(db_path.split(os.path.sep)[:-1]),
+                                         Save=True)  # Save the velocity vs directionality picture
+                with open(db_path[:-4]+"_analyzed.txt", "ab") as f:
+                    f.write(
+                        '%s\t\t\t%34s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%12f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n' % (
+                        Day, db_path, motile_per_true_dist, motile_percentage, mean_v, mean_dire, me_v_al, number,
+                        len_count, real_dirt))
+            elif db_path.count('NKCell'):
+                TCell_Analysis.Colorplot(directions, velocities, db_path,
+                                         path=os.path.sep.join(db_path.split(os.path.sep)[:-1]),
+                                         Save=True)
+                with open(db_path[:-4]+"_analyzed.txt", 'ab') as f:
+                    f.write('%s\t\t\t%34s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%12f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n'%(
+                        Day, db_path,motile_per_true_dist, motile_percentage, mean_v,mean_dire, me_v_al, number,
+                        len_count, real_dirt))
+            db.db.close()
+
+
 def main():
     app = QtWidgets.QApplication(sys.argv)
     w = Window()

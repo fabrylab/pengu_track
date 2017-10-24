@@ -312,7 +312,7 @@ def values(Direction_plot,velocities,db,dirt,alter_velocities, tracks_to_delete=
     return motile_percentage,mean_v,mean_dire,number,len_count, motile_percentage_alter,mean_alter_v,mean_alter_dire
 
 
-def measure(step, dt, list):
+def measure(step, dt, list, Frames):
     dirt = 0
     v_factor = 0.645 / ((step - 1) * dt / 60)
     track_distances = []
@@ -485,6 +485,8 @@ def motiletruedist(list2):
     Track_length = []
     real_dirt = 0
     for track in list2:
+        if len(track)<1:
+            continue
         Track_length.append(len(track))
         track1 = np.asarray(track)
         PT_maxx = np.max(track1[:, 0][track1[:, 0] < 9999])
