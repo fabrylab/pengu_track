@@ -33,23 +33,49 @@ class Window(QtWidgets.QWidget):
 
         self.Button = QtWidgets.QPushButton("Add Folder")
         self.Button.clicked.connect(self.AddFolder)
-        self.Layout.addWidget(self.Button)
+        sublayout = QtWidgets.QHBoxLayout()
+        sublayout.addWidget(self.Button)
+        self.Bar = QtWidgets.QProgressBar()
+        sublayout.addWidget(self.Bar)
+        # self.Layout.addWidget(sublayout)
+        self.Layout.addLayout(sublayout)
 
         self.Button2 = QtWidgets.QPushButton("Create DataBases")
         self.Button2.clicked.connect(self.CreateDataBases)
-        self.Layout.addWidget(self.Button2)
+        sublayout = QtWidgets.QHBoxLayout()
+        sublayout.addWidget(self.Button2)
+        self.Bar2 = QtWidgets.QProgressBar()
+        sublayout.addWidget(self.Bar2)
+        self.Layout.addLayout(sublayout)
 
         self.Button3 = QtWidgets.QPushButton("Track")
         self.Button3.clicked.connect(self.TrackDataBases)
-        self.Layout.addWidget(self.Button3)
+        sublayout = QtWidgets.QHBoxLayout()
+        sublayout.addWidget(self.Button3)
+        self.Bar3 = QtWidgets.QProgressBar()
+        sublayout.addWidget(self.Bar3)
+        self.Layout.addLayout(sublayout)
+
+        def setValExt(bar, val):
+            bar.setValue(val)
+            QtWidgets.QApplication.processEvents()
+        self.Bar3.setValueExtended = lambda x: setValExt(self.Bar3, x)
 
         self.Button4 = QtWidgets.QPushButton("Stitch")
         self.Button4.clicked.connect(self.StitchDataBases)
-        self.Layout.addWidget(self.Button4)
+        sublayout = QtWidgets.QHBoxLayout()
+        sublayout.addWidget(self.Button4)
+        self.Bar4 = QtWidgets.QProgressBar()
+        sublayout.addWidget(self.Bar4)
+        self.Layout.addLayout(sublayout)
 
         self.Button5 = QtWidgets.QPushButton("Analyze")
         self.Button5.clicked.connect(self.AnalyzeDataBases)
-        self.Layout.addWidget(self.Button5)
+        sublayout = QtWidgets.QHBoxLayout()
+        sublayout.addWidget(self.Button5)
+        self.Bar5 = QtWidgets.QProgressBar()
+        sublayout.addWidget(self.Bar5)
+        self.Layout.addLayout(sublayout)
 
         self.TruthDict = {"True": True, "False": False, "": False}
 
@@ -96,12 +122,26 @@ class Window(QtWidgets.QWidget):
         print(kwargs)
         folder = str(QtWidgets.QFileDialog.getExistingDirectory(self, "Select Directory"))
 
-        for root, dirnames, filenames in os.walk(folder):
+        walker = [x for x in os.walk(folder)]
+        t = 0
+        self.Bar.setValue(0)
+        self.Bar.setRange(0, len(walker))
+        self.Bar.setFormat("Walking Directories")
+        for root, dirnames, filenames in walker:
+            t += 1
+            self.Bar.setValue(t)
             filtered = fnmatch.filter(filenames, "*.tif")
             if len(filtered) > 0:
                 self.Matches.update([root])
                 self.MatchedFiles.update({root: filtered})
+
+        t = 0
+        self.Bar.setValue(0)
+        self.Bar.setFormat("Finding Images")
+        self.Bar.setRange(0, len(self.Matches))
         for m in self.Matches:
+            t+=1
+            self.Bar.setValue(t)
             for i, mm in enumerate(m.split(os.path.sep)):
                 part = os.path.sep.join(m.split(os.path.sep)[:i])
                 part_m1 = os.path.sep.join(m.split(os.path.sep)[:i - 1])
@@ -115,6 +155,7 @@ class Window(QtWidgets.QWidget):
                                                             str(len(self.MatchedFiles[m])),
                                                             str([g.split(os.path.sep)[-1] for g in glob(m+"*.cdb")])])})
         self.Tree.expandAll()
+        self.Bar.setFormat("Done")
 
     def CreateDataBases(self):
         overwriting = []
@@ -128,8 +169,16 @@ class Window(QtWidgets.QWidget):
                 overwriting.append(item.text(0))
 
         if self.Overwriting_Dialog(overwriting):
+            self.Bar2.setFormat("Creating DataBases")
+            self.Bar2.setValue(0)
+            self.Bar2.setRange(0, len(self.Matches))
+            t=0
             for m in self.Matches:
+                t+=1
+                self.Bar2.setValue(t)
                 self.CreateDB(m)
+            self.Bar2.setFormat("Done")
+
 
     def Overwriting_Dialog(self, overwriting):
         if len(overwriting) < 1:
@@ -175,8 +224,11 @@ class Window(QtWidgets.QWidget):
             image.save()
 
     def TrackDataBases(self):
+        self.Bar3.setRange(0, np.sum([len(self.MatchedFiles[m]) for m in self.Matches]))
         for m in self.Matches:
+            self.Bar3.setFormat("Tracking %s"%m)
             self.Track(m)
+        self.Bar3.setFormat("Done")
 
     def Track(self, Folder):
         db_name = self.name_from_path(Folder)
@@ -185,7 +237,7 @@ class Window(QtWidgets.QWidget):
         db = DataFileExtended(Folder+ db_name +".cdb")
         print([i.sort_index for i in db.getImageIterator()])
         res = 6.45 / 10
-        TCell_Analysis.run(-19.,6,4,7,30,db,res, start_frame=1)
+        TCell_Analysis.run(-19.,6,4,7,30,db,res, start_frame=1, progress_bar=self.Bar3)
 
     def StitchDataBases(self):
         for m in self.Matches:

@@ -547,7 +547,7 @@ def Colorplot(directions, velocities, Scatterplot_Name, path = None, Save = Fals
         plt.show()
 
 
-def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, db, res, start_frame=0):
+def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, db, res, start_frame=0, progress_bar=None):
     # Checks if the marker already exist. If they don't, creates them
     marker_type = db.getMarkerType(name="PT_Detection_Marker")
     if not marker_type:
@@ -614,6 +614,9 @@ def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, d
     db.deleteMarkers(type=marker_type2)
     db.deleteMarkers(type=marker_type3)
     for image in images:
+
+        progress_bar.setValueExtended(progress_bar.value()+1)
+
         i = image.sort_index
         print("Doing Frame %s" % i)
 
