@@ -28,6 +28,7 @@ import numpy as np
 import scipy.stats as ss
 import sys
 import copy
+from PenguTrack.Detectors import Measurement
 import scipy.integrate as integrate
 #  import scipy.optimize as opt
 
@@ -171,6 +172,12 @@ class Filter(object):
             except KeyError:
                 raise KeyError("No measurement for timepoint %s." % i)
         else:
+            if not isinstance(z, Measurement):
+                z = np.array(z).flatten()
+                assert self.Model.Meas_dim == len(z),\
+                    "Measurement input shape %s is not equal to model measurement dimension %s"%(
+                        len(z),self.Model.Meas_dim)
+                z = Measurement(1.0, position=z)
             self.Measurements.update({i: z})
         # simplest possible update
         try:
