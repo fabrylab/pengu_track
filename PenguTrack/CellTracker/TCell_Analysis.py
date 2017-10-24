@@ -251,7 +251,7 @@ def list2_with_drift(db, drift, tracks_del=None, del_track=False):
         min_frame = np.min(track.frames)
         max_frame = np.max(track.frames)
         positions = []
-        for i in range(min_frame, max_frame+1):
+        for i in range(min_frame, max_frame):
             if i == 0:
                 marker = db.getMarkers(frame=i, type='PT_Track_Marker', track=track)
                 if len(marker) == 1:
