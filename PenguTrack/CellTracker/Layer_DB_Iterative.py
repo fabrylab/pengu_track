@@ -162,7 +162,7 @@ class Window(QtWidgets.QWidget):
             elif idx not in idx_dict:
                 idx_dict.update({idx: max(idx_dict.values())+1})
             image = db.setImage(filename=file, path=path, layer=layer, timestamp=time)  # , frame=int(idx))
-            image.sort_index = idx_dict[idx]
+            image.sort_index = idx#idx_dict[idx]
             image.save()
 
     def TrackDataBases(self):
