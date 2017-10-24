@@ -147,10 +147,19 @@ class Window(QtWidgets.QWidget):
         else:
             return False
 
+    def name_from_path(self, path):
+        blocks = []
+        for s in path.split("\\"):
+            for ss in s.split("/"):
+                blocks.append(ss)
+        return "_".join(blocks[1:])
+
+
     def CreateDB(self, Folder):
         Files = self.MatchedFiles[Folder]
-        db_path = Folder + ".cdb"
-        db = DataFileExtended(db_path, "w")
+        db_path = Folder
+        db_name = self.name_from_path(db_path)
+        db = DataFileExtended(db_path+db_name+".cdb", "w")
         path = db.setPath(Folder)
         idx_dict = {}
         for file in Files:
@@ -170,9 +179,10 @@ class Window(QtWidgets.QWidget):
             self.Track(m)
 
     def Track(self, Folder):
-        if not os.path.exists(Folder + ".cdb"):
+        db_name = self.name_from_path(Folder)
+        if not os.path.exists(Folder + db_name + ".cdb"):
             self.CreateDB(Folder)
-        db = DataFileExtended(Folder+".cdb")
+        db = DataFileExtended(Folder+ db_name +".cdb")
         print([i.sort_index for i in db.getImageIterator()])
         res = 6.45 / 10
         TCell_Analysis.run(-19.,6,4,7,30,db,res, start_frame=1)
@@ -182,8 +192,9 @@ class Window(QtWidgets.QWidget):
             self.Stitch(m)
 
     def Stitch(self, m):
-        TCell_Analysis.Stitch(m+".cdb",m+"_stitched.cdb",3,0.4,18,30,1,100,100)
-        TCell_Analysis.Stitch(m+"_stitched.cdb",m+"_stitched2.cdb",10,5,10,10,1,100,100)
+        db_name = self.name_from_path(m)
+        TCell_Analysis.Stitch(m+db_name+".cdb",m+db_name+"_stitched.cdb",3,0.4,18,30,1,100,100)
+        TCell_Analysis.Stitch(m+db_name+"_stitched.cdb",m+db_name+"_stitched2.cdb",10,5,10,10,1,100,100)
 
     def getDateFromPath(self, path):
         for s in path.split(os.path.sep):
@@ -202,18 +213,19 @@ class Window(QtWidgets.QWidget):
 
     def AnalyzeDataBases(self):
         for m in self.Matches:
-            if os.path.exists(m+"_stitched2.cdb"):
-                db_path = m+"_stitched2.cdb"
-            elif os.path.exists(m+"_stitched.cdb"):
-                db_path = m+"_stitched.cdb"
-            elif os.path.exists(m+".cdb"):
-                db_path = m + ".cdb"
+            db_name = self.name_from_path(m)
+            if os.path.exists(m+db_name+"_stitched2.cdb"):
+                db_path = m+db_name+"_stitched2.cdb"
+            elif os.path.exists(m+db_name+"_stitched.cdb"):
+                db_path = m+db_name+"_stitched.cdb"
+            elif os.path.exists(m+db_name+".cdb"):
+                db_path = m+db_name + ".cdb"
             else:
                 self.CreateDB(m)
                 self.Track(m)
-                db_path = m + ".cdb"
+                db_path = m +db_name + ".cdb"
 
-            db = DataFileExtended(m+".cdb")
+            db = DataFileExtended(m+db_name+".cdb")
             time_step = 110
             v_fac = 0.645 / (time_step / 60.)
             perc = 30
