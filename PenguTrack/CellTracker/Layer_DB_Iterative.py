@@ -1,7 +1,7 @@
 from __future__ import division, print_function
 import clickpoints
 import datetime
-from qtpy import QtWidgets
+from qtpy import QtWidgets, QtGui
 import sys
 import os
 import fnmatch
@@ -11,6 +11,7 @@ from PenguTrack.DataFileExtended import DataFileExtended
 from glob import glob
 
 class Window(QtWidgets.QWidget):
+# class Window(QtWidgets):
     def __init__(self):
         super(Window, self).__init__()
         self.resize(640, 360)
@@ -31,11 +32,16 @@ class Window(QtWidgets.QWidget):
         self.Tree.itemClicked.connect(self.treeItemClicked)
         self.Dirs = {'': self.Tree}
 
+        def increase(bar):
+            bar.setValue(bar.value()+1)
+            QtGui.QGuiApplication.processEvents()
+
         self.Button = QtWidgets.QPushButton("Add Folder")
         self.Button.clicked.connect(self.AddFolder)
         sublayout = QtWidgets.QHBoxLayout()
         sublayout.addWidget(self.Button)
         self.Bar = QtWidgets.QProgressBar()
+        self.Bar.increase = lambda : increase(self.Bar)
         sublayout.addWidget(self.Bar)
         # self.Layout.addWidget(sublayout)
         self.Layout.addLayout(sublayout)
@@ -45,6 +51,7 @@ class Window(QtWidgets.QWidget):
         sublayout = QtWidgets.QHBoxLayout()
         sublayout.addWidget(self.Button2)
         self.Bar2 = QtWidgets.QProgressBar()
+        self.Bar2.increase = lambda : increase(self.Bar2)
         sublayout.addWidget(self.Bar2)
         self.Layout.addLayout(sublayout)
 
@@ -53,19 +60,22 @@ class Window(QtWidgets.QWidget):
         sublayout = QtWidgets.QHBoxLayout()
         sublayout.addWidget(self.Button3)
         self.Bar3 = QtWidgets.QProgressBar()
+        self.Bar3.increase = lambda : increase(self.Bar3)
         sublayout.addWidget(self.Bar3)
         self.Layout.addLayout(sublayout)
 
-        def setValExt(bar, val):
-            bar.setValue(val)
-            QtWidgets.QApplication.processEvents()
-        self.Bar3.setValueExtended = lambda x: setValExt(self.Bar3, x)
+        # def setValExt(bar, val):
+        #     bar.setValue(val)
+        #     # QtGui.QApplication.processEvents()
+        #     QtGui.QGuiApplication.processEvents()
+        # self.Bar3.setValueExtended = lambda x: setValExt(self.Bar3, x)
 
         self.Button4 = QtWidgets.QPushButton("Stitch")
         self.Button4.clicked.connect(self.StitchDataBases)
         sublayout = QtWidgets.QHBoxLayout()
         sublayout.addWidget(self.Button4)
         self.Bar4 = QtWidgets.QProgressBar()
+        self.Bar4.increase = lambda : increase(self.Bar4)
         sublayout.addWidget(self.Bar4)
         self.Layout.addLayout(sublayout)
 
@@ -74,6 +84,7 @@ class Window(QtWidgets.QWidget):
         sublayout = QtWidgets.QHBoxLayout()
         sublayout.addWidget(self.Button5)
         self.Bar5 = QtWidgets.QProgressBar()
+        self.Bar5.increase = lambda : increase(self.Bar5)
         sublayout.addWidget(self.Bar5)
         self.Layout.addLayout(sublayout)
 
@@ -128,8 +139,7 @@ class Window(QtWidgets.QWidget):
         self.Bar.setRange(0, len(walker))
         self.Bar.setFormat("Walking Directories")
         for root, dirnames, filenames in walker:
-            t += 1
-            self.Bar.setValue(t)
+            self.Bar.increase()
             filtered = fnmatch.filter(filenames, "*.tif")
             if len(filtered) > 0:
                 self.Matches.update([root])
@@ -140,8 +150,7 @@ class Window(QtWidgets.QWidget):
         self.Bar.setFormat("Finding Images")
         self.Bar.setRange(0, len(self.Matches))
         for m in self.Matches:
-            t+=1
-            self.Bar.setValue(t)
+            self.Bar.increase()
             for i, mm in enumerate(m.split(os.path.sep)):
                 part = os.path.sep.join(m.split(os.path.sep)[:i])
                 part_m1 = os.path.sep.join(m.split(os.path.sep)[:i - 1])
@@ -171,11 +180,11 @@ class Window(QtWidgets.QWidget):
         if self.Overwriting_Dialog(overwriting):
             self.Bar2.setFormat("Creating DataBases")
             self.Bar2.setValue(0)
-            self.Bar2.setRange(0, len(self.Matches))
+            self.Bar2.setRange(0, np.sum([len(self.MatchedFiles[m]) for m in self.Matches]))
             t=0
             for m in self.Matches:
-                t+=1
-                self.Bar2.setValue(t)
+                # t+=1
+                # self.Bar2.setValue(t)
                 self.CreateDB(m)
             self.Bar2.setFormat("Done")
 
@@ -212,6 +221,10 @@ class Window(QtWidgets.QWidget):
         path = db.setPath(Folder)
         idx_dict = {}
         for file in Files:
+            # self.Bar2.setValue(self.Bar2.value()+1)
+            self.Bar2.increase()
+            # QtGui.QApplication.processEvents()
+            QtGui.QGuiApplication.processEvents()
             layer = self.layer_dict[[k for k in self.layer_dict if file.count(k)][0]]
             time = datetime.datetime.strptime(file.split("_")[0], "%Y%m%d-%H%M%S")
             idx = int([k[3:] for k in file.split("_") if k.count("rep")][0])
@@ -224,6 +237,7 @@ class Window(QtWidgets.QWidget):
             image.save()
 
     def TrackDataBases(self):
+        self.Bar3.setValue(0)
         self.Bar3.setRange(0, np.sum([len(self.MatchedFiles[m]) for m in self.Matches]))
         for m in self.Matches:
             self.Bar3.setFormat("Tracking %s"%m)
@@ -240,7 +254,10 @@ class Window(QtWidgets.QWidget):
         TCell_Analysis.run(-19.,6,4,7,30,db,res, start_frame=1, progress_bar=self.Bar3)
 
     def StitchDataBases(self):
+        self.Bar4.setValue(0)
+        self.Bar4.setRange(0, len(self.Matches))
         for m in self.Matches:
+            self.Bar4.increase()
             self.Stitch(m)
 
     def Stitch(self, m):
@@ -264,7 +281,10 @@ class Window(QtWidgets.QWidget):
         return None
 
     def AnalyzeDataBases(self):
+        self.Bar5.setValue(0)
+        self.Bar5.setRange(0, len(self.Matches))
         for m in self.Matches:
+            self.Bar5.increase()
             db_name = self.name_from_path(m)
             if os.path.exists(m+db_name+"_stitched2.cdb"):
                 db_path = m+db_name+"_stitched2.cdb"
@@ -306,6 +326,7 @@ class Window(QtWidgets.QWidget):
                     if j in tracks_to_delete:
                         del list_copy[l][j]
             ###
+            print("bla")
             directions, velocities, dirt, alternative_vel, vel_mean, dir_mean, alt_vel_mean = TCell_Analysis.measure(step, time_step,
                                                                                                       list, Frames)  # Calculate directions and velocities
             motile_percentage, mean_v, mean_dire, number, len_count, mo_p_al, me_v_al, me_d_al = TCell_Analysis.values(directions,

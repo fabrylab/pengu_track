@@ -615,7 +615,8 @@ def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, d
     db.deleteMarkers(type=marker_type3)
     for image in images:
 
-        progress_bar.setValueExtended(progress_bar.value()+1)
+        if progress_bar is not None:
+            progress_bar.increase()
 
         i = image.sort_index
         print("Doing Frame %s" % i)
