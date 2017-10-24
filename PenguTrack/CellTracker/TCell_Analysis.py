@@ -49,27 +49,40 @@ import time
 def func(x,p0,p1):
     return p0 * x + p1
 
+
 def ndargmin(array):
     """
     Works like numpy.argmin, but returns array of indices for multi-dimensional input arrays. Ignores NaN entries.
     """
     return np.unravel_index(np.nanargmin(array), array.shape)
 
+
 def resulution_correction(pos):
     x, y, z = pos
     res = 6.45 / 10
     return y / res, x / res, z / 10.
 
-def Create_DB(Name,pic_path,db_path,pic_pos):
+
+def Create_DB(Name,pic_path,db_path,pic_pos="pos0"):
+    """
+    Creates a Clickpointsdatabase
+        Parameters
+    --------------
+    Name: String
+    Specifies path with the name for the database
+    pic_path: String
+    The path to all the pictures
+    db_path: String
+    The path to the folder in which the pictures can be found
+    pic_pos: String
+    """
     db = clickpoints.DataFile(Name, 'w')
     images = glob.glob(pic_path)
     print(len(images))
-    # def setImage(self, filename=None, path=None, frame=None, external_id=None, timestamp=None, width=None, height=None,
-    #              id=None, layer=None):
     layer_dict = {"MinP": 0, "MinIndices": 1, "MaxP":2, "MaxIndices": 3}
     db.setPath(db_path, 1)
     for image in images:
-        path = "/".join(image.split("/")[:-1])
+        path = os.path.sep.join(image.split(os.path.sep)[:-1])
         file = image.split("/")[-1]
         idx = file.split("_")[2][3:]
         layer_str = file.split("_")[-1][1:-4]
@@ -89,6 +102,7 @@ def Create_DB(Name,pic_path,db_path,pic_pos):
         image = db.setImage(filename=file, path=1, layer=layer)#, frame=int(idx))
         image.sort_index = int(idx)
         image.save()
+
 
 def load_tracks(path, type):
     database = DataFileExtended(path)
@@ -111,7 +125,15 @@ def load_tracks(path, type):
                 Tracks[track.id].update(z=meas, i=m.image.sort_index)
     return Tracks
 
+
 def get_Tracks_to_delete(Z_posis,perc):
+    """
+    Returns a list of track ids
+        Parameters
+    --------------
+    Z_posis: List
+    perc: int
+    """
     Z_pos_ab = []
     Z_pos_be = []
     for i in Z_posis:
@@ -135,6 +157,7 @@ def get_Tracks_to_delete(Z_posis,perc):
         if i[1]>=perc_ab or i[1]<=perc_be:
             tracks_to_delete.append(int(i[0]))
     return tracks_to_delete
+
 
 def getZpos(Tracks,v_fac):
     mean_z = []
@@ -168,21 +191,16 @@ def getZpos(Tracks,v_fac):
         mean_z.append([track,np.nanmean(z_positions),len(z_positions),alter_dist])
     return mean_z
 
+
 def Stitch(db_path,db_path2,a1,a2,a3,a4,a5,max_cost,limiter):
-    from shutil import copyfile
-    copyfile(db_path, db_path2)
-    if os.path.exists(db_path+"-shm"):
-        copyfile(db_path+"-shm", db_path2+"-shm")
-    if os.path.exists(db_path+"-wal"):
-        copyfile(db_path+"-wal", db_path2+"-wal")
-    # sys.path.c
+    import shutil
+    shutil.copy(db_path,db_path2)
     stitcher = Heublein_Stitcher(a1,a2,a3,a4,a5,max_cost,limiter)
     stitcher.load_tracks_from_clickpoints(db_path2, "PT_Track_Marker")
     stitcher.stitch()
-    # db = clickpoints.DataFile(db_path2)
-    # track_type = db.getMarkerType(name="PT_Track_Marker")
     stitcher.save_tracks_to_db(db_path2, "PT_Track_Marker", function=resulution_correction)
     print ("-----------Written to DB-----------")
+
 
 def create_list(Frames,db,drift=None, Drift=False, Missing=False):
     list = []
@@ -204,6 +222,7 @@ def create_list(Frames,db,drift=None, Drift=False, Missing=False):
                 list[i].update({m.track.id: m.correctedXY()})
     return list
 
+
 def create_list2(db):
     ptTracks = db.getTracks(type='PT_Track_Marker')[:]
     list2 = []
@@ -220,6 +239,7 @@ def create_list2(db):
             positions.append(pos)
         list2.append(positions)
     return list2
+
 
 def list2_with_drift(db, drift, tracks_del=None, del_track=False):
     ptTracks = db.getTracks(type='PT_Track_Marker')[:]
@@ -248,6 +268,7 @@ def list2_with_drift(db, drift, tracks_del=None, del_track=False):
                 positions.append(pos)
         list2.append(positions)
     return list2
+
 
 def values(Direction_plot,velocities,db,dirt,alter_velocities, tracks_to_delete=None, del_Tracks=False):
     ptTracks = db.getTracks(type='PT_Track_Marker')[:]
@@ -290,69 +311,8 @@ def values(Direction_plot,velocities,db,dirt,alter_velocities, tracks_to_delete=
     motile_percentage_alter = 100*(counter1/float(len(Direction_plot)-dirt))
     return motile_percentage,mean_v,mean_dire,number,len_count, motile_percentage_alter,mean_alter_v,mean_alter_dire
 
-def for_mean_plots(velocities_for_mean,directions_for_mean, Vel_and_Dir = True):
-    track_ids1 = []
-    track_test1 = []
-    for tracks in velocities_for_mean:
-        for tracks2 in tracks:
-            track_ids1.append(tracks2.keys())
-            track_test1.append(tracks2)
-    unique = np.unique(track_ids1)
 
-    Vel = []
-    for track in unique:
-        Vel_Single = []
-        for track2 in track_test1:
-            if track==track2.keys()[0]:
-                Vel_Single.append(track2.values()[0])
-        Vel.append(Vel_Single)
-
-    track_ids2 = []
-    track_test2 = []
-    for tracks in directions_for_mean:
-        for tracks2 in tracks:
-            track_ids2.append(tracks2.keys())
-            track_test2.append(tracks2)
-    # unique = np.unique(track_ids2)
-
-    Dir = []
-    for track in unique:
-        Dir_Single = []
-        for track2 in track_test2:
-            if track == track2.keys()[0]:
-                Dir_Single.append(track2.values()[0])
-        Dir.append(Dir_Single)
-    if Vel_and_Dir:
-        return Vel,Dir
-    else:
-        return Vel
-
-def mean_plots(Velocity,Direction):
-    vel_means = []
-    vel_stds = []
-    for i in Velocity:
-        vel_means.append(np.mean(i))
-        vel_stds.append(np.std(i)/np.sqrt(len(i)))
-    dir_means = []
-    dir_stds = []
-    for i in Direction:
-        dir_means.append(np.mean(i))
-        dir_stds.append(np.std(i)/np.sqrt(len(i)))
-    plt.figure()
-    plt.errorbar(x=dir_means,y=vel_means,xerr=dir_stds,yerr=vel_stds,fmt='.')
-    plt.title("Title", fontsize=15)
-    plt.xticks([-1.0,-0.5,0.0,0.5,1.0])
-    plt.yticks([0.01,0.1,1,10,100])
-    plt.yscale("log")
-    plt.xlim(-1,1)
-    plt.ylim(0.01,100)
-    plt.tick_params(axis='both', which='major', labelsize=15)
-    plt.xlabel('Directionality', fontsize=15)
-    plt.ylabel(r'Speed in $\frac{\mathrm{\mu m}}{\mathrm{min}}$', fontsize=15)
-    plt.show()
-    return
-
-def measure(step, dt, list, Frames):
+def measure(step, dt, list):
     dirt = 0
     v_factor = 0.645 / ((step - 1) * dt / 60)
     track_distances = []
@@ -457,6 +417,7 @@ def measure(step, dt, list, Frames):
     print('Debug2')
     return Directions_plot,velocity,dirt, alter_vel, track_distances_for_mean, Directions_for_mean, alternative_track_distances_for_mean
 
+
 def Drift(Frames,list2, percentile):
     Drift_list = []
     Drift_list_cor = []
@@ -488,12 +449,8 @@ def Drift(Frames,list2, percentile):
                 Drift_distance.append(np.sqrt((PT_maxx - PT_minx) ** 2. + (PT_maxy - PT_miny) ** 2.))
     Drift_distance = np.asarray(Drift_distance)
     if len(Drift_distance)<=25:
-        percentile += 10
-    try:
-        p = np.percentile(Drift_distance, percentile)
-    except IndexError:
-        return np.zeros((Frames, 2)), [], 0
-
+        percentile+=10
+    p = np.percentile(Drift_distance, percentile)
     for i, dist in enumerate(Drift_distance):
         if dist <= p:
             Drift_distance_cor.append(dist)
@@ -522,6 +479,7 @@ def Drift(Frames,list2, percentile):
     sum_drift = np.cumsum(drift_mean, axis=0)
     return sum_drift, Drift_list_cor, missing
 
+
 def motiletruedist(list2):
     True_distance = []
     Track_length = []
@@ -547,64 +505,8 @@ def motiletruedist(list2):
     motile_percentage_true_dist = 100*(motile_true_dist/float(all))
     return motile_percentage_true_dist, real_dirt
 
-def Gaussian_mix(directions,velocities, n_init, max_iter):
-    directions_array = np.asarray(directions)
-    velocities_array = np.asarray(np.log10(velocities))
-    data = np.array([directions_array, velocities_array]).T
-    dataset = GaussianMixture(n_components=3, covariance_type='full', n_init = n_init, max_iter = max_iter)
-    dataset.fit(data)
-    return data,dataset,dataset.weights_,dataset.means_
-
-def make_ellipses(gmm, ax):
-    colors = ['navy', 'turquoise', 'darkorange']
-    for n, color in enumerate(colors):
-        if gmm.covariance_type == 'full':
-            covariances = gmm.covariances_[n][:2, :2]
-        elif gmm.covariance_type == 'tied':
-            covariances = gmm.covariances_[:2, :2]
-        elif gmm.covariance_type == 'diag':
-            covariances = np.diag(gmm.covariances_[n][:2])
-        elif gmm.covariance_type == 'spherical':
-            covariances = np.eye(gmm.means_.shape[1]) * gmm.covariances_[n]
-        v, w = np.linalg.eigh(covariances)
-        u = w[0] / np.linalg.norm(w[0])
-        angle = np.arctan2(u[1], u[0])
-        angle = 180 * angle / np.pi  # convert to degrees
-        v = 2. * np.sqrt(2.) * np.sqrt(v)
-        ell = Ellipse(gmm.means_[n, :2], v[0], v[1],
-                                  180 + angle, color=color)
-        ell.set_clip_box(ax.bbox)
-        ell.set_alpha(0.5)
-        ax.add_artist(ell)
 
 def Colorplot(directions, velocities, Scatterplot_Name, path = None, Save = False):
-    if Save:
-        plt.ioff()
-    else:
-        plt.ion()
-    direction_array = np.asarray(directions)
-    velocities_array = np.asarray(velocities)
-    velocities_array2 = np.log10(velocities_array)
-    fig = plt.figure(figsize=(10, 10))
-    cm = plt.cm.get_cmap('jet')
-    xy = np.vstack([direction_array,velocities_array2])
-    kd = ss.gaussian_kde(xy)(xy)
-    idx = kd.argsort()
-    x, y, z = direction_array[idx], velocities_array2[idx], kd[idx]
-    plot=plt.scatter(x, y, c=z, s=35, edgecolor='', alpha=1.0, cmap=cm)
-    plt.suptitle(Scatterplot_Name, fontsize = 25)
-    plt.tick_params(axis = 'both', which = 'major', labelsize = 30)
-    plt.xlabel('Directionality', fontsize=30)
-    plt.ylabel(r'Speed in $\frac{\mathrm{\mu m}}{\mathrm{min}}$', fontsize=30)
-    plt.xlim(-1,1)
-    plt.ylim(-2,1.5)
-    plt.tight_layout()
-    if Save:
-        fig.savefig(path + Scatterplot_Name + '.pdf')
-    else:
-        plt.show()
-
-def Colorplot1(directions, velocities, Scatterplot_Name, path = None, Save = False):
     if Save:
         plt.ioff()
     else:
@@ -642,24 +544,9 @@ def Colorplot1(directions, velocities, Scatterplot_Name, path = None, Save = Fal
     else:
         plt.show()
 
-def Elip_plot(gaussian_data, gaussian_dataset, plot_Name, path = None, Save = False):
-    if Save:
-        plt.ioff()
-    else:
-        plt.ion()
-    fig = plt.figure(figsize=(10, 10))
-    plt.scatter(*gaussian_data.T, alpha=0.1, lw=0)
-    make_ellipses(gaussian_dataset, plt.gca())
-    plt.suptitle(plot_Name, fontsize=25)
-    plt.tick_params(axis='both', which='major', labelsize=30)
-    plt.xlabel('Directionality', fontsize=30)
-    plt.ylabel(r'Speed in $\frac{\mathrm{\mu m}}{\mathrm{min}}$', fontsize=30)
-    if Save:
-        fig.savefig(path + plot_Name + '.pdf')
-    else:
-        plt.show()
 
 def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, db, res, start_frame=0):
+    # Checks if the marker already exist. If they don't, creates them
     marker_type = db.getMarkerType(name="PT_Detection_Marker")
     if not marker_type:
         marker_type = db.setMarkerType(name="PT_Detection_Marker", color="#FF0000", style='{"scale":1.2}')
@@ -678,10 +565,28 @@ def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, d
         mask_type = db.getMaskType(name="PT_SegMask")
 
     images = db.getImageIterator(start_frame=start_frame)
-
-    # model = RandomWalk(dim=3)    #### raus ####
-    model = VariableSpeed(dim=3)   #### extra ####
+    model = RandomWalk(dim=3)  # Model to predict the cell movements
     # Set uncertainties
+    q = int(Detection_Error)
+    r = int(Prediction_Error)
+    object_area = (Min_Size + Max_Size) / 2
+    object_size = int(np.sqrt(object_area) / 2.)
+
+    Q = np.diag(
+        [q * object_size, q * object_size, q * object_size])  # Prediction uncertainty
+    R = np.diag([r * object_size, r * object_size,
+                 r * object_size])  # Measurement uncertainty
+    State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filter
+    Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
+
+    # Initialize Tracker
+    FilterType = KalmanFilter
+    Tracker = MultiFilter(FilterType, model, np.diag(Q),
+                               np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
+    Tracker.AssignmentProbabilityThreshold = 0.
+    Tracker.MeasurementProbabilityThreshold = 0.
+    Tracker.LogProbabilityThreshold = Log_Prob_Tresh
+
     q = int(Detection_Error)
     r = int(Prediction_Error)
     min_area = int((Min_Size / 2.) ** 2 * np.pi)
@@ -689,59 +594,43 @@ def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, d
     object_area = int((min_area + max_area) / 2.)
     object_size = int(np.sqrt(object_area) / 2.)
 
-    Q = np.diag([q * object_size * res, q * object_size * res, q * object_size * res])
-    R = np.diag([r * object_size * res, r * object_size * res, 10*r * object_size * res])    #### extra * 10 ####
+    Q = np.diag(
+        [q * object_size * res, q * object_size * res, q * object_size * res])
+    R = np.diag([r * object_size * res, r * object_size * res,
+                 r * object_size * res])
     State_Dist = ss.multivariate_normal(cov=Q)
     Meas_Dist = ss.multivariate_normal(cov=R)
 
-    # Initialize Tracker
-    FilterType = KalmanFilter
-    Tracker = MultiFilter(FilterType, model, np.diag(Q),
-                               np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
-    Tracker.FilterThreshold = 2    #### extra ####
-    Tracker.AssignmentProbabilityThreshold = 0.
-    Tracker.MeasurementProbabilityThreshold = 0.
-    Tracker.LogProbabilityThreshold = Log_Prob_Tresh
-
-    # Tracker.filter_args = [np.diag(Q), np.diag(R)]
-    # Tracker.filter_kwargs = {"meas_dist": Meas_Dist, "state_dist": State_Dist}
-    # Tracker.Filters.clear()
-    # Tracker.ActiveFilters.clear()
-    # Tracker.predict(u=np.zeros((model.Control_dim,)).T, i=start_frame)
-    #
+    Tracker.filter_args = [np.diag(Q), np.diag(R)]
+    Tracker.filter_kwargs = {"meas_dist": Meas_Dist, "state_dist": State_Dist}
+    Tracker.Filters.clear()
+    Tracker.ActiveFilters.clear()
+    Tracker.predict(u=np.zeros((model.Control_dim,)).T, i=start_frame)
+    # Delete already existing tracks
     db.deleteTracks(type="PT_Track_Marker")
-    # marker_type = db.getMarkerType(name="PT_Detection_Marker")
-    # marker_type2 = db.getMarkerType(name="PT_Track_Marker")
-    # marker_type3 = db.getMarkerType(name="PT_Prediction_Marker")
     db.deleteMarkers(type=marker_type)
     db.deleteMarkers(type=marker_type2)
     db.deleteMarkers(type=marker_type3)
     for image in images:
-    # for i in sorted(set([img.sort_index for img in db.getImages() if img.sort_index > start_frame])):
         i = image.sort_index
         print("Doing Frame %s" % i)
-        # i = image.get_id()
-        image = db.getImage(frame=i)
 
         Index_Image = db.getImage(frame=i, layer=1).data
 
         # Prediction step
         Tracker.predict(u=np.zeros((model.Control_dim,)).T, i=i)
 
+        minIndices = db.getImage(frame=i, layer=1)
         minProj = db.getImage(frame=i, layer=0)
 
-        # minIndices = db.getImage(frame=i, layer=1)   #### extra raus ####
-        minProjPrvs = db.getImage(frame=i-1, layer=0)  #### extra for NK ####
-
-        # Positions, mask = TCellDetector().detect(minProj, minIndices)    #### extra raus ####
-        Positions, mask = NKCellDetector2().detect(minProj, minProjPrvs)  #### extra for NK ####
-
+        Positions, mask = TCellDetector().detect(minProj, minIndices)
         db.setMask(frame=i, layer=0, data=(~mask).astype(np.uint8))
 
         for pos in Positions:
-            db.setMarker(frame=i, layer=0, y=pos.PositionX / res, x=pos.PositionY / res, type=marker_type)
+            db.setMarker(frame=i, layer=0, y=pos.PositionX / res, x=pos.PositionY / res,
+                              type=marker_type)
+        if len(Positions) != 0:
 
-        if len(Positions) > 0:
             # Update Filter with new Detections
             try:
                 Tracker.update(z=Positions, i=i)
@@ -760,7 +649,7 @@ def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, d
                         x = meas.PositionX
                         y = meas.PositionY
                         z = meas.PositionZ
-                        prob = Tracker.Filters[k].log_prob(keys=[i])#, compare_bel=False)
+                        prob = Tracker.Filters[k].log_prob(keys=[i])
                     else:
                         x = y = z = np.nan
                         prob = np.nan
@@ -768,7 +657,6 @@ def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, d
                     # Write predictions to Database
                     if i in Tracker.Filters[k].Predicted_X.keys():
                         pred_x, pred_y, pred_z = Tracker.Model.measure(Tracker.Filters[k].Predicted_X[i])
-                        # prob = self.Tracker.Filters[k].log_prob(keys=[i], compare_bel=False)
 
                         pred_x_img = pred_y / res
                         pred_y_img = pred_x / res
@@ -778,7 +666,6 @@ def run(Log_Prob_Tresh, Detection_Error, Prediction_Error, Min_Size, Max_Size, d
 
                     x_img = y / res
                     y_img = x / res
-
                     # Write assigned tracks to ClickPoints DataBase
                     if np.isnan(x) or np.isnan(y):
                         pass
