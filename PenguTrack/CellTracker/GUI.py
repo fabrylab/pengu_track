@@ -198,7 +198,7 @@ class Window(QtWidgets.QWidget):
             for m in self.Matches:
                 # t+=1
                 # self.Bar2.setValue(t)
-                self.CreateDB(m)
+                self.CreateDB(m, self.MatchedFiles[m])
             self.Bar2.setFormat("Done")
 
 
@@ -222,6 +222,7 @@ class Window(QtWidgets.QWidget):
         return TCell_Analysis.name_from_path(path)
 
 
+<<<<<<< dest
     def CreateDB(self, Folder):
 <<<<<<< local
         Files = self.MatchedFiles[Folder]
@@ -248,6 +249,10 @@ class Window(QtWidgets.QWidget):
 =======
         TCell_Analysis.CreateDB(Folder, progress_bar=self.Bar2)
 >>>>>>> other
+=======
+    def CreateDB(self, Folder, Files):
+        TCell_Analysis.CreateDB(Folder, Files, progress_bar=self.Bar2)
+>>>>>>> source
 
     def TrackDataBases(self):
         self.Bar3.setValue(0)
@@ -261,7 +266,7 @@ class Window(QtWidgets.QWidget):
         db_name = self.name_from_path(Folder)
         db_path = os.path.sep.join(Folder.split(os.path.sep)[:-1]+[""])
         if not os.path.exists(db_path + db_name + ".cdb"):
-            self.CreateDB(Folder)
+            self.CreateDB(Folder, self.MatchedFiles[Folder])
         db = DataFileExtended(db_path+ db_name +".cdb")
         print([i.sort_index for i in db.getImageIterator()])
         TCell_Analysis.Track(db, progress_bar=self.Bar3)
@@ -300,7 +305,7 @@ class Window(QtWidgets.QWidget):
             db_str = db_path + db_name + ".cdb"
             # db_path = m+db_name + ".cdb"
         else:
-            self.CreateDB(m)
+            self.CreateDB(m, self.MatchedFiles[Folder])
             self.Track(m)
             db_str = db_path + db_name + ".cdb"
             # db_path = m +db_name + ".cdb"
@@ -323,6 +328,11 @@ def main():
     w.show()
     sys.exit(app.exec_())
 
+<<<<<<< dest
 if __name__ == "__main__":
     main()
 
+=======
+if __name__ == "__main__":
+    main()
+>>>>>>> source
