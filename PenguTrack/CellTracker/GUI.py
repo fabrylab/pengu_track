@@ -100,7 +100,7 @@ class Window(QtWidgets.QWidget):
 
         self.setLayout(self.Layout)
 
-        self.layer_dict = {"MinP": 0, "MinIndices": 1, "MaxP": 2, "MaxIndices": 3}
+        self.layer_dict = TCell_Analysis.LAYER_DICT
 
 
     def treeItemClicked(self, elem, col):
@@ -219,14 +219,11 @@ class Window(QtWidgets.QWidget):
             return False
 
     def name_from_path(self, path):
-        blocks = []
-        for s in path.split("\\"):
-            for ss in s.split("/"):
-                blocks.append(ss)
-        return "_".join(blocks[1:])
+        return TCell_Analysis.name_from_path(path)
 
 
     def CreateDB(self, Folder):
+<<<<<<< local
         Files = self.MatchedFiles[Folder]
         db_path = os.path.sep.join(Folder.split(os.path.sep)[:-1]+[""])
         db_name = self.name_from_path(Folder)
@@ -248,6 +245,9 @@ class Window(QtWidgets.QWidget):
             image = db.setImage(filename=file, path=path, layer=layer, timestamp=time)  # , frame=int(idx))
             image.sort_index = idx#idx_dict[idx]
             image.save()
+=======
+        TCell_Analysis.CreateDB(Folder, progress_bar=self.Bar2)
+>>>>>>> other
 
     def TrackDataBases(self):
         self.Bar3.setValue(0)
