@@ -22,11 +22,24 @@
 
 import peewee
 import clickpoints
+import numpy as np
+from PenguTrack.Filters import Filter
+from PenguTrack.Detectors import Measurement
+from PenguTrack.Models import VariableSpeed
 
 class DataFileExtended(clickpoints.DataFile):
 
     def __init__(self, *args, **kwargs):
         clickpoints.DataFile.__init__(self, *args, **kwargs)
+        # Define ClickPoints Marker
+        self.detection_marker_type = self.setMarkerType(name="Detection_Marker", color="#FF0000", style='{"scale":1.2}')
+        self.deleteMarkers(type=self.detection_marker_type)
+        self.track_marker_type = self.setMarkerType(name="Track_Marker", color="#00FF00", mode=self.TYPE_Track)
+        self.deleteMarkers(type=self.track_marker_type)
+        self.prediction_marker_type = self.setMarkerType(name="Prediction_Marker", color="#0000FF")
+        self.deleteMarkers(type=self.prediction_marker_type)
+        # Delete Old Tracks
+        self.deleteTracks(type=self.track_marker_type)
 
         class Measurement(self.base_model):
             # full definition here - no need to use migrate
@@ -56,3 +69,53 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
+    def write_to_DB(self, Tracker, image):
+        i = image.sort_index
+        # Get Tracks from Filters
+        for k in Tracker.Filters.keys():
+            x = y = np.nan
+            # Case 1: we tracked something in this filter
+            if i in Tracker.Filters[k].Measurements.keys():
+                meas = Tracker.Filters[k].Measurements[i]
+                x = meas.PositionX
+                y = meas.PositionY
+                prob = Tracker.Filters[k].log_prob(keys=[i])
+
+                if self.getTrack(k + 100):
+                    print('Setting Track(%s)-Marker at %s, %s' % ((100 + k), x, y))
+                else:
+                    self.setTrack(self.track_marker_type, id=100 + k)
+                    print('Setting new Track %s and Track-Marker at %s, %s' % ((100 + k), x, y))
+                track_marker = self.setMarker(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
+                                            text='Track %s, Prob %.2f' % ((100 + k), prob))
+
+                # Save measurement in Database
+                self.setMeasurement(marker=track_marker, log=prob, x=x, y=y)
+
+            # Case 2: we want to see the prediction markers
+            if i in Tracker.Filters[k].Predicted_X.keys():
+                pred_x, pred_y = Tracker.Model.measure(Tracker.Filters[k].Predicted_X[i])[:2]
+                pred_marker = self.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
+                                           type=self.prediction_marker_type)
+        print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
+
+    def PT_tracks_from_db(self, type, get_measurements=True):
+        Tracks = {}
+        if self.getTracks(type=type)[0].markers[0].measurement is not None and get_measurements:
+            for track in self.getTracks(type=type):
+                Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
+                for m in track.markers:
+                    meas = Measurement(1., [m.measurement[0].x,
+                                            m.measurement[0].y,
+                                            m.measurement[0].z])
+                    Tracks[track.id].update(z=meas, i=m.image.sort_index)
+        else:
+            for track in self.getTracks(type=type):
+                Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
+                for m in track.markers:
+                    x, y = m.correctedXY()
+                    meas = Measurement(1., [x,
+                                            y,
+                                            0])
+                    Tracks[track.id].update(z=meas, i=m.image.sort_index)
+        return Tracks

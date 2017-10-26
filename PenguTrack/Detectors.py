@@ -109,6 +109,15 @@ class Measurement(object):
 
         self.Data = data
 
+    def getPosition(self):
+        try:
+            return np.array([self.PositionX, self.PositionY, self.PositionZ], dtype=float)
+        except AttributeError:
+            try:
+                return np.array([self.PositionX, self.PositionY], dtype=float)
+            except ValueError:
+                return np.array([self.PositionX], dtype=float)
+
 
 class Detector(object):
     """
