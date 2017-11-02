@@ -10,12 +10,136 @@ import numpy as np
 from PenguTrack.DataFileExtended import DataFileExtended
 from glob import glob
 
+from time import time
+
+global START
+START = time()
+
+def timer(text=""):
+    global START
+    print(text, time() - START)
+    START = time()
+
+def Track(db, progress_bar=None):
+    res = 6.45 / 10
+    TCell_Analysis.run(-19., 6, 4, 7, 30, db, res, start_frame=1, progress_bar=progress_bar)
+
+
+def getDateFromPath(path):
+    path = os.path.normpath(path)
+    for s in path.split(os.path.sep):
+        try:
+            return datetime.datetime.strptime(s, "%Y-%M-%d")
+        except ValueError:
+            pass
+    return None
+
+
+def Stitch(db_str):
+    TCell_Analysis.Stitch(db_str, db_str[:-4] + "_stitched.cdb", 3, 0.4, 18, 30, 1, 100, 100)
+    TCell_Analysis.Stitch(db_str[:-4] + "_stitched.cdb", db_str[:-4] + "_stitched2.cdb", 10, 5, 10, 10, 1, 100, 100)
+
+
+def AnalyzeDB(db_str):
+    db = DataFileExtended(db_str)
+    time_step = 110
+    v_fac = 0.645 / (time_step / 60.)
+    perc = 30
+    step = 20
+    type = 'PT_Track_Marker'
+    Frame_list = []
+    for f in db.getImageIterator():
+        Frame_list.append(f.sort_index)
+    Frames = np.max(Frame_list)
+
+    timer()
+    Tracks = TCell_Analysis.load_tracks(db_str, type)
+    timer("Loading Tracks")
+
+    Z_posis = TCell_Analysis.getZpos(Tracks, v_fac)
+    timer("Fetching Z")
+
+    Z_posis = np.asarray(Z_posis)
+    tracks_to_delete = TCell_Analysis.get_Tracks_to_delete(Z_posis, perc)
+    timer("Getting Tracks to delete")
+
+    ###
+    list2 = TCell_Analysis.create_list2(db)  # Create List for true dist
+    timer("Creating List2")
+
+    drift, drift_list, missing_frame = TCell_Analysis.Drift(Frames, list2, 5)  # Create List with offsets
+    timer("Getting Drift")
+
+    list2 = TCell_Analysis.list2_with_drift(db, drift, tracks_to_delete,
+                                            del_track=True)  # Create list for true dist with drift_cor
+    timer("List2 with drift")
+
+    list = TCell_Analysis.create_list(Frames, db, drift=drift, Drift=True,
+                                      Missing=missing_frame)  # Create List for analysis
+    timer("Create List")
+    ### For Deleting Tracks above and below
+    list_copy = list[:]
+    for l, m in enumerate(list):
+        keys = m.keys()
+        for k, j in enumerate(keys):
+            if j in tracks_to_delete:
+                del list_copy[l][j]
+    timer("Stuff")
+
+    ###
+    print("bla")
+    directions, velocities, dirt, alternative_vel, vel_mean, dir_mean, alt_vel_mean = TCell_Analysis.measure(step,
+                                                                                                             time_step,
+                                                                                                             list,
+                                                                                                             Frames)  # Calculate directions and velocities
+    timer("Measure")
+
+    motile_percentage, mean_v, mean_dire, number, len_count, mo_p_al, me_v_al, me_d_al = TCell_Analysis.values(
+        directions,
+        velocities,
+        db,
+        dirt,
+        alternative_vel,
+        tracks_to_delete,
+        del_Tracks=True)
+    timer("Values")
+    motile_per_true_dist, real_dirt = TCell_Analysis.motiletruedist(list2)
+    timer("Motile True Dist")
+
+
+    if not os.path.exists(db_str[:-4] + "_analyzed.txt"):
+        with open(db_str[:-4] + "_analyzed.txt", "w") as f:
+            f.write(
+                'Day       \t\t\tData                              \t\t\tMotile % true dist\t\t\tMotile in %\t\t\tMean velocity\t\t\tMean Directionality\t\t\tMean vel dt1\t\t\t#Tracks\t\t\t#Evaluated Tracks\t\t\t#Dirt\n')
+
+    Day = getDateFromPath(db_str).strftime("%Y-%M-%d")
+    if db_str.count('TCell') or db_str.count('T-Cell'):
+        TCell_Analysis.Colorplot(directions, velocities, db_str,
+                                 path=os.path.sep.join(db_str.split(os.path.sep)[:-1]),
+                                 Save=True)  # Save the velocity vs directionality picture
+        with open(db_str[:-4] + "_analyzed.txt", "ab") as f:
+            f.write(
+                '%s\t\t\t%34s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%12f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n' % (
+                    Day, db_str, motile_per_true_dist, motile_percentage, mean_v, mean_dire, me_v_al, number,
+                    len_count, real_dirt))
+    elif db_str.count('NKCell'):
+        TCell_Analysis.Colorplot(directions, velocities, db_str,
+                                 path=os.path.sep.join(db_str.split(os.path.sep)[:-1]),
+                                 Save=True)
+        with open(db_str[:-4] + "_analyzed.txt", 'ab') as f:
+            f.write('%s\t\t\t%34s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%12f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n' % (
+                Day, db_str, motile_per_true_dist, motile_percentage, mean_v, mean_dire, me_v_al, number,
+                len_count, real_dirt))
+    db.db.close()
+
+    timer("Write")
+
+
+
 class Window(QtWidgets.QWidget):
 # class Window(QtWidgets):
     def __init__(self):
         super(Window, self).__init__()
-        self.resize(640, 360)
-        self.resize(640, 360)
         self.resize(640, 360)
         # self.move(300,300)
         self.setWindowTitle("Database Creator")
@@ -33,6 +157,7 @@ class Window(QtWidgets.QWidget):
         self.Dirs = {'': self.Tree}
 
         def increase(bar):
+            QtGui.QGuiApplication.processEvents()
             bar.setValue(bar.value()+1)
             QtGui.QGuiApplication.processEvents()
 
@@ -142,6 +267,7 @@ class Window(QtWidgets.QWidget):
             self.Bar.increase()
             filtered = fnmatch.filter(filenames, "*.tif")
             if len(filtered) > 0:
+                root=os.path.normpath(root)
                 self.Matches.update([root])
                 self.MatchedFiles.update({root: filtered})
 
@@ -215,8 +341,8 @@ class Window(QtWidgets.QWidget):
 
     def CreateDB(self, Folder):
         Files = self.MatchedFiles[Folder]
-        db_path = Folder
-        db_name = self.name_from_path(db_path)
+        db_path = os.path.sep.join(Folder.split(os.path.sep)[:-1]+[""])
+        db_name = self.name_from_path(Folder)
         db = DataFileExtended(db_path+db_name+".cdb", "w")
         path = db.setPath(Folder)
         idx_dict = {}
@@ -238,20 +364,21 @@ class Window(QtWidgets.QWidget):
 
     def TrackDataBases(self):
         self.Bar3.setValue(0)
-        self.Bar3.setRange(0, np.sum([len(self.MatchedFiles[m]) for m in self.Matches]))
+        self.Bar3.setRange(0, np.sum([len(self.MatchedFiles[m]) for m in self.Matches])/4)
         for m in self.Matches:
             self.Bar3.setFormat("Tracking %s"%m)
             self.Track(m)
         self.Bar3.setFormat("Done")
 
     def Track(self, Folder):
+        Track(Folder)
         db_name = self.name_from_path(Folder)
-        if not os.path.exists(Folder + db_name + ".cdb"):
+        db_path = os.path.sep.join(Folder.split(os.path.sep)[:-1]+[""])
+        if not os.path.exists(db_path + db_name + ".cdb"):
             self.CreateDB(Folder)
-        db = DataFileExtended(Folder+ db_name +".cdb")
+        db = DataFileExtended(db_path+ db_name +".cdb")
         print([i.sort_index for i in db.getImageIterator()])
-        res = 6.45 / 10
-        TCell_Analysis.run(-19.,6,4,7,30,db,res, start_frame=1, progress_bar=self.Bar3)
+        Track(db, progress_bar=self.Bar3)
 
     def StitchDataBases(self):
         self.Bar4.setValue(0)
@@ -262,104 +389,128 @@ class Window(QtWidgets.QWidget):
 
     def Stitch(self, m):
         db_name = self.name_from_path(m)
-        TCell_Analysis.Stitch(m+db_name+".cdb",m+db_name+"_stitched.cdb",3,0.4,18,30,1,100,100)
-        TCell_Analysis.Stitch(m+db_name+"_stitched.cdb",m+db_name+"_stitched2.cdb",10,5,10,10,1,100,100)
+        Stitch(m+db_name+".cdb")
+        # TCell_Analysis.Stitch(m+db_name+".cdb",m+db_name+"_stitched.cdb",3,0.4,18,30,1,100,100)
+        # TCell_Analysis.Stitch(m+db_name+"_stitched.cdb",m+db_name+"_stitched2.cdb",10,5,10,10,1,100,100)
 
     def getDateFromPath(self, path):
-        for s in path.split(os.path.sep):
-            if s.count("/"):
-                for ss in s.split("/"):
-                    try:
-                        return datetime.datetime.strptime(ss, "%Y-%M-%d")
-                    except ValueError:
-                        pass
-            else:
-                try:
-                    return datetime.datetime.strptime(s, "%Y-%M-%d")
-                except ValueError:
-                    pass
-        return None
+        return getDateFromPath(path)
+        # for s in path.split(os.path.sep):
+        #     if s.count("/"):
+        #         for ss in s.split("/"):
+        #             try:
+        #                 return datetime.datetime.strptime(ss, "%Y-%M-%d")
+        #             except ValueError:
+        #                 pass
+        #     else:
+        #         try:
+        #             return datetime.datetime.strptime(s, "%Y-%M-%d")
+        #         except ValueError:
+        #             pass
+        # return None
+
+    def AnalyzeDB(self, db_str):
+        AnalyzeDB(db_str)
+        # db = DataFileExtended(db_str)
+        #
+        # time_step = 110
+        # v_fac = 0.645 / (time_step / 60.)
+        # perc = 30
+        # step = 20
+        # type = 'PT_Track_Marker'
+        # Frame_list = []
+        # for f in db.getImageIterator():
+        #     Frame_list.append(f.sort_index)
+        # Frames = np.max(Frame_list)
+        #
+        # Tracks = TCell_Analysis.load_tracks(db_str, type)
+        # Z_posis = TCell_Analysis.getZpos(Tracks, v_fac)
+        # Z_posis = np.asarray(Z_posis)
+        # tracks_to_delete = TCell_Analysis.get_Tracks_to_delete(Z_posis, perc)
+        # ###
+        # list2 = TCell_Analysis.create_list2(db)  # Create List for true dist
+        # drift, drift_list, missing_frame = TCell_Analysis.Drift(Frames, list2, 5)  # Create List with offsets
+        # list2 = TCell_Analysis.list2_with_drift(db, drift, tracks_to_delete,
+        #                                         del_track=True)  # Create list for true dist with drift_cor
+        # list = TCell_Analysis.create_list(Frames, db, drift=drift, Drift=True,
+        #                                   Missing=missing_frame)  # Create List for analysis
+        # ### For Deleting Tracks above and below
+        # list_copy = list[:]
+        # for l, m in enumerate(list):
+        #     keys = m.keys()
+        #     for k, j in enumerate(keys):
+        #         if j in tracks_to_delete:
+        #             del list_copy[l][j]
+        # ###
+        # print("bla")
+        # directions, velocities, dirt, alternative_vel, vel_mean, dir_mean, alt_vel_mean = TCell_Analysis.measure(step,
+        #                                                                                                          time_step,
+        #                                                                                                          list,
+        #                                                                                                          Frames)  # Calculate directions and velocities
+        # motile_percentage, mean_v, mean_dire, number, len_count, mo_p_al, me_v_al, me_d_al = TCell_Analysis.values(directions,
+        #                                                                                                            velocities,
+        #                                                                                                            db,
+        #                                                                                                            dirt,
+        #                                                                                                            alternative_vel,
+        #                                                                                                            tracks_to_delete,
+        #                                                                                                            del_Tracks=True)
+        # motile_per_true_dist, real_dirt = TCell_Analysis.motiletruedist(list2)
+        #
+        # if not os.path.exists(db_str[:-4] + "_analyzed.txt"):
+        #     with open(db_str[:-4] + "_analyzed.txt", "w") as f:
+        #         f.write(
+        #             'Day       \t\t\tData                              \t\t\tMotile % true dist\t\t\tMotile in %\t\t\tMean velocity\t\t\tMean Directionality\t\t\tMean vel dt1\t\t\t#Tracks\t\t\t#Evaluated Tracks\t\t\t#Dirt\n')
+        #
+        # Day = self.getDateFromPath(db_str).strftime("%Y-%M-%d")
+        # if db_str.count('TCell') or db_str.count('T-Cell'):
+        #     TCell_Analysis.Colorplot(directions, velocities, db_str,
+        #                              path=os.path.sep.join(db_str.split(os.path.sep)[:-1]),
+        #                              Save=True)  # Save the velocity vs directionality picture
+        #     with open(db_str[:-4] + "_analyzed.txt", "ab") as f:
+        #         f.write(
+        #             '%s\t\t\t%34s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%12f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n' % (
+        #                 Day, db_str, motile_per_true_dist, motile_percentage, mean_v, mean_dire, me_v_al, number,
+        #                 len_count, real_dirt))
+        # elif db_str.count('NKCell'):
+        #     TCell_Analysis.Colorplot(directions, velocities, db_str,
+        #                              path=os.path.sep.join(db_str.split(os.path.sep)[:-1]),
+        #                              Save=True)
+        #     with open(db_str[:-4] + "_analyzed.txt", 'ab') as f:
+        #         f.write('%s\t\t\t%34s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%12f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n' % (
+        #             Day, db_str, motile_per_true_dist, motile_percentage, mean_v, mean_dire, me_v_al, number,
+        #             len_count, real_dirt))
+        # db.db.close()
+
+    def AnalyzeFolder(self, Folder):
+        m=Folder
+        db_name = self.name_from_path(m)
+        db_path = os.path.sep.join(m.split(os.path.sep)[:-1] + [""])
+
+        if os.path.exists(db_path + db_name + "_stitched2.cdb"):
+            # db_path = m+db_name+"_stitched2.cdb"
+            db_str = db_path + db_name + "_stitched2.cdb"
+        elif os.path.exists(db_path + db_name + "_stitched.cdb"):
+            # db_path = m+db_name+"_stitched.cdb"
+            db_str = db_path + db_name + "_stitched.cdb"
+        elif os.path.exists(db_path + db_name + ".cdb"):
+            db_str = db_path + db_name + ".cdb"
+            # db_path = m+db_name + ".cdb"
+        else:
+            self.CreateDB(m)
+            self.Track(m)
+            db_str = db_path + db_name + ".cdb"
+            # db_path = m +db_name + ".cdb"
+        self.AnalyzeDB(db_str)
+
+
 
     def AnalyzeDataBases(self):
         self.Bar5.setValue(0)
         self.Bar5.setRange(0, len(self.Matches))
         for m in self.Matches:
             self.Bar5.increase()
-            db_name = self.name_from_path(m)
-            if os.path.exists(m+db_name+"_stitched2.cdb"):
-                db_path = m+db_name+"_stitched2.cdb"
-            elif os.path.exists(m+db_name+"_stitched.cdb"):
-                db_path = m+db_name+"_stitched.cdb"
-            elif os.path.exists(m+db_name+".cdb"):
-                db_path = m+db_name + ".cdb"
-            else:
-                self.CreateDB(m)
-                self.Track(m)
-                db_path = m +db_name + ".cdb"
+            self.AnalyzeFolder(m)
 
-            db = DataFileExtended(m+db_name+".cdb")
-            time_step = 110
-            v_fac = 0.645 / (time_step / 60.)
-            perc = 30
-            step = 20
-            type = 'PT_Track_Marker'
-            Frame_list = []
-            for f in db.getImageIterator():
-                Frame_list.append(f.sort_index)
-            Frames = np.max(Frame_list)
-
-            Tracks = TCell_Analysis.load_tracks(db_path, type)
-            Z_posis = TCell_Analysis.getZpos(Tracks, v_fac)
-            Z_posis = np.asarray(Z_posis)
-            tracks_to_delete = TCell_Analysis.get_Tracks_to_delete(Z_posis, perc)
-            ###
-            list2 = TCell_Analysis.create_list2(db)  # Create List for true dist
-            drift, drift_list, missing_frame = TCell_Analysis.Drift(Frames, list2, 5)  # Create List with offsets
-            list2 = TCell_Analysis.list2_with_drift(db, drift, tracks_to_delete,
-                                     del_track=True)  # Create list for true dist with drift_cor
-            list = TCell_Analysis.create_list(Frames, db, drift=drift, Drift=True, Missing=missing_frame)  # Create List for analysis
-            ### For Deleting Tracks above and below
-            list_copy = list[:]
-            for l, m in enumerate(list):
-                keys = m.keys()
-                for k, j in enumerate(keys):
-                    if j in tracks_to_delete:
-                        del list_copy[l][j]
-            ###
-            print("bla")
-            directions, velocities, dirt, alternative_vel, vel_mean, dir_mean, alt_vel_mean = TCell_Analysis.measure(step, time_step,
-                                                                                                      list, Frames)  # Calculate directions and velocities
-            motile_percentage, mean_v, mean_dire, number, len_count, mo_p_al, me_v_al, me_d_al = TCell_Analysis.values(directions,
-                                                                                                        velocities, db,
-                                                                                                        dirt,
-                                                                                                        alternative_vel,
-                                                                                                        tracks_to_delete,
-                                                                                                        del_Tracks=True)
-            motile_per_true_dist, real_dirt = TCell_Analysis.motiletruedist(list2)
-
-            if not os.path.exists(db_path[:-4]+"_analyzed.txt"):
-                with open(db_path[:-4]+"_analyzed.txt", "w") as f:
-                    f.write('Day       \t\t\tData                              \t\t\tMotile % true dist\t\t\tMotile in %\t\t\tMean velocity\t\t\tMean Directionality\t\t\tMean vel dt1\t\t\t#Tracks\t\t\t#Evaluated Tracks\t\t\t#Dirt\n')
-
-            Day = self.getDateFromPath(db_path).strftime("%Y-%M-%d")
-            if db_path.count('TCell') or db_path.count('T-Cell'):
-                TCell_Analysis.Colorplot(directions, velocities, db_path,
-                                         path=os.path.sep.join(db_path.split(os.path.sep)[:-1]),
-                                         Save=True)  # Save the velocity vs directionality picture
-                with open(db_path[:-4]+"_analyzed.txt", "ab") as f:
-                    f.write(
-                        '%s\t\t\t%34s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%12f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n' % (
-                        Day, db_path, motile_per_true_dist, motile_percentage, mean_v, mean_dire, me_v_al, number,
-                        len_count, real_dirt))
-            elif db_path.count('NKCell'):
-                TCell_Analysis.Colorplot(directions, velocities, db_path,
-                                         path=os.path.sep.join(db_path.split(os.path.sep)[:-1]),
-                                         Save=True)
-                with open(db_path[:-4]+"_analyzed.txt", 'ab') as f:
-                    f.write('%s\t\t\t%34s\t\t\t%18f\t\t\t%11f\t\t\t%13f\t\t\t%19f\t\t\t%12f\t\t\t%7d\t\t\t%17d\t\t\t%5d\n'%(
-                        Day, db_path,motile_per_true_dist, motile_percentage, mean_v,mean_dire, me_v_al, number,
-                        len_count, real_dirt))
-            db.db.close()
 
 
 def main():
@@ -369,4 +520,5 @@ def main():
     sys.exit(app.exec_())
 
 if __name__ == "__main__":
-    main()
+    # main()
+    AnalyzeDB("/home/alex/2017-03-10_Tzellen_microwells_bestdata/1T-Cell-Motility_2017-10-17_1_2Gel_24hnachMACS_24himGel_Kontrolle_RB_1.cdb")

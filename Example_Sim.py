@@ -94,6 +94,7 @@ if __name__ == '__main__':
         X,Y = np.random.rand(0,1,(2,N))
         X*=arena_w
         Y*=arena_h
+
         print("Found %s Objects!"%len(Positions))
 
         # Write Segmentation Mask to Database

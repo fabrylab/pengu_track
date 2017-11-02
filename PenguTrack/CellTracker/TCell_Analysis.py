@@ -189,7 +189,7 @@ def getZpos(Tracks,v_fac):
             count += 1
         alter_dist = (alter_dist / float(count))*v_fac
         mean_z.append([track,np.nanmean(z_positions),len(z_positions),alter_dist])
-    return mean_z
+    return np.array(mean_z)
 
 
 def Stitch(db_path,db_path2,a1,a2,a3,a4,a5,max_cost,limiter):
@@ -239,7 +239,6 @@ def create_list2(db):
             positions.append(pos)
         list2.append(positions)
     return list2
-
 
 def list2_with_drift(db, drift, tracks_del=None, del_track=False):
     ptTracks = db.getTracks(type='PT_Track_Marker')[:]
@@ -312,7 +311,7 @@ def values(Direction_plot,velocities,db,dirt,alter_velocities, tracks_to_delete=
     return motile_percentage,mean_v,mean_dire,number,len_count, motile_percentage_alter,mean_alter_v,mean_alter_dire
 
 
-def measure(step, dt, list, Frames):
+def measure(step, dt, liste, Frames):
     dirt = 0
     v_factor = 0.645 / ((step - 1) * dt / 60)
     track_distances = []
@@ -323,12 +322,14 @@ def measure(step, dt, list, Frames):
     Directions_for_mean = []
     a = range(0, Frames - step, 1)
     for j in a:
-        PT_tracks = list[j].keys()
+        PT_tracks = liste[j].keys()
         PT_tracks_corrected = []
-        for i in range(len(PT_tracks)):
-            PT_end_marker = list[j + step].has_key(PT_tracks[i])
+        # for i in range(len(PT_tracks)):
+        for track in PT_tracks:
+            # PT_end_marker = liste[j + step].has_key(PT_tracks[i])
+            PT_end_marker = track in liste[j + step]
             if PT_end_marker == 1:
-                PT_tracks_corrected.append(PT_tracks[i])
+                PT_tracks_corrected.append(track)
         track_distance = []
         track_distance_for_mean = []
         alternative_track_distance = []
@@ -337,10 +338,10 @@ def measure(step, dt, list, Frames):
         Directions2_for_mean = []
         for track in PT_tracks_corrected:
             PT_positions = np.asarray(
-                [list[e].get(track) for e in range(j, j + step) if list[e].get(track) is not None])
-            PT_positions1 = [list[e].get(track) for e in range(j, j + step)]
-            for i,pos in enumerate(PT_positions1):
-                if pos == None:
+                [liste[e].get(track) for e in range(j, j + step) if liste[e].get(track) is not None])
+            PT_positions1 = [liste[e].get(track) for e in range(j, j + step)]
+            for i, pos in enumerate(PT_positions1):
+                if np.any(pos == None):
                     PT_positions1[i] = [9999.9,9999.9]
             #Speed Start
             PT_maxx = np.max(PT_positions[:, 0])
@@ -360,7 +361,7 @@ def measure(step, dt, list, Frames):
             alter_dist = 0.0001
             count = 0
             for i in range(1,len(PT_positions1)):
-                if PT_positions1[i]!=[9999.9,9999.9] and PT_positions1[i-1]!=[9999.9,9999.9]:
+                if np.all(PT_positions1[i]!=[9999.9,9999.9]) and np.all(PT_positions1[i-1]!=[9999.9,9999.9]):
                     alter_dist += np.sqrt((PT_positions1[i][0] - PT_positions1[i-1][0])**2. + (PT_positions1[i][1] - PT_positions1[i-1][1])**2.)
                     count += 1
             if count == 0:
@@ -372,8 +373,8 @@ def measure(step, dt, list, Frames):
             # Directions start
             directions = []
             for i in range(1, len(PT_positions1) - 1):
-                if PT_positions1[i - 1] != [9999.9, 9999.9] and PT_positions1[i] != [9999.9, 9999.9] and \
-                                PT_positions1[i + 1] != [9999.9, 9999.9]:
+                if (PT_positions1[i - 1] != [9999.9, 9999.9]).all() and (PT_positions1[i] != [9999.9, 9999.9]).all() and \
+                        (PT_positions1[i + 1] != [9999.9, 9999.9]).all():
                     Vector1 = [PT_positions1[i][0] - PT_positions1[i - 1][0],
                                PT_positions1[i][1] - PT_positions1[i - 1][1]]
                     Vector2 = [PT_positions1[i + 1][0] - PT_positions1[i][0],
@@ -418,7 +419,7 @@ def measure(step, dt, list, Frames):
     return Directions_plot,velocity,dirt, alter_vel, track_distances_for_mean, Directions_for_mean, alternative_track_distances_for_mean
 
 
-def Drift(Frames,list2, percentile):
+def Drift(Frames, list2, percentile):
     Drift_list = []
     Drift_list_cor = []
     Drift_distance = []
@@ -459,7 +460,7 @@ def Drift(Frames,list2, percentile):
     for dri in Drift_list_cor:
         Frame_drift = []
         for i in range(1,len(dri)):
-            if dri[i-1] != [9999.9,9999.9] and dri[i] != [9999.9,9999.9]:
+            if (dri[i-1] != [9999.9,9999.9]).all() and (dri[i] != [9999.9,9999.9]).all():
                 x = dri[i][0] - dri[i - 1][0]
                 y = dri[i][1] - dri[i - 1][1]
                 Frame_drift.append([x,y])
