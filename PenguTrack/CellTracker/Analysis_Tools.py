@@ -433,7 +433,7 @@ def Drift(Frames, list2, percentile):
     test = 0
     missing = 0
     for track in list2:
-        if len(track) >= Frames+1:
+        if len(track) >= Frames-1:
             test += 1
             track1 = np.asarray(track)
             PT_maxx = np.max(track1[:, 0][track1[:, 0] < 9999])
@@ -482,7 +482,7 @@ def Drift(Frames, list2, percentile):
         frames -= 1
     drift_mean = []
     if len(Frame_drifts) > 0:
-        for i in range(frames):
+        for i in range(frames-2):
                 drift_mean.append([np.nanmean(Frame_drifts[:, i, 0]), np.nanmean(Frame_drifts[:, i, 1])])
 
     drift_mean = np.asarray(drift_mean)

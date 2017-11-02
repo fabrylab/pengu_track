@@ -167,11 +167,15 @@ class Window(QtWidgets.QWidget):
                     self.Dirs.update({part: QtWidgets.QTreeWidgetItem(self.Dirs[part_m1],
                                                                       [part.split(os.path.sep)[-1]])})
             if not m in self.Dirs:
+                db_path = os.path.sep.join(m.split(os.path.sep)[:-1]+[""])
+                db_name = self.name_from_path(m)
                 self.Dirs.update({m: QtWidgets.QTreeWidgetItem(self.Dirs[os.path.sep.join(m.split(os.path.sep)[:-1])],
                                                            [m.split(os.path.sep)[-1],
                                                             "True",
                                                             str(len(self.MatchedFiles[m])),
-                                                            str([g.split(os.path.sep)[-1] for g in glob(m+"*.cdb")])])})
+                                                            str([g.split(os.path.sep)[-1] for g in glob(
+                                                                db_path + db_name + "*.cdb"
+                                                            )])])})
         self.Tree.expandAll()
         self.Bar.setFormat("Done")
 
