@@ -48,8 +48,10 @@ def AnalyzeDB(db_str):
     Frame_list = []
     for f in db.getImageIterator():
         Frame_list.append(f.sort_index)
-    Frames = np.max(Frame_list)
-
+    try:
+        Frames = np.amax(Frame_list)
+    except ValueError:
+        Frames = 0
     timer()
     Tracks = Analysis_Tools.load_tracks(db_str, type)
     timer("Loading Tracks")
@@ -133,4 +135,5 @@ def AnalyzeDB(db_str):
     timer("Write")
 
 if __name__ == "__main__":
-    AnalyzeDB("/home/alex/2017-03-10_Tzellen_microwells_bestdata/1T-Cell-Motility_2017-10-17_1_2Gel_24hnachMACS_24himGel_Kontrolle_RB_1.cdb")
+    # AnalyzeDB("/home/alex/2017-03-10_Tzellen_microwells_bestdata/1T-Cell-Motility_2017-10-17_1_2Gel_24hnachMACS_24himGel_Kontrolle_RB_1.cdb")
+    AnalyzeDB(r"Z:\T-Cell-Motility\2017-10-17\1_2Gel\24hnachMACS\1himGel\Kontrolle\RB\4T-Cell-Motility_2017-10-17_1_2Gel_24hnachMACS_1himGel_Kontrolle_RB_4_stitched2.cdb")

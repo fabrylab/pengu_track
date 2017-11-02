@@ -216,7 +216,10 @@ def create_list(Frames,db,drift=None, Drift=False, Missing=False):
                 if i == 0:
                     list[i].update({m.track.id: m.correctedXY()})
                 else:
-                    list[i].update({m.track.id: (m.correctedXY() - drift[i-1]).tolist()})
+                    try:
+                        list[i].update({m.track.id: (m.correctedXY() - drift[i-1]).tolist()})
+                    except IndexError:
+                        list[i].update({m.track.id: m.correctedXY()})
         else:
             for m in PT_markers:
                 list[i].update({m.track.id: m.correctedXY()})
@@ -261,7 +264,10 @@ def list2_with_drift(db, drift, tracks_del=None, del_track=False):
             else:
                 marker = db.getMarkers(frame=i, type='PT_Track_Marker', track=track)
                 if len(marker) == 1:
-                    pos = (marker[0].correctedXY() - drift[i-1]).tolist()
+                    try:
+                        pos = (marker[0].correctedXY() - drift[i-1]).tolist()
+                    except IndexError:
+                        pos = marker[0].correctedXY()
                 else:
                     pos = [9999.9, 9999.9]
                 positions.append(pos)
@@ -373,8 +379,8 @@ def measure(step, dt, liste, Frames):
             # Directions start
             directions = []
             for i in range(1, len(PT_positions1) - 1):
-                if (PT_positions1[i - 1] != [9999.9, 9999.9]).all() and (PT_positions1[i] != [9999.9, 9999.9]).all() and \
-                        (PT_positions1[i + 1] != [9999.9, 9999.9]).all():
+                if np.all(PT_positions1[i - 1] != [9999.9, 9999.9]) and np.all(PT_positions1[i] != [9999.9, 9999.9]) and \
+                        np.all(PT_positions1[i + 1] != [9999.9, 9999.9]):
                     Vector1 = [PT_positions1[i][0] - PT_positions1[i - 1][0],
                                PT_positions1[i][1] - PT_positions1[i - 1][1]]
                     Vector2 = [PT_positions1[i + 1][0] - PT_positions1[i][0],
@@ -451,7 +457,10 @@ def Drift(Frames, list2, percentile):
     Drift_distance = np.asarray(Drift_distance)
     if len(Drift_distance)<=25:
         percentile+=10
-    p = np.percentile(Drift_distance, percentile)
+    if len(Drift_distance)==0:
+        p = np.inf
+    else:
+        p = np.percentile(Drift_distance, percentile)
     for i, dist in enumerate(Drift_distance):
         if dist <= p:
             Drift_distance_cor.append(dist)
@@ -460,7 +469,7 @@ def Drift(Frames, list2, percentile):
     for dri in Drift_list_cor:
         Frame_drift = []
         for i in range(1,len(dri)):
-            if (dri[i-1] != [9999.9,9999.9]).all() and (dri[i] != [9999.9,9999.9]).all():
+            if np.all(dri[i-1] != [9999.9,9999.9]) and np.all(dri[i] != [9999.9,9999.9]):
                 x = dri[i][0] - dri[i - 1][0]
                 y = dri[i][1] - dri[i - 1][1]
                 Frame_drift.append([x,y])
@@ -472,8 +481,10 @@ def Drift(Frames, list2, percentile):
     if test == 0:
         frames -= 1
     drift_mean = []
-    for i in range(frames):
-        drift_mean.append([np.nanmean(Frame_drifts[:, i, 0]), np.nanmean(Frame_drifts[:, i, 1])])
+    if len(Frame_drifts) > 0:
+        for i in range(frames):
+                drift_mean.append([np.nanmean(Frame_drifts[:, i, 0]), np.nanmean(Frame_drifts[:, i, 1])])
+
     drift_mean = np.asarray(drift_mean)
     s = np.isnan(drift_mean)
     drift_mean[s] = 0.0
@@ -543,7 +554,7 @@ def Colorplot(directions, velocities, Scatterplot_Name, path = None, Save = Fals
     plt.xlabel('Directionality', fontsize=30)
     plt.ylabel(r'Speed [$\frac{\mathrm{\mu m}}{\mathrm{min}}$]', fontsize=30)
     if Save:
-        fig.savefig(path + Scatterplot_Name + '.pdf')
+        fig.savefig(Scatterplot_Name[:-4] + '.pdf')
     else:
         plt.show()
 

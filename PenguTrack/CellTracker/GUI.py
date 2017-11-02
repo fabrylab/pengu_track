@@ -235,7 +235,7 @@ class Window(QtWidgets.QWidget):
             # QtGui.QApplication.processEvents()
             QtGui.QGuiApplication.processEvents()
             layer = self.layer_dict[[k for k in self.layer_dict if file.count(k)][0]]
-            time = datetime.datetime.strptime(file.split("_")[0], "%Y%m%d-%H%M%S")
+            time = datetime.strptime(file.split("_")[0], "%Y%m%d-%H%M%S")
             idx = int([k[3:] for k in file.split("_") if k.count("rep")][0])
             if len(idx_dict)<1:
                 idx_dict.update({idx: 0})
@@ -254,7 +254,6 @@ class Window(QtWidgets.QWidget):
         self.Bar3.setFormat("Done")
 
     def Track(self, Folder):
-        TCell_Analysis.Track(Folder)
         db_name = self.name_from_path(Folder)
         db_path = os.path.sep.join(Folder.split(os.path.sep)[:-1]+[""])
         if not os.path.exists(db_path + db_name + ".cdb"):
