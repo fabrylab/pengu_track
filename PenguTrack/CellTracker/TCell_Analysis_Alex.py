@@ -32,11 +32,13 @@ def CreateDB(path, files, progress_bar = None):
     db_path = os.path.sep.join(Folder.split(os.path.sep)[:-1]+[""])
 
     db_name = name_from_path(Folder)
+    # db_path = "/home/alex/2017-03-10_Tzellen_microwells_bestdata/T-CellMotility/2017-10-17/1_2Gel/24hnachMACS/24himGel/Kontrolle/RB/"
     db = DataFileExtended(db_path+db_name+".cdb", "w")
     path = db.setPath(Folder)
     idx_dict = {}
     for file in Files:
-        progress_bar.increase()
+        if progress_bar is not None:
+            progress_bar.increase()
         layer = LAYER_DICT[[k for k in LAYER_DICT if file.count(k)][0]]
         time = datetime.datetime.strptime(file.split("_")[0], "%Y%m%d-%H%M%S")
         idx = int([k[3:] for k in file.split("_") if k.count("rep")][0])
@@ -93,17 +95,13 @@ def AnalyzeDB(db_str):
     Frame_list = []
     for f in db.getImageIterator():
         Frame_list.append(f.sort_index)
-<<<<<<< local
+
     try:
         Frames = np.amax(Frame_list)
     except ValueError:
         Frames = 0
     timer()
-=======
-    Frames = np.max(Frame_list)
 
-    # Fetch the tracks from the DB
->>>>>>> other
     Tracks = Analysis_Tools.load_tracks(db_str, type)
     Z_posis = Analysis_Tools.getZpos(Tracks, v_fac)
     Z_posis = np.asarray(Z_posis)
@@ -170,15 +168,16 @@ def AnalyzeDB(db_str):
     db.db.close()
 
 if __name__ == "__main__":
-
-<<<<<<< local
-if __name__ == "__main__":
     # AnalyzeDB("/home/alex/2017-03-10_Tzellen_microwells_bestdata/1T-Cell-Motility_2017-10-17_1_2Gel_24hnachMACS_24himGel_Kontrolle_RB_1.cdb")
-    AnalyzeDB(r"Z:\T-Cell-Motility\2017-10-17\1_2Gel\24hnachMACS\1himGel\Kontrolle\RB\4T-Cell-Motility_2017-10-17_1_2Gel_24hnachMACS_1himGel_Kontrolle_RB_4_stitched2.cdb")
-=======
+    # AnalyzeDB(r"Z:\T-Cell-Motility\2017-10-17\1_2Gel\24hnachMACS\1himGel\Kontrolle\RB\4T-Cell-Motility_2017-10-17_1_2Gel_24hnachMACS_1himGel_Kontrolle_RB_4_stitched2.cdb")
     Matches, Matched_Files = Crawl_Folder("/mnt/cmark2/T-Cell-Motility/2017-10-17/1_2Gel/24hnachMACS/24himGel/Kontrolle/RB/")
     Database_paths =[]
     for m in Matches:
         Database_paths.append(CreateDB(m, Matched_Files[m]))
     for db_path in Database_paths:
-        AnalyzeDB(db_path)>>>>>>> other
+        db = DataFileExtended(db_path)
+        Track(db, None)
+    for db_path in Database_paths:
+        Stitch(db_path)
+    for db_path in Database_paths:
+        AnalyzeDB(db_path)

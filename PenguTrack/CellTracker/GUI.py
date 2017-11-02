@@ -222,37 +222,30 @@ class Window(QtWidgets.QWidget):
         return TCell_Analysis.name_from_path(path)
 
 
-<<<<<<< dest
     def CreateDB(self, Folder):
-<<<<<<< local
-        Files = self.MatchedFiles[Folder]
-        db_path = os.path.sep.join(Folder.split(os.path.sep)[:-1]+[""])
-        db_name = self.name_from_path(Folder)
-        db = DataFileExtended(db_path+db_name+".cdb", "w")
-        path = db.setPath(Folder)
-        idx_dict = {}
-        for file in Files:
-            # self.Bar2.setValue(self.Bar2.value()+1)
-            self.Bar2.increase()
-            # QtGui.QApplication.processEvents()
-            QtGui.QGuiApplication.processEvents()
-            layer = self.layer_dict[[k for k in self.layer_dict if file.count(k)][0]]
-            time = datetime.strptime(file.split("_")[0], "%Y%m%d-%H%M%S")
-            idx = int([k[3:] for k in file.split("_") if k.count("rep")][0])
-            if len(idx_dict)<1:
-                idx_dict.update({idx: 0})
-            elif idx not in idx_dict:
-                idx_dict.update({idx: max(idx_dict.values())+1})
-            image = db.setImage(filename=file, path=path, layer=layer, timestamp=time)  # , frame=int(idx))
-            image.sort_index = idx#idx_dict[idx]
-            image.save()
-=======
-        TCell_Analysis.CreateDB(Folder, progress_bar=self.Bar2)
->>>>>>> other
-=======
-    def CreateDB(self, Folder, Files):
+        # Files = self.MatchedFiles[Folder]
+        # db_path = os.path.sep.join(Folder.split(os.path.sep)[:-1]+[""])
+        # db_name = self.name_from_path(Folder)
+        # db = DataFileExtended(db_path+db_name+".cdb", "w")
+        # path = db.setPath(Folder)
+        # idx_dict = {}
+        # for file in Files:
+        #     # self.Bar2.setValue(self.Bar2.value()+1)
+        #     self.Bar2.increase()
+        #     # QtGui.QApplication.processEvents()
+        #     QtGui.QGuiApplication.processEvents()
+        #     layer = self.layer_dict[[k for k in self.layer_dict if file.count(k)][0]]
+        #     time = datetime.strptime(file.split("_")[0], "%Y%m%d-%H%M%S")
+        #     idx = int([k[3:] for k in file.split("_") if k.count("rep")][0])
+        #     if len(idx_dict)<1:
+        #         idx_dict.update({idx: 0})
+        #     elif idx not in idx_dict:
+        #         idx_dict.update({idx: max(idx_dict.values())+1})
+        #     image = db.setImage(filename=file, path=path, layer=layer, timestamp=time)  # , frame=int(idx))
+        #     image.sort_index = idx#idx_dict[idx]
+        #     image.save()
+
         TCell_Analysis.CreateDB(Folder, Files, progress_bar=self.Bar2)
->>>>>>> source
 
     def TrackDataBases(self):
         self.Bar3.setValue(0)
@@ -328,11 +321,6 @@ def main():
     w.show()
     sys.exit(app.exec_())
 
-<<<<<<< dest
 if __name__ == "__main__":
     main()
 
-=======
-if __name__ == "__main__":
-    main()
->>>>>>> source
