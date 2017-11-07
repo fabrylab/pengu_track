@@ -53,7 +53,11 @@ from skimage.feature import peak_local_max
 try:
     from skimage.filters import threshold_niblack
 except IOError:
-    from skimage.filters import threshold_otsu as threshold_niblack #threshold_niblack
+    from skimage.filters import threshold_otsu #as threshold_niblack #threshold_niblack
+    threshold_niblack = lambda image: image > threshold_otsu(image)
+except ImportError:
+    from skimage.filters import threshold_otsu #as threshold_niblack #threshold_niblack
+    threshold_niblack = lambda image: image > threshold_otsu(image)
 
 # If we really need this function, better take it from skiamge. Maybe cv2 is not available.
 try:
