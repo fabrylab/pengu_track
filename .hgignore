@@ -72,3 +72,4 @@ synth_data.cdb
 docs/_build_html/*
 *.cdb-shm
 *.cdb-wal
+*.cdb
