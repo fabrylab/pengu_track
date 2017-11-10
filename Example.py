@@ -60,7 +60,10 @@ if __name__ == '__main__':
     State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filter
     Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
     # Initialize Filter/Tracker
-    MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
+    # MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
+    #                        np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
+    from PenguTrack.Filters import HungarianTracker
+    MultiKal = HungarianTracker(KalmanFilter, model, np.diag(Q),
                            np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
     MultiKal.LogProbabilityThreshold = log_prob_threshold
 

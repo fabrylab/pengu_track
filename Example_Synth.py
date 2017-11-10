@@ -50,12 +50,12 @@ if __name__ == '__main__':
         # Extended Clickpoints Database for usage with pengutack
         from PenguTrack.DataFileExtended import DataFileExtended
         # Open ClickPoints Database
-        # db = DataFileExtended("./synth_data.cdb", "w")
+        db = DataFileExtended("./synth_data.cdb", "w")
 
         # Start Iteration over Images
         print('Starting Iteration')
         for i in range(30):
-            # image = db.setImage(filename="%s.png"%i, frame=i)
+            image = db.setImage(filename="%s.png"%i, frame=i)
             # Prediction step, without applied control(vector of zeros)
             filter.predict(i=i)
 
@@ -67,7 +67,7 @@ if __name__ == '__main__':
                 # Update Filter with new Detections
                 filter.update(z=Positions, i=i)
                 # Write everything to a DataBase
-                # db.write_to_DB(Filter, image)
+                db.write_to_DB(filter, image)
 
         print('done with Tracking')
         return filter
@@ -84,6 +84,8 @@ if __name__ == '__main__':
         Generator = SyntheticDataGenerator(10, 10., 1., VariableSpeed(dim=2, timeconst=0.5, damping=1.))
 
         MultiKal = track(MultiKal, Generator)
+
+        break
 
         state_dict = dict([[k, np.array([MultiKal.Filters[k].X[i] for i in MultiKal.Filters[k].X])] for k in MultiKal.Filters])
         params = ["damping", "timeconst"]
