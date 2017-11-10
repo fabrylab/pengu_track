@@ -42,6 +42,7 @@ from skimage.morphology import remove_small_objects, binary_erosion
 from skimage.measure import regionprops
 
 from scipy import ndimage as ndi
+from scipy.interpolate import RegularGridInterpolator
 from scipy.special import lambertw
 from scipy.ndimage.measurements import label
 from scipy import stats
@@ -67,11 +68,26 @@ except ImportError:
     bilateralFilter = lambda src, d, sigmaColor, sigmaSpace: denoise_bilateral(src, win_size=d,
                                                                                sigma_color=sigmaColor,
                                                                                sigma_spatial=sigmaSpace)
+from cv2 import calcOpticalFlowFarneback, calcOpticalFlowPyrLK
 
 # import theano
 # import theano.tensor as T
 
-class Measurement(object):
+
+class dotdict(dict):
+    """
+    enables .access on dicts
+    """
+    def __getattr__(self, attr):
+        if attr.startswith('__'):
+            raise AttributeError
+        if attr not in self:
+            raise AttributeError
+        return self.get(attr, None)
+    __setattr__ = dict.__setitem__
+    __delattr__ = dict.__delitem__
+
+class Measurement(dotdict):
     """
     Base Class for detection results.
     """
@@ -112,6 +128,13 @@ class Measurement(object):
             self.Frame = None
 
         self.Data = data
+        if type(self.Data) is dict:
+            for k in self.Data:
+                if not k in self:
+                    self.update({k: self.Data[k]})
+                else:
+                    raise ValueError("Key %s already used for inner argument. Change key!")
+
 
     def getPosition(self):
         try:
@@ -121,6 +144,9 @@ class Measurement(object):
                 return np.array([self.PositionX, self.PositionY], dtype=float)
             except ValueError:
                 return np.array([self.PositionX], dtype=float)
+
+    def getVector(self, keys):
+        return [self[k] for k in keys]
 
 
 class Detector(object):
@@ -2890,6 +2916,81 @@ class SiAdViBeSegmentation(Segmentation):
         return xx_, yy_
 
 
+class FlowDetector(Segmentation):
+    def __init__(self, flow=None, pyr_scale=0.5, levels=3, winsize=15, iterations=3, poly_n=5, poly_sigma=1.2, flags=0):
+        self.Flow = flow
+        self.PyrScale = pyr_scale
+        self.Levels = levels
+        self.WinSize = winsize
+        self.Iterations = iterations
+        self.PolyN = poly_n
+        self.PolySigma = poly_sigma
+        self.Flags = flags
+        self. Prev = None
+
+    def segmentate(self, image):
+        if self.Prev is None:
+            raise AttributeError("First a starting image has to be added by FlowDetector.update")
+        return calcOpticalFlowFarneback(self.Prev, image,
+                                 self.Flow,
+                                 self.PyrScale,
+                                 self.Levels,
+                                 self.WinSize,
+                                 self.Iterations,
+                                 self.PolyN,
+                                 self.PolySigma,
+                                 self.Flags)
+
+    def update(self,mask, image):
+        if self.Prev is None:
+            self.Prev = image
+        else:
+            self.Prev[mask] = image[mask]
+
+
+
+class EmperorDetector(Detector):
+    def __init__(self, **kwargs):
+        self.FlowDetector = FlowDetector(**kwargs)
+
+        rf1 = RegionFilter("area", 10, lower_limit=1, upper_limit=50)
+        # # rf2 = RegionFilter("in_out_contrast2", 75)#, lower_limit= 30, upper_limit=300)
+
+        self.RegionDetector = RegionPropDetector([rf1])
+
+    def detect(self, image, flow, win_size=15):
+        image = np.array(image)
+        if len(image.shape)==3:
+            image_int = rgb2gray(image)
+        elif len(image.shape)==2:
+            image_int = image
+        else:
+            raise ValueError("Input Image must be a RGB or Grayscale image!")
+        flow = np.array(flow)
+        if not flow.shape == image.shape[:2]+(2,):
+            raise ValueError(("Input Flow must be of shape [M,N,2]! (M,N being the image dimensions)"))
+
+        flowX = flow.T[0].T
+        flowY = flow.T[1].T
+        amax = np.amax(np.abs(flow))
+        flowX = filters.gaussian(flowX / amax, sigma=win_size) * amax
+        flowY = filters.gaussian(flowY / amax, sigma=win_size) * amax
+
+        interpolatorX = RegularGridInterpolator((np.arange(flowX.shape[0]), np.arange(flowX.shape[1])), flowX)
+        interpolatorY = RegularGridInterpolator((np.arange(flowY.shape[0]), np.arange(flowY.shape[1])), flowY)
+
+        measurements = self.RegionDetector.detect(image > 30, image)
+
+        indices, pointsX, pointsY = np.array([[i ,m.PositionX, m.PositionY] for i, m in enumerate(measurements)], dtype=object).T
+        points = np.array([pointsX, pointsY]).T
+        velX = interpolatorX(points)
+        velY = interpolatorY(points)
+        for i in indices:
+            measurements[i]["VelocityX"] = velY[i]
+            measurements[i]["VelocityY"] = velX[i]
+
+        return measurements
+
 def rgb2gray(rgb):
     # rgb = np.asarray(rgb)
     dt = rgb.dtype
@@ -2980,5 +3081,3 @@ def smallest_dtype(array):
         return np.float
     else:
         raise ValueError("Input is not a numpy array")
-
-
