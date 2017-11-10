@@ -69,8 +69,9 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
-    def write_to_DB(self, Tracker, image):
-        i = image.sort_index
+    def write_to_DB(self, Tracker, image, i=None):
+        if i is None:
+            i = image.sort_index
         # Get Tracks from Filters
         for k in Tracker.Filters.keys():
             x = y = np.nan
@@ -94,7 +95,9 @@ class DataFileExtended(clickpoints.DataFile):
 
             # Case 2: we want to see the prediction markers
             if i in Tracker.Filters[k].Predicted_X.keys():
-                pred_x, pred_y = Tracker.Model.measure(Tracker.Filters[k].Predicted_X[i])[:2]
+                prediction = Tracker.Model.measure(Tracker.Filters[k].Predicted_X[i])
+                pred_x = prediction[Tracker.Model.Measured_Variables.index("PositionX")]
+                pred_y = prediction[Tracker.Model.Measured_Variables.index("PositionY")]
                 pred_marker = self.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
                                            type=self.prediction_marker_type)
         print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
