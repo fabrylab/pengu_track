@@ -30,6 +30,8 @@ import numpy as np
 import scipy.optimize as opt
 
 
+DIM_NAMES = ['X','Y','Z','U','V','W']
+
 class Model(object):
     """
     This Class describes the abstract function of a physical model in the pengu-track package.
@@ -364,6 +366,10 @@ class RandomWalk(Model):
         self.Opt_Params_Shape = {}
         self.Opt_Params_Borders = {}
 
+        self.Measured_Variables = []
+        for i in range(dim):
+            self.Measured_Variables.append("Position%s"%DIM_NAMES[i])
+
 
 class Ballistic(Model):
     """
@@ -455,6 +461,10 @@ class Ballistic(Model):
         self.Measurement_Matrix = meas
         self.Evolution_Matrix = evo
 
+        self.Measured_Variables = []
+        for i in range(dim):
+            self.Measured_Variables.append("Position%s"%DIM_NAMES[i])
+
 
 class VariableSpeed(Model):
     """
@@ -543,6 +553,77 @@ class VariableSpeed(Model):
         self.Measurement_Matrix = meas
         self.Evolution_Matrix = evo
 
+        self.Measured_Variables = []
+        for i in range(dim):
+            self.Measured_Variables.append("Position%s"%DIM_NAMES[i])
+
+
+class BallisticWSpeed(VariableSpeed):
+    """
+    This Class describes a simple model, assuming slow changing speed-vectors.
+
+    Attributes
+    ----------
+    Damping: np.array
+        Damping constant(s) for ballistic model.
+    Timeconst: float
+        Step-width of time-discretization.
+    State_dim: int
+        Number of entries in the state-vector.
+    Control_dim: int
+        Number of entries in the control-vector.
+    Meas_dim: int
+        Number of entries in the measurement-vector.
+    Evolution_dim: int
+        Number of entries in the evolution-vector.
+    Opt_Params: list of strings    MultiKal.Model.optimize(state_dict[0])
+        Parameters of model, which can be optimized.
+    Opt_Params_Shape: dict
+        Keys are Opt_Params, entries are tuples containing shapes of the corresponding Parameters.
+    Opt_Params_Borders: dict
+        Keys are Opt_Params, entries are tuples containing borders of the corresponding Parameters.
+    Initial_Args: list
+        The arguments, which were given in the init function.
+    Initial_KWArgs: dict
+        The keyword-arguments, which were given in the init function.
+    State_Matrix: np.array
+        The evolution-matrix of the unperturbed system.
+    Control_Matrix: np.array
+        The evolution-matrix, which shows the influence of external control.
+    Measurement_Matrix: np.array
+        The matrix, which shows how the state vectors are projected into a measurement vector.
+    Evolution_Matrix: np.array
+        The matrix, which shows the influence of statistical fluctuations to the state.
+    """
+    def __init__(self, *args, **kwargs):
+        """
+        This Class describes the function of a physical model in the pengu-track package.
+
+        Parameters
+        ----------
+        dim: int, optional
+            Number of dimensions in which the random walk happens.
+        damping: array_like, optional
+            Damping constant(s) of different dimensions for the model.
+        mass: float, optional
+            Mass of the modelled object.
+        timeconst: float, optional
+            Step-width of time-discretization.
+
+        """
+        dim = kwargs.get('dim', 1)
+        super(BallisticWSpeed, self).__init__(*args, **kwargs)
+        self.Meas_dim = self.State_dim
+        self.Measurement_Matrix = np.diag(np.ones(self.State_dim))
+
+        self.Measured_Variables = []
+        for i in range(dim):
+            self.Measured_Variables.append("Position%s"%DIM_NAMES[i])
+            self.Measured_Variables.append("Velocity%s"%DIM_NAMES[i])
+
+
+
+
 
 class AR(Model):
     """
@@ -630,6 +711,10 @@ class AR(Model):
         self.State_Matrix = matrix
         self.Measurement_Matrix = meas
         self.Evolution_Matrix = evo
+
+        self.Measured_Variables = []
+        for i in range(dim):
+            self.Measured_Variables.append("Position%s"%DIM_NAMES[i])
 
  
 class MA(Model):
@@ -724,3 +809,7 @@ class MA(Model):
         self.State_Matrix = matrix
         self.Measurement_Matrix = meas
         self.Evolution_Matrix = evo
+
+        self.Measured_Variables = []
+        for i in range(dim):
+            self.Measured_Variables.append("Position%s"%DIM_NAMES[i])

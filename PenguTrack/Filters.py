@@ -179,16 +179,26 @@ class Filter(object):
                         len(z),self.Model.Meas_dim)
                 z = Measurement(1.0, position=z)
             self.Measurements.update({i: z})
+        measurement = copy.copy(z)
         # simplest possible update
-        try:
-            self.X.update({i: np.asarray([z.PositionX, z.PositionY, z.PositionZ])})
-        except(ValueError, AttributeError):
-            try:
-                self.X.update({i: np.asarray([z.PositionX, z.PositionY])})
-            except(ValueError, AttributeError):
-                self.X.update({i: np.asarray([z.PositionX])})
+        # try:
+        #     self.X.update({i: np.asarray([z.PositionX, z.PositionY, z.PositionZ])})
+        # except(ValueError, AttributeError):
+        #     try:
+        #         self.X.update({i: np.asarray([z.PositionX, z.PositionY])})
+        #     except(ValueError, AttributeError):
+        #         self.X.update({i: np.asarray([z.PositionX])})
+        #
+        if len(self.Model.Extensions) > 0:
+            z = np.array(np.vstack([np.array([measurement[v] for v in self.Model.Measured_Variables]),
+                            np.array([[measurement.Data[var][0]] for var in self.Model.Extensions])]))
+        else:
+            z = np.array([measurement[v] for v in self.Model.Measured_Variables])
 
-        return z, i
+        self.X.update({i: z})
+
+
+        return measurement, i
 
     def filter(self, u=None, z=None, i=None):
         """
@@ -360,14 +370,14 @@ class Filter(object):
             # elif measurements.has_key(k):
                 self.predict(i=k)
                 pending_downpredicts.append(k)
-                self.update(z=measurements[k],i=k)
+                self.update(z=measurements[k], i=k)
                 pending_downdates.append(k)
                 prob += self._log_prob_(k)
             elif k in self.Measurements:
             # elif self.Measurements.has_key(k):
                 self.predict(i=k)
                 pending_downpredicts.append(k)
-                self.update(z=self.Measurements[k],i=k)
+                self.update(z=self.Measurements[k], i=k)
                 pending_downdates.append(k)
                 prob += self._log_prob_(k)
             else:
@@ -635,16 +645,22 @@ class KalmanFilter(Filter):
         """
         z, i = super(KalmanFilter, self).update(z=z, i=i)
         measurement = copy.copy(z)
-        try:
-            z = np.asarray([z.PositionX, z.PositionY, z.PositionZ])
-        except (ValueError, AttributeError):
-            try:
-                z = np.asarray([z.PositionX, z.PositionY])
-            except ValueError:
-                z = np.asarray([z.PositionX])
-
+        # try:
+        #     z = np.asarray([z.PositionX, z.PositionY, z.PositionZ])
+        # except (ValueError, AttributeError):
+        #     try:
+        #         z = np.asarray([z.PositionX, z.PositionY])
+        #     except ValueError:
+        #         z = np.asarray([z.PositionX])
         if len(self.Model.Extensions) > 0:
-            z = np.vstack((z, [[measurement.Data[var][0]] for var in self.Model.Extensions]))
+            z = np.array(np.vstack([np.array([measurement[v] for v in self.Model.Measured_Variables]),
+                            np.array([[measurement.Data[var][0]] for var in self.Model.Extensions])]))
+        else:
+            z = np.array([measurement[v] for v in self.Model.Measured_Variables])
+
+
+        # if len(self.Model.Extensions) > 0:
+        #     z = np.vstack((z, [[measurement.Data[var][0]] for var in self.Model.Extensions]))
 
         try:
             x = self.Predicted_X[i]
@@ -687,7 +703,7 @@ class KalmanFilter(Filter):
         except np.linalg.LinAlgError:
             self.State_Distribution = ss.multivariate_normal(cov=self.P_0)
 
-        return z, i
+        return measurement, i
 
     def _log_prob_(self, key):
         current_cov = np.copy(self.State_Distribution.cov)
@@ -1361,6 +1377,190 @@ class MultiFilter(Filter):
         for j in self.Filters.keys():
             prob += self.Filters[j].log_prob(keys=keys)
         return prob
+
+
+class HungarianTracker(MultiFilter):
+
+    # def __init__(self, _filter, model, *args, **kwargs):
+    #     super(HungarianTracker, self).__init__(_filter, model, *args, **kwargs)
+    def initial_update(self, z, i):
+        """
+        Function to get updates to the corresponding model in the first time step.
+        Handles time-stamps and measurement-vectors.
+        This function also handles the assignment of all incoming measurements to the active sub-filters.
+
+        Parameters
+        ----------
+        z: list of PenguTrack.Measurement objects
+            Recent measurements.
+        i: int
+            Recent/corresponding time-stamp.
+
+        Returns
+        ----------
+        z: list of PenguTrack.Measurement objects
+            Recent measurements.
+        i: int
+            Recent/corresponding time-stamp.
+        """
+        print("Initial Filter Update")
+
+        measurements = list(z)
+        if len(self.Model.Extensions) > 0:
+            z = np.array(
+                [np.vstack((np.array([m[v] for v in self.Model.Measured_Variables]),
+                            np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
+                 for m in z], ndmin=2)
+        else:
+            z = np.array([[m[v] for v in self.Model.Measured_Variables] for m in z], ndmin=2)
+
+        M = z.shape[0]
+
+        for j in range(M):
+            _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
+            inferred_state = _filter.Model.infer_state(z[j])
+            _filter.Predicted_X.update({i: inferred_state})
+            _filter.X.update({i: inferred_state})
+            _filter.Measurements.update({i: measurements[j]})
+
+            try:
+                J = max(self.Filters.keys()) + 1
+            except ValueError:
+                J = 0
+            self.ActiveFilters.update({J: _filter})
+            self.Filters.update({J: _filter})
+
+    def update(self, z=None, i=None, big_jumps=False):
+        """
+            Function to get updates to the corresponding model. Handles time-stamps and measurement-vectors.
+            This function also handles the assignment of all incoming measurements to the active sub-filters.
+
+            Parameters
+            ----------
+            z: list of PenguTrack.Measurement objects
+                Recent measurements.
+            i: int
+                Recent/corresponding time-stamp.
+
+            Returns
+            ----------
+            z: list of PenguTrack.Measurement objects
+                Recent measurements.
+            i: int
+                Recent/corresponding time-stamp.
+        """
+        assert not (z is None and i is None), "One of measurement vector or time stamp must be specified"
+        measurements = list(z)
+        self.Measurements.update({i: z})
+
+        meas_logp = np.array([m.Log_Probability for m in z])
+
+        if len(self.Model.Extensions) > 0:
+            z = np.array(
+                [np.vstack((np.array([m[v] for v in self.Model.Measured_Variables]),
+                            np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
+                 for m in measurements], ndmin=2)
+        else:
+            z = np.array([[m[v] for v in self.Model.Measured_Variables] for m in measurements], ndmin=2)
+
+        mask = ~np.isneginf(meas_logp)
+        if not np.all(~mask):
+            meas_logp[~mask] = np.nanmin(meas_logp[mask])
+            mask &= (meas_logp - np.nanmin(meas_logp) >=
+                     (self.MeasurementProbabilityThreshold * (np.nanmax(meas_logp) - np.nanmin(meas_logp)))).astype(
+                bool)
+            z = z[mask]
+            measurements = list(np.asarray(measurements)[mask])
+        else:
+            self.Measurements.pop(i, None)
+            return measurements, i
+
+        M = z.shape[0]
+        N = len(dict(self.ActiveFilters))
+
+        if N == 0 and M > 0:
+            self.initial_update(measurements, i)
+            return measurements, i
+
+        gain_dict = []
+        probability_gain = np.ones((max(M, N), M)) * -np.inf
+
+        filter_keys = list(self.ActiveFilters.keys())
+        for j, k in enumerate(filter_keys):
+            gain_dict.append([j, k])
+            for m, meas in enumerate(measurements):
+                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas})
+        gain_dict = dict(gain_dict)
+        self.Probability_Gain_Dicts.update({i: gain_dict})
+
+        probability_gain[np.isinf(probability_gain)] = np.nan
+        if np.all(np.isnan(probability_gain)):
+            probability_gain[:] = -np.inf
+        else:
+            probability_gain[np.isnan(probability_gain)] = np.nanmin(probability_gain)
+        if self.LogProbabilityThreshold == -np.inf:
+            LogProbabilityThreshold = np.nanmin(probability_gain)
+        else:
+            LogProbabilityThreshold = self.LogProbabilityThreshold
+
+        self.Probability_Gain.update({i: np.array(probability_gain)})
+
+        x = {}
+        x_err = {}
+        from scipy.optimize import linear_sum_assignment
+
+        cost_matrix = np.copy(probability_gain)
+        cost_matrix[cost_matrix < -360] = -360.
+        cost_matrix = -1 * np.exp(cost_matrix)
+
+        rows, cols = linear_sum_assignment(cost_matrix)
+
+        for t in range(N):
+            if t not in rows:
+                print("No update for track %s with best prob %s in frame %s" % (
+                gain_dict[t], np.amax(probability_gain[t]), i))
+
+        for j, k in enumerate(rows):
+            k = rows[j]
+            m = cols[j]
+
+            if N > M and m >= M:
+                continue
+
+            if k in gain_dict and (
+                            probability_gain[k, m] > LogProbabilityThreshold or
+                        (len(self.ActiveFilters[gain_dict[k]].X) < 2 and
+                                 min([i - o for o in self.ActiveFilters[gain_dict[k]].X.keys() if
+                                      i > o]) < 2 and big_jumps)):
+                self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
+                x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
+                x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
+                print("Updated track %s with prob %s in frame %s" % (gain_dict[k], probability_gain[k, m], i))
+
+            else:
+                if k in gain_dict:
+                    print(
+                        "DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (gain_dict[k], probability_gain[k, m], i))
+                else:
+                    print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
+                try:
+                    n = len(self.ActiveFilters[gain_dict[k]].X.keys())
+                except KeyError:
+                    n = np.inf
+
+                l = max(self.Filters.keys()) + 1
+                _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
+                _filter.Predicted_X.update({i: self.Model.infer_state(z[m])})
+                _filter.X.update({i: self.Model.infer_state(z[m])})
+                _filter.Measurements.update({i: measurements[m]})
+
+                self.ActiveFilters.update({l: _filter})
+                self.Filters.update({l: _filter})
+
+            probability_gain[k, :] = np.nan
+            probability_gain[:, m] = np.nan
+
+        return measurements, i
 
 
 # import multiprocessing
