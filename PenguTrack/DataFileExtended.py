@@ -110,6 +110,42 @@ class DataFileExtended(clickpoints.DataFile):
                                            type=self.prediction_marker_type)
         print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
 
+
+    def write_to_DB_cam(self, Tracker, image, i=None, text=None):
+        if i is None:
+            i = image.sort_index
+        # Get Tracks from Filters
+        for k in Tracker.Filters.keys():
+            x = y = np.nan
+            # Case 1: we tracked something in this filter
+            if i in Tracker.Filters[k].Measurements.keys():
+                meas = Tracker.Filters[k].Measurements[i]
+                x = meas.PositionX_Cam
+                y = meas.PositionY_Cam
+                prob = Tracker.Filters[k].log_prob(keys=[i])
+
+                if self.getTrack(k + 100):
+                    print('Setting Track(%s)-Marker at %s, %s' % ((100 + k), x, y))
+                else:
+                    self.setTrack(self.track_marker_type, id=100 + k)
+                    print('Setting new Track %s and Track-Marker at %s, %s' % ((100 + k), x, y))
+                if text is None:
+                    text = 'Track %s, Prob %.2f' % ((100 + k), prob)
+                track_marker = self.setMarker(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
+                                              text=text)
+
+                # Save measurement in Database
+                self.setMeasurement(marker=track_marker, log=prob, x=x, y=y)
+
+            # Case 2: we want to see the prediction markers
+            if i in Tracker.Filters[k].Predicted_X.keys():
+                prediction = Tracker.Model.measure(Tracker.Filters[k].Predicted_X[i])
+                pred_x = prediction[Tracker.Model.Measured_Variables.index("PositionX")]
+                pred_y = prediction[Tracker.Model.Measured_Variables.index("PositionY")]
+                pred_marker = self.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
+                                           type=self.prediction_marker_type)
+        print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
+
     def PT_tracks_from_db(self, type, get_measurements=True):
         Tracks = {}
         if self.getTracks(type=type)[0].markers[0].measurement is not None and get_measurements:
