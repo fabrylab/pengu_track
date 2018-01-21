@@ -33,13 +33,8 @@ class DataFileExtended(clickpoints.DataFile):
         clickpoints.DataFile.__init__(self, *args, **kwargs)
         # Define ClickPoints Marker
         self.detection_marker_type = self.setMarkerType(name="Detection_Marker", color="#FF0000", style='{"scale":1.2}')
-        self.deleteMarkers(type=self.detection_marker_type)
         self.track_marker_type = self.setMarkerType(name="Track_Marker", color="#00FF00", mode=self.TYPE_Track)
-        self.deleteMarkers(type=self.track_marker_type)
         self.prediction_marker_type = self.setMarkerType(name="Prediction_Marker", color="#0000FF")
-        self.deleteMarkers(type=self.prediction_marker_type)
-        # Delete Old Tracks
-        self.deleteTracks(type=self.track_marker_type)
 
         class Measurement(self.base_model):
             # full definition here - no need to use migrate
@@ -69,7 +64,18 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
-    def write_to_DB(self, Tracker, image, i=None):
+    def deletetOld(self):
+        # Define ClickPoints Marker
+        self.detection_marker_type = self.setMarkerType(name="Detection_Marker", color="#FF0000", style='{"scale":1.2}')
+        self.deleteMarkers(type=self.detection_marker_type)
+        self.track_marker_type = self.setMarkerType(name="Track_Marker", color="#00FF00", mode=self.TYPE_Track)
+        self.deleteMarkers(type=self.track_marker_type)
+        self.prediction_marker_type = self.setMarkerType(name="Prediction_Marker", color="#0000FF")
+        self.deleteMarkers(type=self.prediction_marker_type)
+        # Delete Old Tracks
+        self.deleteTracks(type=self.track_marker_type)
+
+    def write_to_DB(self, Tracker, image, i=None, text=None):
         if i is None:
             i = image.sort_index
         # Get Tracks from Filters
@@ -87,8 +93,10 @@ class DataFileExtended(clickpoints.DataFile):
                 else:
                     self.setTrack(self.track_marker_type, id=100 + k)
                     print('Setting new Track %s and Track-Marker at %s, %s' % ((100 + k), x, y))
+                if text is None:
+                    text = 'Track %s, Prob %.2f' % ((100 + k), prob)
                 track_marker = self.setMarker(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
-                                            text='Track %s, Prob %.2f' % ((100 + k), prob))
+                                              text=text)
 
                 # Save measurement in Database
                 self.setMeasurement(marker=track_marker, log=prob, x=x, y=y)

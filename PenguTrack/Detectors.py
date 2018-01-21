@@ -1446,10 +1446,10 @@ class Segmentation(object):
         self.update(out, image, *args, **kwargs)
         return out
 
-    def update(self,mask, image):
+    def update(self, mask, image, *args, **kwargs):
         pass
 
-    def segmentate(self, image):
+    def segmentate(self, image, *args, **kwargs):
         pass
 
 class TresholdSegmentation(Segmentation):
@@ -2917,7 +2917,9 @@ class SiAdViBeSegmentation(Segmentation):
 
 
 class FlowDetector(Segmentation):
-    def __init__(self, flow=None, pyr_scale=0.5, levels=3, winsize=15, iterations=3, poly_n=5, poly_sigma=1.2, flags=0):
+    def __init__(self, flow=None, pyr_scale=0.5, levels=3, winsize=15, iterations=3, poly_n=5, poly_sigma=1.2, flags=0,
+                 *args, **kwargs):
+        super(FlowDetector, self).__init__()
         self.Flow = flow
         self.PyrScale = pyr_scale
         self.Levels = levels
@@ -2926,9 +2928,9 @@ class FlowDetector(Segmentation):
         self.PolyN = poly_n
         self.PolySigma = poly_sigma
         self.Flags = flags
-        self. Prev = None
+        self.Prev = None
 
-    def segmentate(self, image):
+    def segmentate(self, image, *args, **kwargs):
         if self.Prev is None:
             raise AttributeError("First a starting image has to be added by FlowDetector.update")
         return calcOpticalFlowFarneback(self.Prev, image,
@@ -2941,35 +2943,54 @@ class FlowDetector(Segmentation):
                                  self.PolySigma,
                                  self.Flags)
 
-    def update(self,mask, image):
+    def update(self, mask, image, *args, **kwargs):
         if self.Prev is None:
             self.Prev = image
         else:
             self.Prev[mask] = image[mask]
 
+    def detect(self, image, *args, **kwargs):
+        out = self.segmentate(image, *args, **kwargs)
+        mask = kwargs.get("mask", np.ones_like(image, dtype=bool))
+        self.update(mask, image, *args, **kwargs)
+        return out
 
 
-class EmperorDetector(Detector):
-    def __init__(self, **kwargs):
-        self.FlowDetector = FlowDetector(**kwargs)
 
-        rf1 = RegionFilter("area", 10, lower_limit=1, upper_limit=50)
+class EmperorDetector(FlowDetector):
+    def __init__(self, initial_image, **kwargs):
+        super(EmperorDetector, self).__init__(**kwargs)
+        # self.FlowDetector = self#FlowDetector(**kwargs)
+        self.Area = kwargs.get("area", 10)
+        self.LowerLimitArea = kwargs.get("lower_limit_area", 1)
+        self.UpperLimitArea = kwargs.get("upper_limit_area", 50)
+        rf1 = RegionFilter("area", self.Area, lower_limit=self.LowerLimitArea, upper_limit=self.UpperLimitArea)
         # # rf2 = RegionFilter("in_out_contrast2", 75)#, lower_limit= 30, upper_limit=300)
 
+        self.LuminanceThreshold = kwargs.get("luminance_threshold", 1.3)
         self.RegionDetector = RegionPropDetector([rf1])
 
-    def detect(self, image, flow, win_size=15):
-        image = np.array(image)
-        if len(image.shape)==3:
+        image = np.array(initial_image)
+        if len(image.shape) == 3:
             image_int = rgb2gray(image)
-        elif len(image.shape)==2:
+        elif len(image.shape) == 2:
             image_int = image
         else:
-            raise ValueError("Input Image must be a RGB or Grayscale image!")
-        flow = np.array(flow)
-        if not flow.shape == image.shape[:2]+(2,):
-            raise ValueError(("Input Flow must be of shape [M,N,2]! (M,N being the image dimensions)"))
+            raise ValueError("Initial Image must be a RGB or Gray image!")
+        self.update(np.ones_like(image_int, dtype=bool), image_int)
 
+    def detect(self, image, *args, **kwargs):
+        image = np.array(image)
+        if len(image.shape) == 3:
+            image_int = rgb2gray(image)
+        elif len(image.shape) == 2:
+            image_int = image
+        else:
+            raise ValueError("Input Image must be a RGB or Gray image!")
+        flow = super(EmperorDetector, self).detect(image_int, *args, **kwargs)
+        if not flow.shape == image.shape[:2]+(2,):
+            raise ValueError("Input Flow must be of shape [M,N,2]! (M,N being the image dimensions)")
+        win_size = self.WinSize
         flowX = flow.T[0].T
         flowY = flow.T[1].T
         amax = np.amax(np.abs(flow))
@@ -2979,15 +3000,20 @@ class EmperorDetector(Detector):
         interpolatorX = RegularGridInterpolator((np.arange(flowX.shape[0]), np.arange(flowX.shape[1])), flowX)
         interpolatorY = RegularGridInterpolator((np.arange(flowY.shape[0]), np.arange(flowY.shape[1])), flowY)
 
-        measurements = self.RegionDetector.detect(image > 30, image)
+        window_size = int(np.round(np.round(np.sqrt(self.Area))/np.pi)*2 + 1)*3
 
-        indices, pointsX, pointsY = np.array([[i ,m.PositionX, m.PositionY] for i, m in enumerate(measurements)], dtype=object).T
-        points = np.array([pointsX, pointsY]).T
-        velX = interpolatorX(points)
-        velY = interpolatorY(points)
+        measurements = self.RegionDetector.detect(
+            image_int > self.LuminanceThreshold*threshold_niblack(image_int, window_size=window_size)
+            , image_int)
+
+        indices, points_x, points_y = np.array([[i, m.PositionX, m.PositionY] for i, m in enumerate(measurements)],
+                                               dtype=object).T
+        points = np.array([points_x, points_y]).T
+        vel_x = interpolatorX(points)
+        vel_y = interpolatorY(points)
         for i in indices:
-            measurements[i]["VelocityX"] = velY[i]
-            measurements[i]["VelocityY"] = velX[i]
+            measurements[i]["VelocityX"] = vel_y[i]
+            measurements[i]["VelocityY"] = vel_x[i]
 
         return measurements
 

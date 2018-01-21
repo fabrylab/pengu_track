@@ -176,24 +176,24 @@ class AugmentedDataSet(ClassfierDataSet):
 
 
 if __name__ == "__main__":
-    import clickpoints
-    ClSet = AugmentedDataSet(25)
-    db = clickpoints.DataFile("/mnt/mmap/GT_Starter.cdb")
-    for m in db.getMarkers(type="GT_Bird"):
-        print(m.id)
-        ClSet.load_data(m.image.data, m.x, m.y, m.image.timestamp, m.image.filename, tag="GT_Starter", label=1)
-
-    db = clickpoints.DataFile("/mnt/mmap/Starter_Full.cdb")
-    n=1000
-    N = db.getMarkers(type="Negatives").count()
-    i = max(int(N/n),1)
-    for m in db.getMarkers(type="Negatives")[:n*i:i]:
-        print(m.id)
-        ClSet.load_data(m.image.data, m.x, m.y, m.image.timestamp, m.image.filename, tag="Starter_Full", label=0)
+    # import clickpoints
+    # ClSet = AugmentedDataSet(25)
+    # db = clickpoints.DataFile("/mnt/mmap/GT_Starter.cdb")
+    # for m in db.getMarkers(type="GT_Bird"):
+    #     print(m.id)
+    #     ClSet.load_data(m.image.data, m.x, m.y, m.image.timestamp, m.image.filename, tag="GT_Starter", label=1)
+    #
+    # db = clickpoints.DataFile("/mnt/mmap/Starter_Full.cdb")
+    # n=1000
+    # N = db.getMarkers(type="Negatives").count()
+    # i = max(int(N/n),1)
+    # for m in db.getMarkers(type="Negatives")[:n*i:i]:
+    #     print(m.id)
+    #     ClSet.load_data(m.image.data, m.x, m.y, m.image.timestamp, m.image.filename, tag="Starter_Full", label=0)
 
     # ClSet.load_from_clickpoints("/mnt/mmap/GT_Starter.cdb", "GT_Bird", label=1, n=100)
     # ClSet.load_from_clickpoints("/mnt/mmap/Starter_Full.cdb", "Negatives", label=0, n=100)
 
     # ClSet.save("/home/birdflight/Desktop/ClassifierData.cds")
-    # ClSet2 = ClassfierDataSet(25)
-    # ClSet2.load("/home/birdflight/Desktop/ClassifierData.cds")
+    ClSet2 = ClassfierDataSet(25)
+    ClSet2.load("C:/Users/Alex/Desktop/ClassifierData.cds")

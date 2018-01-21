@@ -6,10 +6,10 @@ from PenguTrack.Models import BallisticWSpeed
 from PenguTrack.DataFileExtended import DataFileExtended
 import matplotlib.pyplot as plt
 import scipy.stats as ss
-db = DataFileExtended(r"D:\User\Alex\Repositories\pengu_track\RotatingHuddle.cdb")
+db = DataFileExtended(r"D:\User\Alex\Repositories\pengu_track\data1980.cdb")
+db.deletetOld()
 
-FD = FlowDetector()
-ED = EmperorDetector()
+# FD = FlowDetector()
 
 object_size = 3  # Object diameter (smallest)
 q = 1.  # Variability of object speed relative to object size
@@ -34,27 +34,30 @@ MultiKal = HungarianTracker(KalmanFilter, model, np.diag(Q),
                             measured_variables=["PositionX", "VelocityX", "PositionY", "VelocityY"])
 MultiKal.LogProbabilityThreshold = log_prob_threshold
 
-images = db.getImageIterator(start_frame=0, end_frame=220)
+images = db.getImageIterator(start_frame=220)
+# images = db.getImageIterator(start_frame=0, end_frame=220)
 image = next(images)
-image_data = image.data#[200:400, 0:200]
-image_int = rgb2gray(image_data)
-FD.update(np.ones_like(image_int, dtype=bool), image_int)
+# image_data = image.data#[200:400, 0:200]
+# image_int = rgb2gray(image_data)
+# FD.update(np.ones_like(image_int, dtype=bool), image_int)
 i=0
+ED = EmperorDetector(image.data, luminance_threshold=1.8)
 for image in images:
     MultiKal.predict(i=i)
-    image_data = image.data#[200:400,0:200]
-    image_int = rgb2gray(image_data)
-    flow = FD.segmentate(image_int)
-    FD.update(np.ones_like(image_int, dtype=bool), image_int)
-    measurements = ED.detect(image_int, flow)
+    # image_data = image.data#[200:400,0:200]
+    # image_int = rgb2gray(image_data)
+    # flow = FD.segmentate(image_int)
+    # FD.update(np.ones_like(image_int, dtype=bool), image_int)
+    measurements = ED.detect(image.data)#[200:300, 750:1000])
     # print(len(measurements))
     # for m in measurements:
-    #     m.PositionX+=200
+    #     m.PositionX += 200
+    #     m.PositionY += 750
     MultiKal.update(z=measurements, i=i)
-    db.write_to_DB(MultiKal, image, i=i)
+    db.write_to_DB(MultiKal, image, i=i, text="")
     i+=1
     print(i)
-    # break
+    break
 
 
 """
