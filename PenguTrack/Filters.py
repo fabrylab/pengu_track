@@ -337,7 +337,7 @@ class Filter(object):
 
 
 
-    def log_prob(self, keys=None, measurements=None):
+    def log_prob(self, keys=None, measurements=None, update=True):
         if keys is None:
             keys = self.X.keys()
         if measurements is None:
@@ -358,28 +358,40 @@ class Filter(object):
                 prob += self._log_prob_(k)
             elif k in self.Predicted_X and k in measurements:
             # elif self.Predicted_X.has_key(k) and measurements.has_key(k):
-                self.update(z=measurements[k],i=k)
-                pending_downdates.append(k)
-                prob += self._log_prob_(k)
+                if update:
+                    self.update(z=measurements[k],i=k)
+                    pending_downdates.append(k)
+                    prob += self._log_prob_(k)
+                else:
+                    prob += self._meas_log_prob(k)
             elif k in self.Predicted_X and k in self.Measurements:
             # elif self.Predicted_X.has_key(k) and self.Measurements.has_key(k):
-                self.update(z=self.Measurements[k],i=k)
-                pending_downdates.append(k)
-                prob += self._log_prob_(k)
+                if update:
+                    self.update(z=self.Measurements[k],i=k)
+                    pending_downdates.append(k)
+                    prob += self._log_prob_(k)
+                else:
+                    prob += self._meas_log_prob(k)
             elif k in measurements:
             # elif measurements.has_key(k):
                 self.predict(i=k)
                 pending_downpredicts.append(k)
-                self.update(z=measurements[k], i=k)
-                pending_downdates.append(k)
-                prob += self._log_prob_(k)
+                if update:
+                    self.update(z=measurements[k], i=k)
+                    pending_downdates.append(k)
+                    prob += self._log_prob_(k)
+                else:
+                    prob += self._meas_log_prob(k)
             elif k in self.Measurements:
             # elif self.Measurements.has_key(k):
                 self.predict(i=k)
                 pending_downpredicts.append(k)
-                self.update(z=self.Measurements[k], i=k)
-                pending_downdates.append(k)
-                prob += self._log_prob_(k)
+                if update:
+                    self.update(z=self.Measurements[k], i=k)
+                    pending_downdates.append(k)
+                    prob += self._log_prob_(k)
+                else:
+                    prob += self._meas_log_prob(k)
             else:
                 raise ValueError("Probability for key %s could not be computed!"%k)
 
@@ -390,7 +402,13 @@ class Filter(object):
         return prob
 
     def _log_prob_(self, key):
+        return self._state_log_prob_(key)
+
+    def _state_log_prob_(self, key):
         return self.State_Distribution.logpdf((self.X[key]-self.Predicted_X[key]).T)
+
+    def _meas_log_prob(self, key):
+        return self.Measurement_Distribution.logpdf((self.Measurements[key]-self.Model.measure(self.Predicted_X[key])).T)
     # def _log_prob_(self, key):
     #     measurement = self.Measurements[key]
     #     try:
@@ -1231,7 +1249,7 @@ class MultiFilter(Filter):
         for j, k in enumerate(filter_keys):
             gain_dict.append([j, k])
             for m, meas in enumerate(measurements):
-                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas})
+                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas}, update=False)
         gain_dict = dict(gain_dict)
         self.Probability_Gain_Dicts.update({i: gain_dict})
 
@@ -1489,7 +1507,7 @@ class HungarianTracker(MultiFilter):
         for j, k in enumerate(filter_keys):
             gain_dict.append([j, k])
             for m, meas in enumerate(measurements):
-                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas})
+                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas}, update=False)
         gain_dict = dict(gain_dict)
         self.Probability_Gain_Dicts.update({i: gain_dict})
 

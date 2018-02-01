@@ -86,7 +86,7 @@ class DataFileExtended(clickpoints.DataFile):
                 meas = Tracker.Filters[k].Measurements[i]
                 x = meas.PositionX
                 y = meas.PositionY
-                prob = Tracker.Filters[k].log_prob(keys=[i])
+                prob = Tracker.Filters[k].log_prob(keys=[i], update=False)
 
                 if self.getTrack(k + 100):
                     print('Setting Track(%s)-Marker at %s, %s' % ((100 + k), x, y))
@@ -112,6 +112,10 @@ class DataFileExtended(clickpoints.DataFile):
 
 
     def write_to_DB_cam(self, Tracker, image, i=None, text=None):
+        if text is None:
+            set_text = True
+        else:
+            set_text = False
         if i is None:
             i = image.sort_index
         # Get Tracks from Filters
@@ -122,14 +126,14 @@ class DataFileExtended(clickpoints.DataFile):
                 meas = Tracker.Filters[k].Measurements[i]
                 x = meas.PositionX_Cam
                 y = meas.PositionY_Cam
-                prob = Tracker.Filters[k].log_prob(keys=[i])
+                prob = Tracker.Filters[k].log_prob(keys=[i], update=False)
 
                 if self.getTrack(k + 100):
                     print('Setting Track(%s)-Marker at %s, %s' % ((100 + k), x, y))
                 else:
                     self.setTrack(self.track_marker_type, id=100 + k)
                     print('Setting new Track %s and Track-Marker at %s, %s' % ((100 + k), x, y))
-                if text is None:
+                if set_text:
                     text = 'Track %s, Prob %.2f' % ((100 + k), prob)
                 track_marker = self.setMarker(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
                                               text=text)
