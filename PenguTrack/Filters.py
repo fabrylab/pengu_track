@@ -60,7 +60,7 @@ class Filter(object):
         The time series of control-vectors assigned to this filter. The keys equal the time stamp.
 
     """
-    def __init__(self, model, meas_dist=ss.uniform(), state_dist=ss.uniform()):
+    def __init__(self, model, no_dist=False, meas_dist=ss.uniform(), state_dist=ss.uniform()):
         """
         This Class describes the abstract function of a filter in the pengu-track package.
         It is only meant for subclassing.
@@ -85,6 +85,8 @@ class Filter(object):
         
         self.Measurements = {}
         self.Controls = {}
+
+        self.NoDist = no_dist
 
     def predict(self, u=None, i=None):
         """
@@ -405,11 +407,15 @@ class Filter(object):
         return self._state_log_prob_(key)
 
     def _state_log_prob_(self, key):
+        if self.NoDist:
+            return -np.linalg.norm(self.X[key]-self.Predicted_X[key])
         return self.State_Distribution.logpdf((self.X[key]-self.Predicted_X[key]).T)
 
     def _meas_log_prob(self, key, measurement=None):
         if measurement is None:
             measurement=self.Measurements[key]
+        if self.NoDist:
+            return -np.linalg.norm(self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]))
         return self.Measurement_Distribution.logpdf((self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key])).T)
     # def _log_prob_(self, key):
     #     measurement = self.Measurements[key]

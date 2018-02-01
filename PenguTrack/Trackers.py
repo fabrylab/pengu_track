@@ -24,7 +24,7 @@ def VariableSpeedTracker(dim=2, object_size=1., q=1., r=1.):
     Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
     # Initialize Filter/Tracker
     MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
-                           np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist)
+                           np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist, no_dist=True)
     MultiKal.LogProbabilityThreshold = log_prob_threshold
 
     return MultiKal

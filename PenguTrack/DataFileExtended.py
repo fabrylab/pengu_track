@@ -133,10 +133,11 @@ class DataFileExtended(clickpoints.DataFile):
                                   x=[m["x"] for m in pred_markerset],
                                   y=[m["y"] for m in pred_markerset],
                                   text=[m["text"] for m in pred_markerset])
-        # measurements = self.setMeasurements(marker=[m.id for m in markers],
-        #                                     x=[m["x"] for m in measurement_set],
-        #                                     y=[m["y"] for m in measurement_set],
-        #                                     log=[m["log"] for m in measurement_set])
+        markers = self.getMarkers(image=image, track=[m["track"] for m in markerset])
+        measurements = self.setMeasurements(marker=[m.id for m in markers],
+                                            x=[m["x"] for m in measurement_set],
+                                            y=[m["y"] for m in measurement_set],
+                                            log=[m["log"] for m in measurement_set])
 
         print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
 
