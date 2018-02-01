@@ -22,6 +22,7 @@
 
 import peewee
 import clickpoints
+from clickpoints.DataFile import packToDictList
 import numpy as np
 from PenguTrack.Filters import Filter
 from PenguTrack.Detectors import Measurement
@@ -64,6 +65,10 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
+    def setMeasurements(self, marker=None, log=None, x=None, y=None, z=None):
+        data = packToDictList(self.table_measurement, marker=marker, log=log,x=x, y=y, z=z)
+        return self.saveUpsertMany(self.table_measurement, data)
+
     def deletetOld(self):
         # Define ClickPoints Marker
         self.detection_marker_type = self.setMarkerType(name="Detection_Marker", color="#FF0000", style='{"scale":1.2}')
@@ -83,6 +88,9 @@ class DataFileExtended(clickpoints.DataFile):
         if i is None:
             i = image.sort_index
         # Get Tracks from Filters
+        markerset = []
+        measurement_set = []
+        pred_markerset = []
         for k in Tracker.Filters.keys():
             x = y = np.nan
             # Case 1: we tracked something in this filter
@@ -99,19 +107,37 @@ class DataFileExtended(clickpoints.DataFile):
                     print('Setting new Track %s and Track-Marker at %s, %s' % ((100 + k), x, y))
                 if set_text:
                     text = 'Track %s, Prob %.2f' % ((100 + k), prob)
-                track_marker = self.setMarker(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
-                                              text=text)
+
+                markerset.append(dict(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
+                                              text=text))
 
                 # Save measurement in Database
-                self.setMeasurement(marker=track_marker, log=prob, x=x, y=y)
+                measurement_set.append(dict(log=prob, x=x, y=y))
+                # self.setMeasurement(marker=track_marker, log=prob, x=x, y=y)
 
             # Case 2: we want to see the prediction markers
             if i in Tracker.Filters[k].Predicted_X.keys():
                 prediction = Tracker.Model.measure(Tracker.Filters[k].Predicted_X[i])
                 pred_x = prediction[Tracker.Model.Measured_Variables.index("PositionX")]
                 pred_y = prediction[Tracker.Model.Measured_Variables.index("PositionY")]
-                pred_marker = self.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
-                                           type=self.prediction_marker_type)
+                pred_markerset.append(dict(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
+                                           type=self.prediction_marker_type))
+        markers = self.setMarkers(image=[m["image"] for m in markerset],
+                                  type=[m["type"] for m in markerset],
+                                  track=[m["track"] for m in markerset],
+                                  x=[m["x"] for m in markerset],
+                                  y=[m["y"] for m in markerset],
+                                  text=[m["text"] for m in markerset])
+        pred_markers = self.setMarkers(image=[m["image"] for m in pred_markerset],
+                                  type=[m["type"] for m in pred_markerset],
+                                  x=[m["x"] for m in pred_markerset],
+                                  y=[m["y"] for m in pred_markerset],
+                                  text=[m["text"] for m in pred_markerset])
+        # measurements = self.setMeasurements(marker=[m.id for m in markers],
+        #                                     x=[m["x"] for m in measurement_set],
+        #                                     y=[m["y"] for m in measurement_set],
+        #                                     log=[m["log"] for m in measurement_set])
+
         print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
 
 
