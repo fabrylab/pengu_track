@@ -65,9 +65,9 @@ if __name__ == '__main__':
 
             if len(Positions)>0:
                 # Update Filter with new Detections
-                filter.update(z=Positions, i=i)
+                filter.update(z=Positions, i=i, verbose=False)
                 # Write everything to a DataBase
-                db.write_to_DB(filter, image)
+                db.write_to_DB(filter, image, verbose=False)
 
         print('done with Tracking')
         return filter

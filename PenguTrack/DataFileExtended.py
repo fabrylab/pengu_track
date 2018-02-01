@@ -80,7 +80,7 @@ class DataFileExtended(clickpoints.DataFile):
         # Delete Old Tracks
         self.deleteTracks(type=self.track_marker_type)
 
-    def write_to_DB(self, Tracker, image, i=None, text=None):
+    def write_to_DB(self, Tracker, image, i=None, text=None, verbose=True):
         if text is None:
             set_text = True
         else:
@@ -101,10 +101,13 @@ class DataFileExtended(clickpoints.DataFile):
                 prob = Tracker.Filters[k].log_prob(keys=[i], update=False)
 
                 if self.getTrack(k + 100):
-                    print('Setting Track(%s)-Marker at %s, %s' % ((100 + k), x, y))
+                    pass
+                    if verbose:
+                        print('Setting Track(%s)-Marker at %s, %s' % ((100 + k), x, y))
                 else:
                     self.setTrack(self.track_marker_type, id=100 + k)
-                    print('Setting new Track %s and Track-Marker at %s, %s' % ((100 + k), x, y))
+                    if verbose:
+                        print('Setting new Track %s and Track-Marker at %s, %s' % ((100 + k), x, y))
                 if set_text:
                     text = 'Track %s, Prob %.2f' % ((100 + k), prob)
 
@@ -138,8 +141,8 @@ class DataFileExtended(clickpoints.DataFile):
                                             x=[m["x"] for m in measurement_set],
                                             y=[m["y"] for m in measurement_set],
                                             log=[m["log"] for m in measurement_set])
-
-        print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
+        if verbose:
+            print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
 
 
     def write_to_DB_cam(self, Tracker, image, i=None, text=None):

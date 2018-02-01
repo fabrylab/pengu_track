@@ -1177,7 +1177,7 @@ class MultiFilter(Filter):
             self.ActiveFilters.update({J: _filter})
             self.Filters.update({J: _filter})
 
-    def update(self, z=None, i=None, big_jumps=False):
+    def update(self, z=None, i=None, big_jumps=False, verbose=False):
         """
         Function to get updates to the corresponding model. Handles time-stamps and measurement-vectors.
         This function also handles the assignment of all incoming measurements to the active sub-filters.
@@ -1284,9 +1284,10 @@ class MultiFilter(Filter):
 
         rows, cols = linear_sum_assignment(cost_matrix)
 
-        for t in range(N):
-            if t not in rows:
-                print("No update for track %s with best prob %s in frame %s"%(gain_dict[t], np.amax(probability_gain[t]), i))
+        if verbose:
+            for t in range(N):
+                if t not in rows:
+                        print("No update for track %s with best prob %s in frame %s"%(gain_dict[t], np.amax(probability_gain[t]), i))
 
         for j, k in enumerate(rows):
             k = rows[j]
@@ -1302,13 +1303,15 @@ class MultiFilter(Filter):
                 self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
-                print("Updated track %s with prob %s in frame %s" % (gain_dict[k], probability_gain[k, m], i))
+                if verbose:
+                    print("Updated track %s with prob %s in frame %s" % (gain_dict[k], probability_gain[k, m], i))
 
             else:
-                if k in gain_dict:
-                    print("DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (gain_dict[k], probability_gain[k, m], i))
-                else:
-                    print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
+                if verbose:
+                    if k in gain_dict:
+                        print("DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (gain_dict[k], probability_gain[k, m], i))
+                    else:
+                        print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
                 try:
                     n = len(self.ActiveFilters[gain_dict[k]].X.keys())
                 except KeyError:
@@ -1456,7 +1459,7 @@ class HungarianTracker(MultiFilter):
             self.ActiveFilters.update({J: _filter})
             self.Filters.update({J: _filter})
 
-    def update(self, z=None, i=None, big_jumps=False):
+    def update(self, z=None, i=None, big_jumps=False, verbose=True):
         """
             Function to get updates to the corresponding model. Handles time-stamps and measurement-vectors.
             This function also handles the assignment of all incoming measurements to the active sub-filters.
@@ -1543,7 +1546,8 @@ class HungarianTracker(MultiFilter):
 
         for t in range(N):
             if t not in rows:
-                print("No update for track %s with best prob %s in frame %s" % (
+                if verbose:
+                    print("No update for track %s with best prob %s in frame %s" % (
                 gain_dict[t], np.amax(probability_gain[t]), i))
 
         for j, k in enumerate(rows):
@@ -1561,14 +1565,15 @@ class HungarianTracker(MultiFilter):
                 self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
-                print("Updated track %s with prob %s in frame %s" % (gain_dict[k], probability_gain[k, m], i))
+                if verbose:
+                    print("Updated track %s with prob %s in frame %s" % (gain_dict[k], probability_gain[k, m], i))
 
             else:
-                if k in gain_dict:
-                    print(
-                        "DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (gain_dict[k], probability_gain[k, m], i))
-                else:
-                    print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
+                if verbose:
+                    if k in gain_dict:
+                        print("DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (gain_dict[k], probability_gain[k, m], i))
+                    else:
+                        print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
                 try:
                     n = len(self.ActiveFilters[gain_dict[k]].X.keys())
                 except KeyError:
