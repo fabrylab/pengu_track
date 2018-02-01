@@ -6,7 +6,7 @@ from PenguTrack.Models import BallisticWSpeed
 from PenguTrack.DataFileExtended import DataFileExtended
 import matplotlib.pyplot as plt
 import scipy.stats as ss
-db = DataFileExtended(r"D:\User\Alex\Repositories\pengu_track\data1980.cdb")
+db = DataFileExtended(r"D:\User\Alex\Documents\Promotion\RotatingHuddles\DataBases\data1980.cdb")
 db.deletetOld()
 
 # FD = FlowDetector()
@@ -41,6 +41,7 @@ image = next(images)
 # image_int = rgb2gray(image_data)
 # FD.update(np.ones_like(image_int, dtype=bool), image_int)
 i=0
+db_model, db_tracker = db.init_tracker(model, MultiKal)
 ED = EmperorDetector(image.data, luminance_threshold=1.8)
 for image in images:
     MultiKal.predict(i=i)
@@ -54,7 +55,7 @@ for image in images:
     #     m.PositionX += 200
     #     m.PositionY += 750
     MultiKal.update(z=measurements, i=i)
-    db.write_to_DB(MultiKal, image, i=i, text="")
+    db.write_to_DB(MultiKal, image, i=i, text="", db_model=db_model, db_tracker=db_tracker)
     i+=1
     print(i)
     break
