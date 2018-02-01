@@ -76,6 +76,10 @@ class DataFileExtended(clickpoints.DataFile):
         self.deleteTracks(type=self.track_marker_type)
 
     def write_to_DB(self, Tracker, image, i=None, text=None):
+        if text is None:
+            set_text = True
+        else:
+            set_text = False
         if i is None:
             i = image.sort_index
         # Get Tracks from Filters
@@ -93,7 +97,7 @@ class DataFileExtended(clickpoints.DataFile):
                 else:
                     self.setTrack(self.track_marker_type, id=100 + k)
                     print('Setting new Track %s and Track-Marker at %s, %s' % ((100 + k), x, y))
-                if text is None:
+                if set_text:
                     text = 'Track %s, Prob %.2f' % ((100 + k), prob)
                 track_marker = self.setMarker(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
                                               text=text)

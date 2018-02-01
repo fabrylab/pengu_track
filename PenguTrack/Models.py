@@ -65,6 +65,10 @@ class Model(object):
         The matrix, which shows how the state vectors are projected into a measurement vector.
     Evolution_Matrix: np.array
         The matrix, which shows the influence of statistical fluctuations to the state.
+    Measured_Variables: list
+        List of variables, that are measured within the model.
+    Extensions: list
+        List of measured parameters not included in standard model.
     """
     def __init__(self, *args, **kwargs):
         """
@@ -105,6 +109,8 @@ class Model(object):
                                                 self.State_dim))[:self.State_dim, :self.Evolution_dim]
 
         self.Extensions = []
+
+        self.Measured_Variables = []
         
     def predict(self, state_vector, control_vector):
         """
@@ -250,6 +256,9 @@ class Model(object):
         self.__init__(*InitArgs, **InitKWArgs)
         return p_opt, p_cov
 
+    def vec_from_meas(self, measurement):
+        return np.array([measurement[v] for v in self.Measured_Variables])
+
 
     def optimize(self, states, params = None):
         if params is None:
@@ -343,6 +352,10 @@ class RandomWalk(Model):
         The matrix, which shows how the state vectors are projected into a measurement vector.
     Evolution_Matrix: np.array
         The matrix, which shows the influence of statistical fluctuations to the state.
+    Measured_Variables: list
+        List of variables, that are measured within the model.
+    Extensions: list
+        List of measured parameters not included in standard model.
     """
     def __init__(self, *args, **kwargs):
         """
@@ -409,6 +422,10 @@ class Ballistic(Model):
         The matrix, which shows how the state vectors are projected into a measurement vector.
     Evolution_Matrix: np.array
         The matrix, which shows the influence of statistical fluctuations to the state.
+    Measured_Variables: list
+        List of variables, that are measured within the model.
+    Extensions: list
+        List of measured parameters not included in standard model.
     """
     def __init__(self, *args, **kwargs):
         """
@@ -502,6 +519,10 @@ class VariableSpeed(Model):
         The matrix, which shows how the state vectors are projected into a measurement vector.
     Evolution_Matrix: np.array
         The matrix, which shows the influence of statistical fluctuations to the state.
+    Measured_Variables: list
+        List of variables, that are measured within the model.
+    Extensions: list
+        List of measured parameters not included in standard model.
     """
     def __init__(self, *args, **kwargs):
         """
@@ -594,6 +615,10 @@ class BallisticWSpeed(VariableSpeed):
         The matrix, which shows how the state vectors are projected into a measurement vector.
     Evolution_Matrix: np.array
         The matrix, which shows the influence of statistical fluctuations to the state.
+    Measured_Variables: list
+        List of variables, that are measured within the model.
+    Extensions: list
+        List of measured parameters not included in standard model.
     """
     def __init__(self, *args, **kwargs):
         """
@@ -661,6 +686,10 @@ class AR(Model):
         The matrix, which shows how the state vectors are projected into a measurement vector.
     Evolution_Matrix: np.array
         The matrix, which shows the influence of statistical fluctuations to the state.
+    Measured_Variables: list
+        List of variables, that are measured within the model.
+    Extensions: list
+        List of measured parameters not included in standard model.
     """
     def __init__(self, *args, **kwargs):
         """
@@ -753,6 +782,10 @@ class MA(Model):
         The matrix, which shows how the state vectors are projected into a measurement vector.
     Evolution_Matrix: np.array
         The matrix, which shows the influence of statistical fluctuations to the state.
+    Measured_Variables: list
+        List of variables, that are measured within the model.
+    Extensions: list
+        List of measured parameters not included in standard model.
     """
     def __init__(self, *args, **kwargs):
         """

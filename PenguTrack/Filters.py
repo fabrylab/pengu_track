@@ -363,7 +363,7 @@ class Filter(object):
                     pending_downdates.append(k)
                     prob += self._log_prob_(k)
                 else:
-                    prob += self._meas_log_prob(k)
+                    prob += self._meas_log_prob(k, measurements[k])
             elif k in self.Predicted_X and k in self.Measurements:
             # elif self.Predicted_X.has_key(k) and self.Measurements.has_key(k):
                 if update:
@@ -381,7 +381,7 @@ class Filter(object):
                     pending_downdates.append(k)
                     prob += self._log_prob_(k)
                 else:
-                    prob += self._meas_log_prob(k)
+                    prob += self._meas_log_prob(k, measurements[k])
             elif k in self.Measurements:
             # elif self.Measurements.has_key(k):
                 self.predict(i=k)
@@ -407,8 +407,10 @@ class Filter(object):
     def _state_log_prob_(self, key):
         return self.State_Distribution.logpdf((self.X[key]-self.Predicted_X[key]).T)
 
-    def _meas_log_prob(self, key):
-        return self.Measurement_Distribution.logpdf((self.Measurements[key]-self.Model.measure(self.Predicted_X[key])).T)
+    def _meas_log_prob(self, key, measurement=None):
+        if measurement is None:
+            measurement=self.Measurements[key]
+        return self.Measurement_Distribution.logpdf((self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key])).T)
     # def _log_prob_(self, key):
     #     measurement = self.Measurements[key]
     #     try:
