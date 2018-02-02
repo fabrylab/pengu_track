@@ -28,6 +28,7 @@ from .Models import VariableSpeed
 from .DataFileExtended import DataFileExtended
 from scipy.optimize import linear_sum_assignment
 import time
+import peewee
 
 
 
@@ -118,10 +119,18 @@ class Stitcher(object):
                 pos = self.Tracks[track].Model.vec_from_meas(meas)
                 pos = function(pos)
                 track_set.append(dict(track=db_track.id, type=type.name, frame=i, x=pos[1], y=pos[0]))
-        db.setMarkers(track=[m["track"] for m in track_set],
-                           frame=[m["frame"] for m in track_set],
-                           x=[m["x"] for m in track_set],
-                           y=[m["y"] for m in track_set])
+        try:
+            db.setMarkers(track=[m["track"] for m in track_set],
+                               frame=[m["frame"] for m in track_set],
+                               x=[m["x"] for m in track_set],
+                               y=[m["y"] for m in track_set])
+        except peewee.OperationalError:
+            for track in set([m["track"] for m in track_set]):
+                small_set = [m for m in track_set if m["track"]==track]
+                db.setMarkers(track=[m["track"] for m in small_set],
+                              frame=[m["frame"] for m in small_set],
+                              x=[m["x"] for m in small_set],
+                              y=[m["y"] for m in small_set])
 
 
 class DistanceStitcher(Stitcher):

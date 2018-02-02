@@ -96,7 +96,6 @@ if __name__ == '__main__':
     SimStitch.stitch()
 
     from PenguTrack.DataFileExtended import DataFileExtended
-
     db = DataFileExtended("./synth_data.cdb")
     stiched_type = db.setMarkerType(name="Stitched", color="F0F0FF", mode=db.TYPE_Track)
     db.deleteMarkers(type=stiched_type)
