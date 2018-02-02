@@ -26,6 +26,7 @@ from .Detectors import Measurement
 from .Filters import Filter
 from .Models import VariableSpeed
 from .DataFileExtended import DataFileExtended
+from scipy.optimize import linear_sum_assignment
 import time
 
 
@@ -70,31 +71,89 @@ class Stitcher(object):
         self.db.db.close()
         print("Load Tracks Time:",time2 - time1)
 
+    def spatial_diff(self):
+        first_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[0].Model.State_dim,1))
+        last_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[0].Model.State_dim,1))
+        for i in self.Tracks:
+            first_pos[:,i] = self.Tracks[i].X[min([k for k in self.Tracks[i].X])]
+            last_pos[i,:] = self.Tracks[i].X[max([k for k in self.Tracks[i].X])]
+        return np.linalg.norm(last_pos-first_pos, axis=(2,3))
+
+    def temporal_diff(self):
+        first_time = np.zeros((len(self.Tracks), len(self.Tracks)))
+        last_time = np.zeros((len(self.Tracks), len(self.Tracks)))
+        for i in self.Tracks:
+            first_time[:,i] = min([k for k in self.Tracks[i].X])
+            last_time[i,:] = max([k for k in self.Tracks[i].X])
+        return first_time-last_time
+
+    def _stitch_(self, i, j):
+        idx = [i,j][np.argmin([min(self.Tracks[i].X), min(self.Tracks[j].X)])]
+        n_idx = i if j==idx else j
+        times = set([ii for ii in self.Tracks[i].X])
+        times.update([ii for ii in self.Tracks[j].X])
+        for t in times:
+            if t not in self.Tracks[idx].Predicted_X:
+                self.Tracks[idx].predict(i=t)
+            if t in self.Tracks[idx].X and t in self.Tracks[n_idx].X:
+                pass
+            elif t in self.Tracks[n_idx].X:
+                self.Tracks[idx].update(i=t, z=self.Tracks[n_idx].Measurements[t])
+                print("stitch!")
+        self.Tracks.pop(n_idx)
+
     def stitch(self):
         pass
 
     def save_tracks_to_db(self, path, type, function=None):
-        time1 = time.clock()
         if function is None:
             function = lambda x : x
-        self.db = DataFileExtended(path)
+        db = DataFileExtended(path)
 
-        with self.db.db.atomic() as transaction:
-            self.db.deleteTracks(type=type)
-            for track in self.Tracks:
-                # self.db.deleteTracks(id=track)
-                db_track = self.db.setTrack(type=type, id=track)
-                for m in self.Tracks[track].Measurements:
-                    meas = self.Tracks[track].Measurements[m]
-                    pos = [meas.PositionX, meas.PositionY, meas.PositionZ]
-                    pos = function(pos)
-                    marker = self.db.setMarker(type=type, frame=m, x=pos[0], y=pos[1], track=track)
-                    meas = self.Tracks[track].Measurements[m]
-                    self.db.setMeasurement(marker=marker, log=meas.Log_Probability,
-                                           x=meas.PositionX, y=meas.PositionY, z=meas.PositionZ)
-        time2 = time.clock()
-        self.db.db.close()
-        print("save tracks time:", time2 - time1)
+        track_set = []
+        for track in self.Tracks:
+            db_track = db.setTrack(type=type.name)
+            for i in self.Tracks[track].X:
+                meas = self.Tracks[track].Measurements[i]
+                pos = self.Tracks[track].Model.vec_from_meas(meas)
+                pos = function(pos)
+                track_set.append(dict(track=db_track.id, type=type.name, frame=i, x=pos[1], y=pos[0]))
+        db.setMarkers(track=[m["track"] for m in track_set],
+                           frame=[m["frame"] for m in track_set],
+                           x=[m["x"] for m in track_set],
+                           y=[m["y"] for m in track_set])
+
+
+class DistanceStitcher(Stitcher):
+    def __init__(self, max_velocity, max_frames=3):
+            super(DistanceStitcher, self).__init__()
+            self.MaxV = float(max_velocity)
+            self.MaxF = int(max_frames)
+
+    def stitch(self):
+        s = self.spatial_diff()
+        t = self.temporal_diff()
+        velocity = s/t
+        # velocity[np.abs(velocity)>=self.MaxV] = np.nan
+        velocity[np.diag(np.ones(len(velocity), dtype=bool))] = self.MaxV
+        velocity[velocity<0]=self.MaxV
+        velocity[np.abs(t)>self.MaxF]=self.MaxV
+        rows, cols = linear_sum_assignment(velocity)
+        for j, k in enumerate(rows):
+            if not velocity[rows[j],cols[j]] >= self.MaxV:
+                a = rows[j]
+                b = cols[j]
+                dr = dict(np.array([rows, cols]).T)
+                dc = dict(np.array([cols, rows]).T)
+                while a not in self.Tracks:
+                    a = dc[a]
+                while b not in self.Tracks:
+                    b = dr[b]
+                self._stitch_(a, b)
+
+
+
+
 
 class Heublein_Stitcher(Stitcher):
     """
@@ -330,24 +389,4 @@ class Heublein_Stitcher(Stitcher):
         print("stitch time:", end_time - start_time)
         print ("-----------Done with stitching-----------")
 
-
-
-if __name__ == '__main__':
-    import shutil
-    shutil.copy("/home/user/Bachelor Bilder/layers_2017_07_18_1h_24hiG_CU_ALJ_24Gel.cdb",
-                "/home/user/Bachelor Bilder/layers_stitchparam_0.cdb")
-
-    def resulution_correction(pos):
-        x, y, z = pos
-        res = 6.45/10
-        return y/res, x/res, z/10.
-
-    stitcher = Heublein_Stitcher(5,2,20,30,1,1,10)
-    # stitcher = Heublein_Stitcher(10,5,10,10,1,100,10)
-    stitcher.load_tracks_from_clickpoints("/home/user/Bachelor Bilder/layers_stitchparam_0.cdb", "PT_Track_Marker")
-    stitcher.stitch()
-    db = clickpoints.DataFile("/home/user/Bachelor Bilder/layers_stitchparam_0.cdb")
-    track_type = db.getMarkerType(name="PT_Track_Marker")
-    stitcher.save_tracks_to_db("/home/user/Bachelor Bilder/layers_stitchparam_0.cdb", track_type, function=resulution_correction)
-    print ("-----------Written to DB-----------")
 
