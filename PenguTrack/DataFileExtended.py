@@ -22,11 +22,11 @@
 
 import peewee
 import clickpoints
-from clickpoints.DataFile import noNoneDict, setFields, addFilter, PY3
+from clickpoints.DataFile import noNoneDict, setFields, addFilter, PY3, packToDictList
 import numpy as np
 import PenguTrack
-from PenguTrack.Filters import Filter
-from PenguTrack.Detectors import Measurement
+from PenguTrack.Filters import Filter as PT_Filter
+from PenguTrack.Detectors import Measurement as PT_Measurement
 from PenguTrack.Models import VariableSpeed
 import ast
 import scipy.stats as ss
@@ -43,7 +43,11 @@ def parse_dict(dictionary):
     for entry in dictionary:
         if type(dictionary[entry]) not in [str, int, float, tuple, list, dict, bool, type(None)]:
             if str(type(dictionary[entry])).count("scipy.stats"):
-                out[entry] = parse_dist(dictionary[entry])
+                dist = dictionary[entry]
+                out[entry] = "ss."+str(dist.__class__).split("'")[1].split(".")[-1].replace(
+                    "_frozen", "") + "(mean=%s,cov=%s)" % (dist.mean, dist.cov)
+        else:
+            out[entry]=str(dictionary[entry])
             # print(dictionary[entry])
             # print("----------dict------------")
     return str(out)
@@ -91,8 +95,6 @@ def parse_tracker_class(filter_class):
 class MatrixField(peewee.BlobField):
     """ A database field, that """
     def db_value(self, value):
-        print("-------------------encode----------------")
-        print(value)
         if np.all(value == np.nan):
             value = np.array([None])
         value_b = np.array(value).astype(np.float64).tobytes()
@@ -105,7 +107,6 @@ class MatrixField(peewee.BlobField):
             return peewee.binary_construct(value)
 
     def python_value(self, value):
-        print("-------------------decode----------------")
         if not PY3:
             pass
         else:
@@ -162,11 +163,10 @@ class DictField(peewee.TextField):
             return value
         return peewee.binary_construct(value)
     def python_value(self, value):
-        if not PY3:
-            value = str(value)
-            value = value.replace("array","np.array")
-            return eval(value)
-        return eval(io.BytesIO(value))
+        value = str(value)
+        value = value.replace("array","np.array")
+        out = eval(value)
+        return dict([[v, eval(out[v])] for v in out])
 
     def parse2db(self, value):
         # for v in value:
@@ -213,7 +213,7 @@ class DataFileExtended(clickpoints.DataFile):
             marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name='measurement_marker', on_delete='CASCADE')
             log_prob = peewee.FloatField(default=0)
             measurement_vector = MatrixField()
-            measurement_error = MatrixField()
+            measurement_error = MatrixField(null=True)
         if "measurement" not in db.db.get_tables():
             Measurement.create_table()
         self.table_measurement = Measurement
@@ -286,17 +286,23 @@ class DataFileExtended(clickpoints.DataFile):
 
         """Filter Entry"""
         class Filter(db.base_model):
-            track = peewee.ForeignKeyField(db.table_track, unique=True,
+            track = peewee.ForeignKeyField(db.table_track,
+                                           unique=True,
                                            related_name='filter_track', on_delete='CASCADE')
             tracker = peewee.ForeignKeyField(db.table_tracker,
                                              related_name='filter_tracker', on_delete='CASCADE')
             measurement_distribution = peewee.ForeignKeyField(db.table_distribution,
+                                                              unique=True,
                                                               related_name='filter_meas_dist',
                                                               on_delete='CASCADE')
             state_distribution = peewee.ForeignKeyField(db.table_distribution,
-                                                              related_name='filter_state_dist',
-                                                              on_delete='CASCADE')
-            model = peewee.ForeignKeyField(db.table_model, related_name='filter_model', on_delete='CASCADE')
+                                                        unique=True,
+                                                        related_name='filter_state_dist',
+                                                        on_delete='CASCADE')
+            model = peewee.ForeignKeyField(db.table_model,
+                                           unique=True,
+                                           related_name='filter_model',
+                                           on_delete='CASCADE')
         if "filter" not in db.db.get_tables():
             Filter.create_table()
         self.table_filter = Filter
@@ -316,7 +322,7 @@ class DataFileExtended(clickpoints.DataFile):
         dictionary = dict(id=id, marker=marker)
         if id is not None:
             try:
-                item = self.table_state.get(**noNoneDict(**dictionary))
+                item = self.table_state.get(**dictionary)
             except peewee.DoesNotExist:
                 item = self.table_state()
         else:
@@ -333,7 +339,7 @@ class DataFileExtended(clickpoints.DataFile):
         dictionary = dict(id=id, marker=marker)
         if id is not None:
             try:
-                item = self.table_measurement.get(**noNoneDict(**dictionary))
+                item = self.table_measurement.get(**dictionary)
             except peewee.DoesNotExist:
                 item = self.table_measurement()
         else:
@@ -350,7 +356,7 @@ class DataFileExtended(clickpoints.DataFile):
         dictionary = dict(id=id, marker=marker)
         if id is not None:
             try:
-                item = self.table_prediction.get(**noNoneDict(**dictionary))
+                item = self.table_prediction.get(**dictionary)
             except peewee.DoesNotExist:
                 item = self.table_prediction()
         else:
@@ -378,7 +384,7 @@ class DataFileExtended(clickpoints.DataFile):
         dictionary = dict(id=id)
         if id is not None:
             try:
-                item = self.table_tracker.get(**noNoneDict(**dictionary))
+                item = self.table_tracker.get(**dictionary)
             except peewee.DoesNotExist:
                 item = self.table_tracker()
         else:
@@ -389,8 +395,8 @@ class DataFileExtended(clickpoints.DataFile):
                                log_probability_threshold=log_probability_threshold,
                                measurement_probability_threshold=measurement_probability_threshold,
                                assignment_probability_threshold=assignment_probability_threshold,
-                               filter_args=filter_args,
-                               filter_kwargs=filter_kwargs))
+                               filter_args=parse_list(filter_args),
+                               filter_kwargs=parse_dict(filter_kwargs)))
         setFields(item, dictionary)
         item.save()
         return item
@@ -416,7 +422,7 @@ class DataFileExtended(clickpoints.DataFile):
         dictionary = dict(id=id)
         if id is not None:
             try:
-                item = self.table_distribution.get(**noNoneDict(**dictionary))
+                item = self.table_distribution.get(**dictionary)
             except peewee.DoesNotExist:
                 item = self.table_distribution()
         else:
@@ -455,12 +461,13 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
-    def setFilter(self, id=None, track=None, tracker=None,
-                  measurement_distribution=None, state_distribution=None,
+    def setFilter(self, track=None, tracker=None,
+                  measurement_distribution=None,
+                  state_distribution=None,
                   model=None):
-        dictionary = dict(id=id)
+        dictionary = dict(track=track)
         try:
-            item = self.table_filter.get(**noNoneDict(**dictionary))
+            item = self.table_filter.get(**dictionary)
         except peewee.DoesNotExist:
             item = self.table_filter()
             # except peewee.OperationalError:
@@ -475,10 +482,10 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
-    def getFilter(self, id=None, track=None):
+    def getFilter(self, track=None):
         query = self.table_filter.select()
         query = addFilter(query, track, self.table_track)
-        query = addFilter(query, id, self.table_filter.id)
+        # query = addFilter(query, id, self.table_filter.id)
         if len(query) > 0:
             return query[0]
         else:
@@ -487,10 +494,10 @@ class DataFileExtended(clickpoints.DataFile):
 
     def setProbabilityGain(self, id=None, image=None, tracker=None,
                            probability_gain=None, probability_gain_dict=None):
-        dictionary = dict(id=id)
+        dictionary = dict(id=id, image=image, tracker=tracker)
         if id is not None:
             try:
-                item = self.table_probability_gain.get(**dictionary)
+                item = self.table_probability_gain.get(**noNoneDict(**dictionary))
             except peewee.DoesNotExist:
                 item = self.table_probability_gain()
         else:
@@ -502,6 +509,10 @@ class DataFileExtended(clickpoints.DataFile):
         setFields(item, dictionary)
         item.save()
         return item
+
+    def setMeasurements(self, marker=None, log=None, x=None, y=None, z=None):
+        data = packToDictList(self.table_measurement, marker=marker, log=log,x=x, y=y, z=z)
+        return self.saveUpsertMany(self.table_measurement, data)
 
     def deletetOld(self):
         # Define ClickPoints Marker
@@ -531,7 +542,6 @@ class DataFileExtended(clickpoints.DataFile):
         return model_item, tracker_item
 
     def write_to_DB(self, Tracker, image, i=None, text=None, cam_values=False, db_tracker=None, db_model=None):
-
         if text is None:
             set_text = True
         else:
@@ -540,19 +550,23 @@ class DataFileExtended(clickpoints.DataFile):
         if i is None:
             i = image.sort_index
 
+
         with self.db.atomic() as transaction:
+            markerset = []
+            measurement_set = []
+            pred_markerset = []
             # Get Tracks from Filters
             for k in Tracker.Filters.keys():
                 x = y = np.nan
 
-                if self.getFilter(id=100 + k):
-                    print('Setting Track(%s)-Marker at %s, %s' % ((100 + k), x, y))
-                    db_filter = self.getFilter(100 + k)
+                if self.getTrack(id=100 + k):
+                    db_track = self.getTrack(id=100 + k)
                 else:
-                    if self.getTrack(id=100 + k):
-                        db_track = self.getTrack(id=100 + k)
-                    else:
-                        db_track = self.setTrack(self.track_marker_type, id=100 + k)
+                    db_track = self.setTrack(self.track_marker_type, id=100 + k)
+                if len(db_track.filter_track)>0:
+                    print('Setting Track(%s)-Marker at %s, %s' % ((100 + k), x, y))
+                    db_filter = db_track.filter_track[0]
+                else:
                     db_dist_s = self.setDistribution(name=parse_dist(Tracker.Filters[k].State_Distribution),
                                                      **parse_dist_dict(Tracker.Filters[k].State_Distribution.__dict__))
                     db_dist_m = self.setDistribution(name=parse_dist(Tracker.Filters[k].Measurement_Distribution),
@@ -562,7 +576,8 @@ class DataFileExtended(clickpoints.DataFile):
                                                     state_matrix=db_model.state_matrix, control_matrix=db_model.control_matrix,
                                                     measurement_matrix=db_model.measurement_matrix, evolution_matrix=db_model.evolution_matrix)
                     db_filter = self.setFilter(model=db_filter_model, tracker=db_tracker,
-                                               id=100 + k, track=db_track,
+                                               # id=100 + k,
+                                               track=db_track,
                                                measurement_distribution=db_dist_m,
                                                state_distribution=db_dist_s)
 
@@ -596,6 +611,8 @@ class DataFileExtended(clickpoints.DataFile):
 
                     pred_marker = self.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
                                                type=self.prediction_marker_type)
+                    # pred_markerset.append(dict(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
+                    #                            type=self.prediction_marker_type))
                     db_pred = self.setPrediction(marker=pred_marker,
                                                  log_prob=prob,
                                                  prediction_vector=Tracker.Filters[k].Predicted_X[i],
@@ -609,10 +626,11 @@ class DataFileExtended(clickpoints.DataFile):
                     meas_y = meas.PositionY
                     meas_marker = self.setMarker(image=image, x=meas_y, y=meas_x, text="Track %s" % (100 + k),
                                                type=self.detection_marker_type)
+                    # measurement_set.append(dict(log=prob, x=x, y=y))
                     db_meas = self.setMeasurement(marker=meas_marker,
                                                   log_prob=prob,
-                                                  measurement_vector=np.array([meas_x, meas_y]),
-                                                  measurement_error=db_filter.measurement_distribution.cov)
+                                                  measurement_vector=np.array([meas_x, meas_y]))#,
+                                                  # measurement_error=db_filter.measurement_distribution.cov)
 
         try:
             prob_gain = Tracker.Probability_Gain[i]
@@ -622,6 +640,23 @@ class DataFileExtended(clickpoints.DataFile):
                                     probability_gain_dict=prob_gain_dict)
         except KeyError:
             pass
+
+        # markers = self.setMarkers(image=[m["image"] for m in markerset],
+        #                           type=[m["type"] for m in markerset],
+        #                           track=[m["track"] for m in markerset],
+        #                           x=[m["x"] for m in markerset],
+        #                           y=[m["y"] for m in markerset],
+        #                           text=[m["text"] for m in markerset])
+        # pred_markers = self.setMarkers(image=[m["image"] for m in pred_markerset],
+        #                                type=[m["type"] for m in pred_markerset],
+        #                                x=[m["x"] for m in pred_markerset],
+        #                                y=[m["y"] for m in pred_markerset],
+        #                                text=[m["text"] for m in pred_markerset])
+        # markers = self.getMarkers(image=image, track=[m["track"] for m in markerset])
+        # measurements = self.setMeasurements(marker=[m.id for m in markers],
+        #                                     x=[m["x"] for m in measurement_set],
+        #                                     y=[m["y"] for m in measurement_set],
+        #                                     log=[m["log"] for m in measurement_set])
 
         print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
 
@@ -633,18 +668,18 @@ class DataFileExtended(clickpoints.DataFile):
         Tracks = {}
         if self.getTracks(type=type)[0].markers[0].measurement is not None and get_measurements:
             for track in self.getTracks(type=type):
-                Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
+                Tracks.update({track.id: PT_Filter(VariableSpeed(dim=3))})
                 for m in track.markers:
-                    meas = Measurement(1., [m.measurement[0].x,
+                    meas = PT_Measurement(1., [m.measurement[0].x,
                                             m.measurement[0].y,
                                             m.measurement[0].z])
                     Tracks[track.id].update(z=meas, i=m.image.sort_index)
         else:
             for track in self.getTracks(type=type):
-                Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
+                Tracks.update({track.id: PT_Filter(VariableSpeed(dim=3))})
                 for m in track.markers:
                     x, y = m.correctedXY()
-                    meas = Measurement(1., [x,
+                    meas = PT_Measurement(1., [x,
                                             y,
                                             0])
                     Tracks[track.id].update(z=meas, i=m.image.sort_index)

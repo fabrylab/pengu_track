@@ -67,7 +67,7 @@ if __name__ == '__main__':
 
             if len(Positions)>0:
                 # Update Filter with new Detections
-                filter.update(z=Positions, i=i)
+                filter.update(z=Positions, i=i, verbose=False)
                 # Write everything to a DataBase
                 db.write_to_DB(filter, image, i=i, db_tracker=db_tracker, db_model=db_model)
 
@@ -93,7 +93,7 @@ if __name__ == '__main__':
         # Open ClickPoints Database
         db = DataFileExtended("./synth_data.cdb", "r")
         Trackers = db.tracker_from_db()
-        return Trackers[0]
+        return db.table_tracker.get(id=1)#Trackers[0]
 
     tracker = retrieve_db()
     print(tracker.Probability_Gains)

@@ -60,7 +60,7 @@ class Filter(object):
         The time series of control-vectors assigned to this filter. The keys equal the time stamp.
 
     """
-    def __init__(self, model, meas_dist=ss.uniform(), state_dist=ss.uniform()):
+    def __init__(self, model, no_dist=False, meas_dist=ss.uniform(), state_dist=ss.uniform()):
         """
         This Class describes the abstract function of a filter in the pengu-track package.
         It is only meant for subclassing.
@@ -85,6 +85,8 @@ class Filter(object):
         
         self.Measurements = {}
         self.Controls = {}
+
+        self.NoDist = no_dist
 
     def predict(self, u=None, i=None):
         """
@@ -363,7 +365,7 @@ class Filter(object):
                     pending_downdates.append(k)
                     prob += self._log_prob_(k)
                 else:
-                    prob += self._meas_log_prob(k)
+                    prob += self._meas_log_prob(k, measurements[k])
             elif k in self.Predicted_X and k in self.Measurements:
             # elif self.Predicted_X.has_key(k) and self.Measurements.has_key(k):
                 if update:
@@ -381,7 +383,7 @@ class Filter(object):
                     pending_downdates.append(k)
                     prob += self._log_prob_(k)
                 else:
-                    prob += self._meas_log_prob(k)
+                    prob += self._meas_log_prob(k, measurements[k])
             elif k in self.Measurements:
             # elif self.Measurements.has_key(k):
                 self.predict(i=k)
@@ -405,10 +407,16 @@ class Filter(object):
         return self._state_log_prob_(key)
 
     def _state_log_prob_(self, key):
+        if self.NoDist:
+            return -np.linalg.norm(self.X[key]-self.Predicted_X[key])
         return self.State_Distribution.logpdf((self.X[key]-self.Predicted_X[key]).T)
 
-    def _meas_log_prob(self, key):
-        return self.Measurement_Distribution.logpdf((self.Measurements[key]-self.Model.measure(self.Predicted_X[key])).T)
+    def _meas_log_prob(self, key, measurement=None):
+        if measurement is None:
+            measurement=self.Measurements[key]
+        if self.NoDist:
+            return -np.linalg.norm(self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]))
+        return self.Measurement_Distribution.logpdf((self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key])).T)
     # def _log_prob_(self, key):
     #     measurement = self.Measurements[key]
     #     try:
@@ -1169,7 +1177,7 @@ class MultiFilter(Filter):
             self.ActiveFilters.update({J: _filter})
             self.Filters.update({J: _filter})
 
-    def update(self, z=None, i=None, big_jumps=False):
+    def update(self, z=None, i=None, big_jumps=False, verbose=False):
         """
         Function to get updates to the corresponding model. Handles time-stamps and measurement-vectors.
         This function also handles the assignment of all incoming measurements to the active sub-filters.
@@ -1276,9 +1284,10 @@ class MultiFilter(Filter):
 
         rows, cols = linear_sum_assignment(cost_matrix)
 
-        for t in range(N):
-            if t not in rows:
-                print("No update for track %s with best prob %s in frame %s"%(gain_dict[t], np.amax(probability_gain[t]), i))
+        if verbose:
+            for t in range(N):
+                if t not in rows:
+                        print("No update for track %s with best prob %s in frame %s"%(gain_dict[t], np.amax(probability_gain[t]), i))
 
         for j, k in enumerate(rows):
             k = rows[j]
@@ -1294,13 +1303,15 @@ class MultiFilter(Filter):
                 self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
-                print("Updated track %s with prob %s in frame %s" % (gain_dict[k], probability_gain[k, m], i))
+                if verbose:
+                    print("Updated track %s with prob %s in frame %s" % (gain_dict[k], probability_gain[k, m], i))
 
             else:
-                if k in gain_dict:
-                    print("DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (gain_dict[k], probability_gain[k, m], i))
-                else:
-                    print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
+                if verbose:
+                    if k in gain_dict:
+                        print("DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (gain_dict[k], probability_gain[k, m], i))
+                    else:
+                        print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
                 try:
                     n = len(self.ActiveFilters[gain_dict[k]].X.keys())
                 except KeyError:
@@ -1448,7 +1459,7 @@ class HungarianTracker(MultiFilter):
             self.ActiveFilters.update({J: _filter})
             self.Filters.update({J: _filter})
 
-    def update(self, z=None, i=None, big_jumps=False):
+    def update(self, z=None, i=None, big_jumps=False, verbose=True):
         """
             Function to get updates to the corresponding model. Handles time-stamps and measurement-vectors.
             This function also handles the assignment of all incoming measurements to the active sub-filters.
@@ -1535,7 +1546,8 @@ class HungarianTracker(MultiFilter):
 
         for t in range(N):
             if t not in rows:
-                print("No update for track %s with best prob %s in frame %s" % (
+                if verbose:
+                    print("No update for track %s with best prob %s in frame %s" % (
                 gain_dict[t], np.amax(probability_gain[t]), i))
 
         for j, k in enumerate(rows):
@@ -1553,14 +1565,15 @@ class HungarianTracker(MultiFilter):
                 self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
-                print("Updated track %s with prob %s in frame %s" % (gain_dict[k], probability_gain[k, m], i))
+                if verbose:
+                    print("Updated track %s with prob %s in frame %s" % (gain_dict[k], probability_gain[k, m], i))
 
             else:
-                if k in gain_dict:
-                    print(
-                        "DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (gain_dict[k], probability_gain[k, m], i))
-                else:
-                    print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
+                if verbose:
+                    if k in gain_dict:
+                        print("DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (gain_dict[k], probability_gain[k, m], i))
+                    else:
+                        print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
                 try:
                     n = len(self.ActiveFilters[gain_dict[k]].X.keys())
                 except KeyError:
