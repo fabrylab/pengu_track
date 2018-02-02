@@ -24,7 +24,7 @@ import clickpoints
 import numpy as np
 from .Detectors import Measurement
 from .Filters import Filter
-from .Models import VariableSpeed
+from .Models import Model, VariableSpeed
 from .DataFileExtended import DataFileExtended
 from scipy.optimize import linear_sum_assignment
 import time
@@ -36,6 +36,7 @@ class Stitcher(object):
     def __init__(self):
         self.Tracks = {}
         self.db = None
+        self.track_dict = {}
 
     def add_PT_Tracks(self, tracks):
         for track in tracks:
@@ -50,45 +51,64 @@ class Stitcher(object):
             self.Tracks.update({i: tracks[i]})
 
     def load_tracks_from_clickpoints(self, path, type):
-        time1 = time.clock()
-        self.db = DataFileExtended(path)
-        if self.db.getTracks(type=type)[0].markers[0].measurement is not None:
-            for track in self.db.getTracks(type=type):
-                self.Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
-                for m in track.markers:
-                    meas = Measurement(1., [m.measurement[0].x,
-                                            m.measurement[0].y,
-                                            m.measurement[0].z])
-                    self.Tracks[track.id].update(z=meas, i=m.image.sort_index)
-        else:
-            for track in self.db.getTracks(type=type):
-                self.Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
-                for m in track.markers:
-                    meas = Measurement(1., [m.x,
-                                            m.y,
-                                            0])
-                    self.Tracks[track.id].update(z=meas, i=m.image.sort_index)
-        time2 = time.clock()
-        self.db.db.close()
-        print("Load Tracks Time:",time2 - time1)
+        db = DataFileExtended(path)
+        tracks = db.getTracks(type=type)
+
+        for track in tracks:
+            n = len(self.track_dict)
+            self.track_dict.update({n: track.id})
+            self.Tracks.update({track.id: Filter(Model())})
+            self.Tracks[track.id].Model.Measured_Variables=["PositionX","PositionY"]
+            self.Tracks[track.id].Model.State_dim = 2
+            X = dict([[m.image.sort_index, [[m.x], [m.y]]] for m in track.track_markers])
+            # M = dict([Measurement[m.measurement.PositionX,m.measurement.PositionY] for m in track.track_markers])
+            for i in sorted(X):
+                try:
+                    self.Tracks[track.id].predict(i)
+                except:
+                    pass
+                self.Tracks[track.id].update(i=i, z=Measurement(1., X[i]))
+        # time1 = time.clock()
+        # self.db = DataFileExtended(path)
+        # if self.db.getTracks(type=type)[0].markers[0].measurement is not None:
+        #     for track in self.db.getTracks(type=type):
+        #         self.Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
+        #         for m in track.markers:
+        #             meas = Measurement(1., [m.measurement[0].x,
+        #                                     m.measurement[0].y,
+        #                                     m.measurement[0].z])
+        #             self.Tracks[track.id].update(z=meas, i=m.image.sort_index)
+        # else:
+        #     for track in self.db.getTracks(type=type):
+        #         self.Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
+        #         for m in track.markers:
+        #             meas = Measurement(1., [m.x,
+        #                                     m.y,
+        #                                     0])
+        #             self.Tracks[track.id].update(z=meas, i=m.image.sort_index)
+        # time2 = time.clock()
+        # self.db.db.close()
+        # print("Load Tracks Time:",time2 - time1)
 
     def spatial_diff(self):
-        first_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[0].Model.State_dim,1))
-        last_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[0].Model.State_dim,1))
-        for i in self.Tracks:
-            first_pos[:,i] = self.Tracks[i].X[min([k for k in self.Tracks[i].X])]
-            last_pos[i,:] = self.Tracks[i].X[max([k for k in self.Tracks[i].X])]
+        first_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[self.Tracks.keys()[0]].Model.State_dim,1))
+        last_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[self.Tracks.keys()[0]].Model.State_dim,1))
+        for i in range(len(self.Tracks)):
+            first_pos[:,i] = self.Tracks[self.track_dict[i]].X[min([k for k in self.Tracks[self.track_dict[i]].X])]
+            last_pos[i,:] = self.Tracks[self.track_dict[i]].X[max([k for k in self.Tracks[self.track_dict[i]].X])]
         return np.linalg.norm(last_pos-first_pos, axis=(2,3))
 
     def temporal_diff(self):
         first_time = np.zeros((len(self.Tracks), len(self.Tracks)))
         last_time = np.zeros((len(self.Tracks), len(self.Tracks)))
-        for i in self.Tracks:
-            first_time[:,i] = min([k for k in self.Tracks[i].X])
-            last_time[i,:] = max([k for k in self.Tracks[i].X])
+        for i in range(len(self.Tracks)):
+            first_time[:,i] = min([k for k in self.Tracks[self.track_dict[i]].X])
+            last_time[i,:] = max([k for k in self.Tracks[self.track_dict[i]].X])
         return first_time-last_time
 
     def _stitch_(self, i, j):
+        i = self.track_dict[i]
+        j = self.track_dict[j]
         idx = [i,j][np.argmin([min(self.Tracks[i].X), min(self.Tracks[j].X)])]
         n_idx = i if j==idx else j
         times = set([ii for ii in self.Tracks[i].X])
