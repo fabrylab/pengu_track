@@ -23,11 +23,12 @@ from PenguTrack.Detectors import Measurement
 import numpy as np
 
 class SyntheticDataGenerator(object):
-    def __init__(self, object_number, position_variation, speed_variation, model):
+    def __init__(self, object_number, position_variation, speed_variation, model, loose=False):
         self.N = int(object_number)
         self.R = float(position_variation)
         self.Q = float(speed_variation)
         self.Model = model
+        self.Loose=bool(loose)
         vec = np.random.rand(self.N, self.Model.State_dim, 1)
         vec [:,::2] *= self.R
         vec [1:,::2] *= self.Q
@@ -42,7 +43,10 @@ class SyntheticDataGenerator(object):
         self.Objects[i+1] = np.array([self.Model.predict(self.Model.evolute(self.Q*np.random.randn(self.Model.Evolution_dim, 1),
                                                                             pos),
                                                          np.zeros((self.Model.Control_dim, 1))) for pos in positions])
-        return [Measurement(1.0, self.Model.measure(pos)) for pos in self.Objects[i+1]]
+        out = [Measurement(1.0, self.Model.measure(pos)) for pos in self.Objects[i+1]]
+        if self.Loose:
+            out.pop(np.random.randint(0,self.N))
+        return out
 
 if __name__ == '__main__':
 
@@ -76,14 +80,14 @@ if __name__ == '__main__':
 
     all_params = []
 
-    # for i in range(20):
     from PenguTrack.Trackers import VariableSpeedTracker
 
     MultiKal = VariableSpeedTracker()
+    MultiKal.LogProbabilityThreshold = -3.
     # Physical Model (used for predictions)
     from PenguTrack.Models import VariableSpeed
 
-    Generator = SyntheticDataGenerator(10, 10., 1., VariableSpeed(dim=2, timeconst=0.5, damping=1.))
+    Generator = SyntheticDataGenerator(10, 10., 1., VariableSpeed(dim=2, timeconst=0.5, damping=1.), loose=True)
 
     MultiKal = track(MultiKal, Generator)
 
@@ -94,7 +98,6 @@ if __name__ == '__main__':
         db = DataFileExtended("./synth_data.cdb", "r")
         Trackers = db.tracker_from_db()
         return db.table_tracker.get(id=1)#Trackers[0]
-
     tracker = retrieve_db()
     print(tracker.Probability_Gains)
     # print(retrieve_db().Probability_Gains)
@@ -118,5 +121,12 @@ if __name__ == '__main__':
         # new_mod = VariableSpeed(dim=2, damping=p_opt[0], timeconst=p_opt[1])
         # MultiKal.Model = new_mod
 
+    SimStitch = DistanceStitcher(0.89)
+    SimStitch.add_PT_Tracks_from_Tracker(MultiKal.Filters)
+    SimStitch.stitch()
 
-
+    from PenguTrack.DataFileExtended import DataFileExtended
+    db = DataFileExtended("./synth_data.cdb")
+    stiched_type = db.setMarkerType(name="Stitched", color="F0F0FF", mode=db.TYPE_Track)
+    db.deleteMarkers(type=stiched_type)
+    SimStitch.save_tracks_to_db("./synth_data.cdb", stiched_type)

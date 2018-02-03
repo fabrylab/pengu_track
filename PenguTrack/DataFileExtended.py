@@ -558,6 +558,12 @@ class DataFileExtended(clickpoints.DataFile):
             # Get Tracks from Filters
             for k in Tracker.Filters.keys():
                 x = y = np.nan
+                if cam_values:
+                    x = meas.PositionX_Cam
+                    y = meas.PositionY_Cam
+                else:
+                    x = meas.PositionX
+                    y = meas.PositionY
 
                 if self.getTrack(id=100 + k):
                     db_track = self.getTrack(id=100 + k)
@@ -581,84 +587,8 @@ class DataFileExtended(clickpoints.DataFile):
                                                measurement_distribution=db_dist_m,
                                                state_distribution=db_dist_s)
 
-                # Case 1: we tracked something in this filter
-                if i in Tracker.Filters[k].Measurements.keys():
-                    prob = Tracker.Filters[k].log_prob(keys=[i])
-                    meas = Tracker.Filters[k].Measurements[i]
-                    state = Tracker.Filters[k].X[i]
-                    if cam_values:
-                        x = meas.PositionX_Cam
-                        y = meas.PositionY_Cam
-                    else:
-                        x = state[Tracker.Model.Measured_Variables.index("PositionX")]
-                        y = state[Tracker.Model.Measured_Variables.index("PositionY")]
+        self.write_to_DB(Tracker, image, i=i, text=text, cam_values=True)
 
-                        print('Setting new Track %s and Track-Marker at %s, %s' % ((100 + k), x, y))
-                    if set_text:
-                        text = 'Track %s, Prob %.2f' % ((100 + k), prob)
-                    track_marker = self.setMarker(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
-                                                  text=text)
-                    db_state = self.setState(marker=track_marker,
-                                             log_prob=prob,
-                                             state_vector=Tracker.Filters[k].X[i],
-                                             state_error=Tracker.Filters[k].X_error[i])
-
-                # Case 2: we want to see the prediction markers
-                if i in Tracker.Filters[k].Predicted_X.keys():
-                    prediction = Tracker.Model.measure(Tracker.Filters[k].Predicted_X[i])
-                    pred_x = prediction[Tracker.Model.Measured_Variables.index("PositionX")]
-                    pred_y = prediction[Tracker.Model.Measured_Variables.index("PositionY")]
-
-                    pred_marker = self.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
-                                               type=self.prediction_marker_type)
-                    # pred_markerset.append(dict(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
-                    #                            type=self.prediction_marker_type))
-                    db_pred = self.setPrediction(marker=pred_marker,
-                                                 log_prob=prob,
-                                                 prediction_vector=Tracker.Filters[k].Predicted_X[i],
-                                                 prediction_error=Tracker.Filters[k].Predicted_X_error[i])
-
-
-                # Case 3: we want to see the measurement markers
-                if i in Tracker.Filters[k].Measurements.keys():
-                    meas = Tracker.Filters[k].Measurements[i]
-                    meas_x = meas.PositionX
-                    meas_y = meas.PositionY
-                    meas_marker = self.setMarker(image=image, x=meas_y, y=meas_x, text="Track %s" % (100 + k),
-                                               type=self.detection_marker_type)
-                    # measurement_set.append(dict(log=prob, x=x, y=y))
-                    db_meas = self.setMeasurement(marker=meas_marker,
-                                                  log_prob=prob,
-                                                  measurement_vector=np.array([meas_x, meas_y]))#,
-                                                  # measurement_error=db_filter.measurement_distribution.cov)
-
-        try:
-            prob_gain = Tracker.Probability_Gain[i]
-            prob_gain_dict = Tracker.Probability_Gain_Dicts[i]
-            self.setProbabilityGain(image=image,tracker=db_tracker,
-                                    probability_gain=prob_gain,
-                                    probability_gain_dict=prob_gain_dict)
-        except KeyError:
-            pass
-
-        # markers = self.setMarkers(image=[m["image"] for m in markerset],
-        #                           type=[m["type"] for m in markerset],
-        #                           track=[m["track"] for m in markerset],
-        #                           x=[m["x"] for m in markerset],
-        #                           y=[m["y"] for m in markerset],
-        #                           text=[m["text"] for m in markerset])
-        # pred_markers = self.setMarkers(image=[m["image"] for m in pred_markerset],
-        #                                type=[m["type"] for m in pred_markerset],
-        #                                x=[m["x"] for m in pred_markerset],
-        #                                y=[m["y"] for m in pred_markerset],
-        #                                text=[m["text"] for m in pred_markerset])
-        # markers = self.getMarkers(image=image, track=[m["track"] for m in markerset])
-        # measurements = self.setMeasurements(marker=[m.id for m in markers],
-        #                                     x=[m["x"] for m in measurement_set],
-        #                                     y=[m["y"] for m in measurement_set],
-        #                                     log=[m["log"] for m in measurement_set])
-
-        print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
 
 
     def write_to_DB_cam(self, Tracker, image, i=None, text=None, db_tracker=None, db_model=None):
