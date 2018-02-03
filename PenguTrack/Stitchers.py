@@ -57,9 +57,8 @@ class Stitcher(object):
         for track in tracks:
             n = len(self.track_dict)
             self.track_dict.update({n: track.id})
-            self.Tracks.update({track.id: Filter(Model())})
+            self.Tracks.update({track.id: Filter(Model(state_dim=2, meas_dim=2))})
             self.Tracks[track.id].Model.Measured_Variables=["PositionX","PositionY"]
-            self.Tracks[track.id].Model.State_dim = 2
             X = dict([[m.image.sort_index, [[m.x], [m.y]]] for m in track.track_markers])
             # M = dict([Measurement[m.measurement.PositionX,m.measurement.PositionY] for m in track.track_markers])
             for i in sorted(X):
@@ -89,6 +88,13 @@ class Stitcher(object):
         # time2 = time.clock()
         # self.db.db.close()
         # print("Load Tracks Time:",time2 - time1)
+    def pos_delta(self):
+        first_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[self.Tracks.keys()[0]].Model.State_dim,1))
+        last_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[self.Tracks.keys()[0]].Model.State_dim,1))
+        for i in range(len(self.Tracks)):
+            first_pos[:,i] = self.Tracks[self.track_dict[i]].X[min([k for k in self.Tracks[self.track_dict[i]].X])]
+            last_pos[i,:] = self.Tracks[self.track_dict[i]].X[max([k for k in self.Tracks[self.track_dict[i]].X])]
+        return last_pos-first_pos
 
     def spatial_diff(self):
         first_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[self.Tracks.keys()[0]].Model.State_dim,1))
@@ -106,15 +112,28 @@ class Stitcher(object):
             last_time[i,:] = max([k for k in self.Tracks[self.track_dict[i]].X])
         return first_time-last_time
 
-    def _stitch_(self, i, j):
-        i = self.track_dict[i]
-        j = self.track_dict[j]
+    def _stitch_(self, cost, threshold=np.inf):
+        rows, cols = linear_sum_assignment(cost)
+        dr = dict(np.array([rows, cols]).T)
+        dc = dict(np.array([cols, rows]).T)
+        for j, k in enumerate(rows):
+            if not cost[rows[j],cols[j]] >= threshold and not rows[j]==cols[j]:
+                a = rows[j]
+                b = cols[j]
+                while self.track_dict[a] not in self.Tracks:
+                    a = dc[a]
+                while self.track_dict[b] not in self.Tracks:
+                    b = dr[b]
+                self.__stitch__(self.track_dict[a], self.track_dict[b])
+
+
+    def __stitch__(self, i, j):
         idx = [i,j][np.argmin([min(self.Tracks[i].X), min(self.Tracks[j].X)])]
         n_idx = i if j==idx else j
         times = set([ii for ii in self.Tracks[i].X])
         times.update([ii for ii in self.Tracks[j].X])
         for t in times:
-            if t not in self.Tracks[idx].Predicted_X:
+            if t not in self.Tracks[idx].Predicted_X and t not in self.Tracks[idx].X:
                 self.Tracks[idx].predict(i=t)
             if t in self.Tracks[idx].X and t in self.Tracks[n_idx].X:
                 pass
@@ -162,23 +181,39 @@ class DistanceStitcher(Stitcher):
     def stitch(self):
         s = self.spatial_diff()
         t = self.temporal_diff()
-        velocity = s/t
+        cost = s/t
         # velocity[np.abs(velocity)>=self.MaxV] = np.nan
-        velocity[np.diag(np.ones(len(velocity), dtype=bool))] = self.MaxV
-        velocity[velocity<0]=self.MaxV
-        velocity[np.abs(t)>self.MaxF]=self.MaxV
-        rows, cols = linear_sum_assignment(velocity)
-        for j, k in enumerate(rows):
-            if not velocity[rows[j],cols[j]] >= self.MaxV:
-                a = rows[j]
-                b = cols[j]
-                dr = dict(np.array([rows, cols]).T)
-                dc = dict(np.array([cols, rows]).T)
-                while a not in self.Tracks:
-                    a = dc[a]
-                while b not in self.Tracks:
-                    b = dr[b]
-                self._stitch_(a, b)
+        cost[np.diag(np.ones(len(cost), dtype=bool))] = self.MaxV
+        cost[cost<0]=self.MaxV
+        cost[np.abs(t)>self.MaxF]=self.MaxV
+        self._stitch_(cost, threshold=self.MaxV)
+
+class expDistanceStitcher(Stitcher):
+    def __init__(self, k, w, max_distance=np.inf, max_delay=np.inf, dim=(1,)):
+        super(expDistanceStitcher, self).__init__()
+        k=np.array(k, ndmin=2)
+        if len(k)>1:
+            self.K = np.array(k, ndmin=2)
+        else:
+            self.K = k * np.ones(dim).T
+        self.W = float(w)
+        self.MaxDist=float(max_distance)
+        self.MaxDelay=float(max_delay)
+        self.Dim = dim
+
+    def stitch(self):
+        s = self.pos_delta()
+        s_abs = np.linalg.norm(s,axis=(2,3))
+        t = self.temporal_diff()[:,:,None]
+        cost = np.exp((np.dot(self.K, np.abs(s)) + self.W*np.abs(t)))[0].T[0].T
+        max_cost = np.amax(cost)*2
+        cost[np.diag(np.ones(len(cost), dtype=bool))] = max_cost
+        cost[s_abs>self.MaxDist] = max_cost
+        cost[t.T[0].T>self.MaxDelay] = max_cost
+        cost[t.T[0].T<0] = max_cost
+        print(cost.shape)
+        self._stitch_(cost, threshold=max_cost)
+
 
 
 
