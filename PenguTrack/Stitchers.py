@@ -47,7 +47,8 @@ class Stitcher(object):
             self.Tracks.update({i: track})
 
     def add_PT_Tracks_from_Tracker(self, tracks):
-        for i in tracks:
+        for j,i in enumerate(tracks):
+            self.track_dict.update({j:i})
             self.Tracks.update({i: tracks[i]})
 
     def load_tracks_from_clickpoints(self, path, type):
@@ -113,6 +114,7 @@ class Stitcher(object):
         return first_time-last_time
 
     def _stitch_(self, cost, threshold=np.inf):
+        print(np.mean(cost>=threshold))
         rows, cols = linear_sum_assignment(cost)
         dr = dict(np.array([rows, cols]).T)
         dc = dict(np.array([cols, rows]).T)
@@ -139,7 +141,7 @@ class Stitcher(object):
                 pass
             elif t in self.Tracks[n_idx].X:
                 self.Tracks[idx].update(i=t, z=self.Tracks[n_idx].Measurements[t])
-                print("stitch!")
+        print("stitch!")
         self.Tracks.pop(n_idx)
 
     def stitch(self):
@@ -211,7 +213,6 @@ class expDistanceStitcher(Stitcher):
         cost[s_abs>self.MaxDist] = max_cost
         cost[t.T[0].T>self.MaxDelay] = max_cost
         cost[t.T[0].T<0] = max_cost
-        print(cost.shape)
         self._stitch_(cost, threshold=max_cost)
 
 
