@@ -200,9 +200,9 @@ class DataFileExtended(clickpoints.DataFile):
         """State Entry"""
         class State(db.base_model):
             marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name='state_marker', on_delete='CASCADE')
-            log_prob = peewee.FloatField(default=0)
+            log_prob = peewee.FloatField(null=True, default=0)
             state_vector = MatrixField()
-            state_error = MatrixField()
+            state_error = MatrixField(null=True)
         if "state" not in db.db.get_tables():
             State.create_table()
         self.table_state = State
@@ -211,7 +211,7 @@ class DataFileExtended(clickpoints.DataFile):
         """Measurement Entry"""
         class Measurement(db.base_model):
             marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name='measurement_marker', on_delete='CASCADE')
-            log_prob = peewee.FloatField(default=0)
+            log_prob = peewee.FloatField(null=True, default=0)
             measurement_vector = MatrixField()
             measurement_error = MatrixField(null=True)
         if "measurement" not in db.db.get_tables():
@@ -221,9 +221,9 @@ class DataFileExtended(clickpoints.DataFile):
         """Prediction Entry"""
         class Prediction(db.base_model):
             marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name='prediction_marker', on_delete='CASCADE')
-            log_prob = peewee.FloatField(default=0)
+            log_prob = peewee.FloatField(null=True, default=0)
             prediction_vector = MatrixField()
-            prediction_error = MatrixField()
+            prediction_error = MatrixField(null=True)
         if "prediction" not in db.db.get_tables():
             Prediction.create_table()
         self.table_prediction = Prediction
@@ -510,9 +510,22 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
-    def setMeasurements(self, marker=None, log=None, x=None, y=None, z=None):
-        data = packToDictList(self.table_measurement, marker=marker, log=log,x=x, y=y, z=z)
+    def setMeasurements(self, marker=None, log_prob=None, measurement_vector=None, measurement_error=None):
+        data = packToDictList(self.table_measurement, marker=marker, measurement_vector=measurement_vector,
+                              measurement_error=measurement_error)
         return self.saveUpsertMany(self.table_measurement, data)
+
+    def setPredictions(self, marker=None, log_prob=None, prediction_vector=None, prediction_error=None):
+        data = packToDictList(self.table_prediction, marker=marker, log_prob=log_prob,
+                              prediction_vector=prediction_vector,
+                              prediction_error=prediction_error)
+        return self.saveUpsertMany(self.table_prediction, data)
+
+    def setStates(self, marker=None, log_prob=None, state_vector=None, state_error=None):
+        data = packToDictList(self.table_state, marker=marker, log_prob=log_prob,
+                              state_vector=state_vector,
+                              state_error=state_error)
+        return self.saveUpsertMany(self.table_state, data)
 
     def deletetOld(self):
         # Define ClickPoints Marker
@@ -552,27 +565,26 @@ class DataFileExtended(clickpoints.DataFile):
 
 
         with self.db.atomic() as transaction:
-            markerset = []
-            measurement_set = []
-            pred_markerset = []
+            track_markerset = []
+            stateset = []
+            measurement_markerset = []
+            measurementset = []
+            prediction_markerset = []
+            predictionset = []
             # Get Tracks from Filters
             for k in Tracker.Filters.keys():
                 x = y = np.nan
-                if cam_values:
-                    x = meas.PositionX_Cam
-                    y = meas.PositionY_Cam
-                else:
-                    x = meas.PositionX
-                    y = meas.PositionY
+                prob = Tracker.Filters[k].log_prob(keys=[i])
 
                 if self.getTrack(id=100 + k):
                     db_track = self.getTrack(id=100 + k)
                 else:
                     db_track = self.setTrack(self.track_marker_type, id=100 + k)
                 if len(db_track.filter_track)>0:
-                    print('Setting Track(%s)-Marker at %s, %s' % ((100 + k), x, y))
+                    new = ""
                     db_filter = db_track.filter_track[0]
                 else:
+                    new = "new "
                     db_dist_s = self.setDistribution(name=parse_dist(Tracker.Filters[k].State_Distribution),
                                                      **parse_dist_dict(Tracker.Filters[k].State_Distribution.__dict__))
                     db_dist_m = self.setDistribution(name=parse_dist(Tracker.Filters[k].Measurement_Distribution),
@@ -587,8 +599,117 @@ class DataFileExtended(clickpoints.DataFile):
                                                measurement_distribution=db_dist_m,
                                                state_distribution=db_dist_s)
 
-        self.write_to_DB(Tracker, image, i=i, text=text, cam_values=True)
+                # Case 1: we tracked something in this filter
+                if i in Tracker.Filters[k].Measurements.keys():
+                    meas = Tracker.Filters[k].Measurements[i]
+                    state = Tracker.Filters[k].X[i]
+                    if cam_values:
+                        x = meas.PositionX_Cam
+                        y = meas.PositionY_Cam
+                    else:
+                        x = Tracker.Model.measure(state)[Tracker.Model.Measured_Variables.index("PositionX")]
+                        y = Tracker.Model.measure(state)[Tracker.Model.Measured_Variables.index("PositionY")]
+                    print('Setting %sTrack(%s)-Marker at %s, %s' % (new, (100 + k), x, y))
+                    if set_text:
+                        text = 'Track %s, Prob %.2f' % ((100 + k), prob)
+                    track_markerset.append(dict(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
+                                                  text=text))
+                    stateset.append(dict(log_prob=prob,
+                                         state_vector=Tracker.Filters[k].X[i],
+                                         state_error=Tracker.Filters[k].X_error.get(i, None)))
+                    # track_marker = self.setMarker(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
+                    #                               text=text)
+                    # db_state = self.setState(marker=track_marker,
+                    #                          log_prob=prob,
+                    #                          state_vector=Tracker.Filters[k].X[i],
+                    #                          state_error=Tracker.Filters[k].X_error.get(i, None))
 
+                # Case 2: we want to see the prediction markers
+                if i in Tracker.Filters[k].Predicted_X.keys():
+                    prediction = Tracker.Model.measure(Tracker.Filters[k].Predicted_X[i])
+                    pred_x = prediction[Tracker.Model.Measured_Variables.index("PositionX")]
+                    pred_y = prediction[Tracker.Model.Measured_Variables.index("PositionY")]
+
+                    # pred_marker = self.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
+                    #                            type=self.prediction_marker_type)
+                    prediction_markerset.append(dict(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
+                                               type=self.prediction_marker_type))
+                    predictionset.append(dict(log_prob=prob,
+                                              prediction_vector=Tracker.Filters[k].Predicted_X[i],
+                                              prediction_error=Tracker.Filters[k].Predicted_X_error.get(i, None)))
+                    # db_pred = self.setPrediction(marker=pred_marker,
+                    #                              log_prob=prob,
+                    #                              prediction_vector=Tracker.Filters[k].Predicted_X[i],
+                    #                              prediction_error=Tracker.Filters[k].Predicted_X_error.get(i, None))
+
+
+                # Case 3: we want to see the measurement markers
+                if i in Tracker.Filters[k].Measurements.keys():
+                    meas = Tracker.Filters[k].Measurements[i]
+                    meas_x = meas.PositionX
+                    meas_y = meas.PositionY
+                    # meas_marker = self.setMarker(image=image, x=meas_y, y=meas_x, text="Track %s" % (100 + k),
+                    #                            type=self.detection_marker_type)
+                    measurement_markerset.append(dict(image=image, x=meas_y, y=meas_x, text="Track %s" % (100 + k),
+                                                      type=self.detection_marker_type))
+                    measurementset.append(dict(log_prob=prob,
+                                               measurement_vector=np.array([meas_x, meas_y])))
+                    # db_meas = self.setMeasurement(marker=meas_marker,
+                    #                               log_prob=prob,
+                    #                               measurement_vector=np.array([meas_x, meas_y]))#,
+                    #                               measurement_error=db_filter.measurement_distribution.cov)
+
+        try:
+            prob_gain = Tracker.Probability_Gain[i]
+            prob_gain_dict = Tracker.Probability_Gain_Dicts[i]
+            self.setProbabilityGain(image=image,tracker=db_tracker,
+                                    probability_gain=prob_gain,
+                                    probability_gain_dict=prob_gain_dict)
+        except KeyError:
+            pass
+
+        self.setMarkers(image=[m["image"] for m in track_markerset],
+                        type=[m["type"] for m in track_markerset],
+                        track=[m["track"] for m in track_markerset],
+                        x=[m["x"] for m in track_markerset],
+                        y=[m["y"] for m in track_markerset],
+                        text=[m["text"] for m in track_markerset])
+        state_markers = self.getMarkers(image=image,
+                                       x=[m["x"] for m in track_markerset],
+                                       y=[m["y"] for m in track_markerset],
+                                        type= [m["type"] for m in track_markerset])
+        self.setStates(marker=[m.id for m in state_markers],
+                             log_prob=[m["log_prob"] for m in stateset],
+                             state_vector=[m["state_vector"] for m in stateset],
+                             state_error=[m["state_error"] for m in stateset])
+        self.setMarkers(image=[m["image"] for m in prediction_markerset],
+                        type=[m["type"] for m in prediction_markerset],
+                        x=[m["x"] for m in prediction_markerset],
+                        y=[m["y"] for m in prediction_markerset],
+                        text=[m["text"] for m in prediction_markerset])
+        pred_markers = self.getMarkers(image=image,
+                                       x=[m["x"] for m in prediction_markerset],
+                                       y=[m["y"] for m in prediction_markerset],
+                                       type=[m["type"] for m in prediction_markerset])
+        self.setPredictions(marker=[m.id for m in pred_markers],
+                             log_prob=[m["log_prob"] for m in predictionset],
+                             prediction_vector=[m["prediction_vector"] for m in predictionset],
+                             prediction_error=[m["prediction_error"] for m in predictionset])
+        self.setMarkers(image=[m["image"] for m in measurement_markerset],
+                        type=[m["type"] for m in measurement_markerset],
+                        x=[m["x"] for m in measurement_markerset],
+                        y=[m["y"] for m in measurement_markerset],
+                        text=[m["text"] for m in measurement_markerset])
+        meas_markers = self.getMarkers(image=image,
+                                       x=[m["x"] for m in measurement_markerset],
+                                       y=[m["y"] for m in measurement_markerset],
+                                       type=[m["type"] for m in measurement_markerset])
+        self.setMeasurements(marker=[m.id for m in meas_markers],
+                             log_prob=[m["log_prob"] for m in measurementset],
+                             measurement_vector=[m["measurement_vector"] for m in measurementset],
+                             measurement_error=[m.get("measurement_error", None) for m in measurementset])
+
+        print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
 
 
     def write_to_DB_cam(self, Tracker, image, i=None, text=None, db_tracker=None, db_model=None):
