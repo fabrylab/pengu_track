@@ -115,6 +115,10 @@ class Stitcher(object):
 
     def _stitch_(self, cost, threshold=np.inf):
         print(np.mean(cost>=threshold))
+        if np.any(cost==np.inf):
+            cost[cost==np.inf]=np.amax(cost!=np.inf)
+            if threshold==np.inf:
+                threshold=np.amax(cost)
         rows, cols = linear_sum_assignment(cost)
         dr = dict(np.array([rows, cols]).T)
         dc = dict(np.array([cols, rows]).T)
@@ -209,7 +213,7 @@ class expDistanceStitcher(Stitcher):
         s_abs = np.linalg.norm(s,axis=(2,3))
         t = self.temporal_diff()[:,:,None]
         cost = np.exp((np.dot(self.K, np.abs(s)) + self.W*np.abs(t)))[0].T[0].T
-        max_cost = np.amax(cost)*2
+        max_cost =  max_cost = np.exp((np.dot(self.K, np.abs(self.MaxDist)) + self.W * np.abs(self.MaxDelay)))[0,0]
         cost[np.diag(np.ones(len(cost), dtype=bool))] = max_cost
         cost[s_abs>self.MaxDist] = max_cost
         cost[t.T[0].T>self.MaxDelay] = max_cost
