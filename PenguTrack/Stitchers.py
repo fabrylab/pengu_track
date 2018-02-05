@@ -186,6 +186,7 @@ class DistanceStitcher(Stitcher):
         cost = s/t
         # velocity[np.abs(velocity)>=self.MaxV] = np.nan
         cost[np.diag(np.ones(len(cost), dtype=bool))] = self.MaxV
+        cost[cost>self.MaxV]=self.MaxV
         cost[cost<0]=self.MaxV
         cost[np.abs(t)>self.MaxF]=self.MaxV
         self._stitch_(cost, threshold=self.MaxV)
