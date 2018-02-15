@@ -102,11 +102,12 @@ class MatrixField(peewee.BlobField):
         len_shape_b = np.array(len(np.array(value).shape)).astype(np.int64).tobytes()
         value = len_shape_b+shape_b+value_b
         if not PY3:
-            return value
+            return super(MatrixField, self).db_value(value)
         else:
-            return peewee.binary_construct(value)
+            return super(MatrixField, self).db_value(value)#peewee.binary_construct(value)
 
     def python_value(self, value):
+        value = super(MatrixField, self).python_value(value)
         if not PY3:
             pass
         else:
@@ -116,7 +117,7 @@ class MatrixField(peewee.BlobField):
             if l == 0:
                 return None
             shape = np.frombuffer(value, dtype=np.int64, count=l, offset=8)
-            array = np.frombuffer(value, dtype=np.float64, count=int(np.prod(shape)*8), offset=8+l*8)
+            array = np.frombuffer(value, dtype=np.float64, count=int(np.prod(shape)), offset=8+l*8)
             return array.reshape(shape)
         else:
             return None
@@ -126,9 +127,10 @@ class ListField(peewee.TextField):
     def db_value(self, value):
         value=str(value)
         if PY3:
-            return value
-        return peewee.binary_construct(value)
+            return super(ListField, self).db_value(value)
+        return super(ListField, self).db_value(peewee.binary_construct(value))
     def python_value(self, value):
+        value = super(ListField, self).python_value(value)
         value = self.parse2python(value)
         if not PY3:
             value = str(value)
@@ -160,9 +162,10 @@ class DictField(peewee.TextField):
         # value.pop("meas_dist", None)
         value=str(value)
         if PY3:
-            return value
-        return peewee.binary_construct(value)
+            return super(DictField, self).db_value(value)
+        return super(DictField, self).db_value(peewee.binary_construct(value))
     def python_value(self, value):
+        super(DictField, self).python_value(value)
         value = str(value)
         value = value.replace("array","np.array")
         out = eval(value)
@@ -179,10 +182,11 @@ class NumDictField(peewee.BlobField):
     def db_value(self, value):
         value = np.array([[v,value[v]] for v in value]).tobytes()
         if PY3:
-            return value
-        return peewee.binary_construct(value)
+            return super(NumDictField, self).db_value(value)
+        return super(NumDictField, self).db_value(peewee.binary_construct(value))
 
     def python_value(self, value):
+        value=super(NumDictField, self).python_value(value)
         if not PY3:
             return dict([[v[0],v[1]] for v in np.frombuffer(value, dtype=int).reshape((-1,2))])
         return dict([[v[0], v[1]] for v in np.frombuffer(value, dtype=int).reshape((-1, 2))])
