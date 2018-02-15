@@ -517,6 +517,9 @@ class Filter(object):
                np.array(self.Predicted_X.values(), dtype=float),\
                np.array(self.Predicted_X_error.values(), dtype=float)
 
+    def cost_from_logprob(self, log_prob):
+        return cost_from_logprob(log_prob)
+
 
 class KalmanFilter(Filter):
     """
@@ -1278,9 +1281,7 @@ class MultiFilter(Filter):
         x_err = {}
         from scipy.optimize import linear_sum_assignment
 
-        cost_matrix = np.copy(probability_gain)
-        cost_matrix[cost_matrix<-360]=-360.
-        cost_matrix = -1*np.exp(cost_matrix)
+        cost_matrix=self.cost_from_logprob(probability_gain)
 
         rows, cols = linear_sum_assignment(cost_matrix)
 
@@ -1538,9 +1539,7 @@ class HungarianTracker(MultiFilter):
         x_err = {}
         from scipy.optimize import linear_sum_assignment
 
-        cost_matrix = np.copy(probability_gain)
-        cost_matrix[cost_matrix < -360] = -360.
-        cost_matrix = -1 * np.exp(cost_matrix)
+        cost_matrix = self.cost_from_logprob(probability_gain)
 
         rows, cols = linear_sum_assignment(cost_matrix)
 
@@ -1731,7 +1730,15 @@ def ThreadedUpdate(arg):
     return j, m, filter.log_prob(keys=[i], measurements={i: measurement})
 
 
-
+def cost_from_logprob(logprob):
+    cost_matrix = np.copy(logprob)
+    # optimize range of values after exponential function
+    cost_matrix -= cost_matrix.min()
+    cost_matrix *= 745. / (cost_matrix.max() - cost_matrix.min())
+    # cost_matrix *= 1454
+    cost_matrix -= 745
+    cost_matrix = -1 * np.exp(cost_matrix)
+    return cost_matrix
 
 
 # class AdvancedMultiFilter(MultiFilter):
