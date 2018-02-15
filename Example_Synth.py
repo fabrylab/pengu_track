@@ -56,6 +56,8 @@ if __name__ == '__main__':
         # Open ClickPoints Database
         db = DataFileExtended("./synth_data.cdb", "w")
 
+        db_model, db_tracker = db.init_tracker(filter.Model, filter)
+
         # Start Iteration over Images
         print('Starting Iteration')
         for i in range(30):
@@ -71,7 +73,7 @@ if __name__ == '__main__':
                 # Update Filter with new Detections
                 filter.update(z=Positions, i=i, verbose=False)
                 # Write everything to a DataBase
-                db.write_to_DB(filter, image, verbose=False)
+                db.write_to_DB(filter, image, i=i, db_tracker=db_tracker, db_model=db_model)
 
         print('done with Tracking')
         return filter
@@ -89,7 +91,35 @@ if __name__ == '__main__':
 
     MultiKal = track(MultiKal, Generator)
 
-    from PenguTrack.Stitchers import DistanceStitcher
+    def retrieve_db():
+        # Extended Clickpoints Database for usage with pengutack
+        from PenguTrack.DataFileExtended import DataFileExtended
+        # Open ClickPoints Database
+        db = DataFileExtended("./synth_data.cdb", "r")
+        Trackers = db.tracker_from_db()
+        return db.table_tracker.get(id=1)#Trackers[0]
+    tracker = retrieve_db()
+    print(tracker.Probability_Gains)
+    # print(retrieve_db().Probability_Gains)
+        # break
+        #
+        # state_dict = dict([[k, np.array([MultiKal.Filters[k].X[i] for i in MultiKal.Filters[k].X])] for k in MultiKal.Filters])
+        # params = ["damping", "timeconst"]
+        # # params = ["timeconst"]
+        # # params = ["damping"]
+        #
+        # print("Real Params: ",[Generator.Model.Initial_KWArgs[o] for o in sorted(params)])
+        # new_mod = Generator.Model#VariableSpeed(dim=2, damping=1., timeconst=2)
+        # print("Easy Start: ", [new_mod.Initial_KWArgs[o] for o in sorted(params)])
+        # print(new_mod.__unflatparams__(new_mod.optimize_mult([s for s in state_dict.values() if len(s)>2], params=params)[0], params=params))
+        #
+        # new_mod = VariableSpeed(dim=2, damping=1., timeconst=1)
+        # print("Complex Start: ", [new_mod.Initial_KWArgs[o] for o in sorted(params)])
+        # print(new_mod.__unflatparams__(new_mod.optimize_mult([s for s in state_dict.values() if len(s)>2], params=params)[0], params=params))
+        # all_params.append(new_mod.__unflatparams__(new_mod.optimize_mult([s for s in state_dict.values() if len(s)>2], params=params)[0], params=params))
+        # p_opt = new_mod.__unflatparams__(new_mod.optimize_mult([s for s in state_dict.values() if len(s)>2], params=params)[0], params=params)
+        # new_mod = VariableSpeed(dim=2, damping=p_opt[0], timeconst=p_opt[1])
+        # MultiKal.Model = new_mod
 
     SimStitch = DistanceStitcher(0.89)
     SimStitch.add_PT_Tracks_from_Tracker(MultiKal.Filters)
