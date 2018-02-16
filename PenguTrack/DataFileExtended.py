@@ -22,7 +22,7 @@
 
 import peewee
 import clickpoints
-from clickpoints.DataFile import noNoneDict, setFields, addFilter, PY3, packToDictList
+from clickpoints.DataFile import noNoneDict, setFields, addFilter, PY3, packToDictList, dict_factory
 import numpy as np
 import PenguTrack
 from PenguTrack.Filters import Filter as PT_Filter
@@ -108,16 +108,16 @@ class MatrixField(peewee.BlobField):
 
     def python_value(self, value):
         value = super(MatrixField, self).python_value(value)
-        if not PY3:
-            pass
-        else:
-            value = io.BytesIO(value)
+        # if not PY3:
+        #     pass
+        # else:
+        #     value = io.BytesIO(value)
         if value is not None and not len(value) == 0:
             l = np.frombuffer(value, dtype=np.int64, count=1, offset=0)
             if l == 0:
                 return None
-            shape = np.frombuffer(value, dtype=np.int64, count=l, offset=8)
-            array = np.frombuffer(value, dtype=np.float64, count=int(np.prod(shape)), offset=8+l*8)
+            shape = np.frombuffer(value, dtype=np.int64, count=int(l), offset=8)
+            array = np.frombuffer(value, dtype=np.float64, count=int(np.prod(shape)), offset=8+int(l)*8)
             return array.reshape(shape)
         else:
             return None
@@ -201,6 +201,10 @@ class DataFileExtended(clickpoints.DataFile):
 
         db = self
 
+        self._current_ext_version = 1
+        ext_version = self._CheckExtVersion()
+
+
         """State Entry"""
         class State(db.base_model):
             marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name='state_marker', on_delete='CASCADE')
@@ -220,6 +224,7 @@ class DataFileExtended(clickpoints.DataFile):
             measurement_error = MatrixField(null=True)
         if "measurement" not in db.db.get_tables():
             Measurement.create_table()
+
         self.table_measurement = Measurement
 
         """Prediction Entry"""
@@ -558,7 +563,8 @@ class DataFileExtended(clickpoints.DataFile):
                         filter_kwargs=tracker.filter_kwargs)
         return model_item, tracker_item
 
-    def write_to_DB(self, Tracker, image, i=None, text=None, cam_values=False, db_tracker=None, db_model=None):
+    def write_to_DB(self, Tracker, image, i=None, text=None, cam_values=False, db_tracker=None, db_model=None,
+                    debug_mode=0b111):
         if text is None:
             set_text = True
         else:
@@ -566,7 +572,6 @@ class DataFileExtended(clickpoints.DataFile):
 
         if i is None:
             i = image.sort_index
-
 
         with self.db.atomic() as transaction:
             track_markerset = []
@@ -578,7 +583,7 @@ class DataFileExtended(clickpoints.DataFile):
             # Get Tracks from Filters
             for k in Tracker.Filters.keys():
                 x = y = np.nan
-                prob = Tracker.Filters[k].log_prob(keys=[i])
+                prob = Tracker.Filters[k].log_prob(keys=[i], update=Tracker.Filters[k].ProbUpdate)
 
                 if self.getTrack(id=100 + k):
                     db_track = self.getTrack(id=100 + k)
@@ -604,7 +609,7 @@ class DataFileExtended(clickpoints.DataFile):
                                                state_distribution=db_dist_s)
 
                 # Case 1: we tracked something in this filter
-                if i in Tracker.Filters[k].Measurements.keys():
+                if i in Tracker.Filters[k].Measurements.keys() and (debug_mode&0b001):
                     meas = Tracker.Filters[k].Measurements[i]
                     state = Tracker.Filters[k].X[i]
                     if cam_values:
@@ -629,7 +634,7 @@ class DataFileExtended(clickpoints.DataFile):
                     #                          state_error=Tracker.Filters[k].X_error.get(i, None))
 
                 # Case 2: we want to see the prediction markers
-                if i in Tracker.Filters[k].Predicted_X.keys():
+                if i in Tracker.Filters[k].Predicted_X.keys() and (debug_mode&0b010):
                     prediction = Tracker.Model.measure(Tracker.Filters[k].Predicted_X[i])
                     pred_x = prediction[Tracker.Model.Measured_Variables.index("PositionX")]
                     pred_y = prediction[Tracker.Model.Measured_Variables.index("PositionY")]
@@ -648,7 +653,7 @@ class DataFileExtended(clickpoints.DataFile):
 
 
                 # Case 3: we want to see the measurement markers
-                if i in Tracker.Filters[k].Measurements.keys():
+                if i in Tracker.Filters[k].Measurements.keys() and (debug_mode&0b100):
                     meas = Tracker.Filters[k].Measurements[i]
                     meas_x = meas.PositionX
                     meas_y = meas.PositionY
@@ -672,52 +677,108 @@ class DataFileExtended(clickpoints.DataFile):
         except KeyError:
             pass
 
-        self.setMarkers(image=[m["image"] for m in track_markerset],
-                        type=[m["type"] for m in track_markerset],
-                        track=[m["track"] for m in track_markerset],
-                        x=[m["x"] for m in track_markerset],
-                        y=[m["y"] for m in track_markerset],
-                        text=[m["text"] for m in track_markerset])
-        state_markers = self.getMarkers(image=image,
-                                       x=[m["x"] for m in track_markerset],
-                                       y=[m["y"] for m in track_markerset],
-                                        type= [m["type"] for m in track_markerset])
-        self.setStates(marker=[m.id for m in state_markers],
-                             log_prob=[m["log_prob"] for m in stateset],
-                             state_vector=[m["state_vector"] for m in stateset],
-                             state_error=[m["state_error"] for m in stateset])
-        self.setMarkers(image=[m["image"] for m in prediction_markerset],
-                        type=[m["type"] for m in prediction_markerset],
-                        x=[m["x"] for m in prediction_markerset],
-                        y=[m["y"] for m in prediction_markerset],
-                        text=[m["text"] for m in prediction_markerset])
-        pred_markers = self.getMarkers(image=image,
-                                       x=[m["x"] for m in prediction_markerset],
-                                       y=[m["y"] for m in prediction_markerset],
-                                       type=[m["type"] for m in prediction_markerset])
-        self.setPredictions(marker=[m.id for m in pred_markers],
-                             log_prob=[m["log_prob"] for m in predictionset],
-                             prediction_vector=[m["prediction_vector"] for m in predictionset],
-                             prediction_error=[m["prediction_error"] for m in predictionset])
-        self.setMarkers(image=[m["image"] for m in measurement_markerset],
-                        type=[m["type"] for m in measurement_markerset],
-                        x=[m["x"] for m in measurement_markerset],
-                        y=[m["y"] for m in measurement_markerset],
-                        text=[m["text"] for m in measurement_markerset])
-        meas_markers = self.getMarkers(image=image,
-                                       x=[m["x"] for m in measurement_markerset],
-                                       y=[m["y"] for m in measurement_markerset],
-                                       type=[m["type"] for m in measurement_markerset])
-        self.setMeasurements(marker=[m.id for m in meas_markers],
-                             log_prob=[m["log_prob"] for m in measurementset],
-                             measurement_vector=[m["measurement_vector"] for m in measurementset],
-                             measurement_error=[m.get("measurement_error", None) for m in measurementset])
+        if (debug_mode&0b001):
+            self.setMarkers(image=[m["image"] for m in track_markerset],
+                            type=[m["type"] for m in track_markerset],
+                            track=[m["track"] for m in track_markerset],
+                            x=[m["x"] for m in track_markerset],
+                            y=[m["y"] for m in track_markerset],
+                            text=[m["text"] for m in track_markerset])
+            state_markers = self.getMarkers(image=image,
+                                           x=[m["x"] for m in track_markerset],
+                                           y=[m["y"] for m in track_markerset],
+                                            type= [m["type"] for m in track_markerset])
+            self.setStates(marker=[m.id for m in state_markers],
+                                 log_prob=[m["log_prob"] for m in stateset],
+                                 state_vector=[m["state_vector"] for m in stateset],
+                                 state_error=[m["state_error"] for m in stateset])
+        if (debug_mode&0b010):
+            self.setMarkers(image=[m["image"] for m in prediction_markerset],
+                            type=[m["type"] for m in prediction_markerset],
+                            x=[m["x"] for m in prediction_markerset],
+                            y=[m["y"] for m in prediction_markerset],
+                            text=[m["text"] for m in prediction_markerset])
+            pred_markers = self.getMarkers(image=image,
+                                           x=[m["x"] for m in prediction_markerset],
+                                           y=[m["y"] for m in prediction_markerset],
+                                           type=[m["type"] for m in prediction_markerset])
+            self.setPredictions(marker=[m.id for m in pred_markers],
+                                 log_prob=[m["log_prob"] for m in predictionset],
+                                 prediction_vector=[m["prediction_vector"] for m in predictionset],
+                                 prediction_error=[m["prediction_error"] for m in predictionset])
+        if (debug_mode&0b100):
+            self.setMarkers(image=[m["image"] for m in measurement_markerset],
+                            type=[m["type"] for m in measurement_markerset],
+                            x=[m["x"] for m in measurement_markerset],
+                            y=[m["y"] for m in measurement_markerset],
+                            text=[m["text"] for m in measurement_markerset])
+            meas_markers = self.getMarkers(image=image,
+                                           x=[m["x"] for m in measurement_markerset],
+                                           y=[m["y"] for m in measurement_markerset],
+                                           type=[m["type"] for m in measurement_markerset])
+            self.setMeasurements(marker=[m.id for m in meas_markers],
+                                 log_prob=[m["log_prob"] for m in measurementset],
+                                 measurement_vector=[m["measurement_vector"] for m in measurementset],
+                                 measurement_error=[m.get("measurement_error", None) for m in measurementset])
 
         print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
 
 
-    def write_to_DB_cam(self, Tracker, image, i=None, text=None, db_tracker=None, db_model=None):
-        return self.write_to_DB(Tracker,image, i=i, text=text, cam_values=True,db_tracker=db_tracker, db_model=db_model)
+    def write_to_DB_cam(self, *args, **kwargs):
+        return self.write_to_DB(*args, cam_values=True, **kwargs)
+
+
+    def _CheckExtVersion(self):
+        try:
+            ext_version = self.db.execute_sql('SELECT value FROM meta WHERE key = "DataFileExtendedVersion"').fetchone()[0]
+        except (KeyError, peewee.DoesNotExist, TypeError):
+            ext_version = "0"
+        print("Open extended database with version", ext_version)
+        if int(ext_version) < int(self._current_ext_version):
+            self._migrateDBExtFrom(ext_version)
+        elif int(ext_version) > int(self._current_ext_version):
+            print("Warning Extended Database version %d is newer than PenguTrack version %d "
+                  "- please get an updated Version!"
+                  % (int(ext_version), int(self._current_ext_version)))
+            print("Proceeding on own risk!")
+        return ext_version
+
+    def _migrateDBExtFrom(self, version):
+        print("Migrating Ext-DB from version %s" % version)
+        nr_version = int(version)
+        self.db.get_conn().row_factory = dict_factory
+
+        if nr_version < 1:
+            print("\tto 1")
+            with self.db.transaction():
+                try:
+                    self.db.execute_sql(
+                        'CREATE TABLE "measurement_tmp" ("id" INTEGER NOT NULL PRIMARY KEY, "marker_id" INTEGER NOT NULL, "log_prob" REAL, "measurement_vector" BLOB NOT NULL, "measurement_error" BLOB, FOREIGN KEY ("marker_id") REFERENCES "marker" ("id") ON DELETE CASCADE)')
+                    # self.db.execute_sql(
+                    #     'CREATE TABLE "measurement_tmp" ("id" INTEGER NOT NULL PRIMARY KEY, "marker_id" INTEGER NOT NULL, "log" REAL NOT NULL, "x" REAL NOT NULL, "y" REAL NOT NULL, "z" REAL NOT NULL, FOREIGN KEY ("marker_id") REFERENCES "marker" ("id") ON DELETE CASCADE)')
+
+                    measurements = self.db.execute_sql('SELECT * from measurement').fetchall()
+                    for meas in measurements:
+                        self.db.execute_sql(
+                            'INSERT INTO measurement_tmp ("id", "marker_id", "log_prob", "measurement_vector", measurement_error"") VALUES(?, ?, ?, ?, ?)',
+                            [meas["id"], meas["marker_id"], meas["log"], np.array([meas.get("x",0),
+                                                                                           meas.get("y", 0),
+                                                                                           meas.get("z", 0)]), None])
+                    self.db.execute_sql('DROP TABLE measurement')
+                    self.db.execute_sql('ALTER TABLE measurement_tmp RENAME TO measurement')
+                    self.db.execute_sql('CREATE INDEX "measurement_marker_id" ON "measurement" ("marker_id");')
+                except peewee.OperationalError:
+                    raise
+                pass
+            self._SetExtVersion(1)
+
+        self.db.get_conn().row_factory = None
+
+
+    def _SetExtVersion(self, nr_new_version):
+        self.db.execute_sql("INSERT OR REPLACE INTO meta (id,key,value) VALUES ( \
+                                            (SELECT id FROM meta WHERE key='DataFileExtendedVersion'),'DataFileExtendedVersion',%s)" % str(
+            nr_new_version))
 
     def PT_tracks_from_db(self, type, get_measurements=True):
         Tracks = {}
