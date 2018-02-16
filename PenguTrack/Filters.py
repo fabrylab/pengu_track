@@ -60,7 +60,7 @@ class Filter(object):
         The time series of control-vectors assigned to this filter. The keys equal the time stamp.
 
     """
-    def __init__(self, model, no_dist=False, meas_dist=ss.uniform(), state_dist=ss.uniform()):
+    def __init__(self, model, no_dist=False, meas_dist=ss.uniform(), state_dist=ss.uniform(), prob_update=True):
         """
         This Class describes the abstract function of a filter in the pengu-track package.
         It is only meant for subclassing.
@@ -87,6 +87,7 @@ class Filter(object):
         self.Controls = {}
 
         self.NoDist = no_dist
+        self.ProbUpdate = bool(prob_update)
 
     def predict(self, u=None, i=None):
         """
@@ -609,8 +610,9 @@ class KalmanFilter(Filter):
         p = np.diag(np.ones(self.Model.State_dim) * max(measurement_variance))
         self.P_0 = p
 
-        super(KalmanFilter, self).__init__(model, meas_dist=ss.multivariate_normal(cov=self.R),
-                                           state_dist=ss.multivariate_normal(cov=self.P_0))
+        kwargs.update(dict(meas_dist=ss.multivariate_normal(cov=self.R),
+                           state_dist=ss.multivariate_normal(cov=self.P_0)))
+        super(KalmanFilter, self).__init__(model, **kwargs)
 
         self.X_error.update({0: p})
         self.Predicted_X_error.update({0: p})
@@ -1076,6 +1078,7 @@ class MultiFilter(Filter):
         self.CriticalIndex = None
         self.Probability_Gain = {}
         self.Probability_Gain_Dicts = {}
+        self.ProbUpdate = kwargs.get("prob_update", True)
 
     def predict(self, u=None, i=None):
         """
@@ -1260,7 +1263,8 @@ class MultiFilter(Filter):
         for j, k in enumerate(filter_keys):
             gain_dict.append([j, k])
             for m, meas in enumerate(measurements):
-                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas}, update=False)
+                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas},
+                                                                        update=self.ProbUpdate)
         gain_dict = dict(gain_dict)
         self.Probability_Gain_Dicts.update({i: gain_dict})
 
@@ -1389,7 +1393,7 @@ class MultiFilter(Filter):
         for k in self.Filters.keys():
             self.Filters[k].downdate(t=t)
 
-    def log_prob(self, keys=None):
+    def log_prob(self, **kwargs):
         """
         Function to calculate the probability measure by predictions, measurements and corresponding distributions.
 
@@ -1405,7 +1409,7 @@ class MultiFilter(Filter):
         """
         prob = 0
         for j in self.Filters.keys():
-            prob += self.Filters[j].log_prob(keys=keys)
+            prob += self.Filters[j].log_prob(**kwargs)
         return prob
 
 
@@ -1519,7 +1523,8 @@ class HungarianTracker(MultiFilter):
         for j, k in enumerate(filter_keys):
             gain_dict.append([j, k])
             for m, meas in enumerate(measurements):
-                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas}, update=False)
+                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas},
+                                                                        update=self.ProbUpdate)
         gain_dict = dict(gain_dict)
         self.Probability_Gain_Dicts.update({i: gain_dict})
 

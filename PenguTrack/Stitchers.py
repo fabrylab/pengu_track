@@ -52,43 +52,30 @@ class Stitcher(object):
             self.Tracks.update({i: tracks[i]})
 
     def load_tracks_from_clickpoints(self, path, type):
-        db = DataFileExtended(path)
+        self.db = DataFileExtended(path)
+        db=self.db
+        self.stiched_type = db.setMarkerType(name="Stitched", color="F0F0FF")
         tracks = db.getTracks(type=type)
+        all_markers = db.db.execute_sql('SELECT track_id, (SELECT sort_index FROM image WHERE image.id = image_id) as sort_index, x, y FROM marker WHERE type_id = ?', str(db.getMarkerType(name=type).id)).fetchall()
+        all_markers = np.array(all_markers)
 
         for track in tracks:
+            track = track.id
             n = len(self.track_dict)
-            self.track_dict.update({n: track.id})
-            self.Tracks.update({track.id: Filter(Model(state_dim=2, meas_dim=2))})
-            self.Tracks[track.id].Model.Measured_Variables=["PositionX","PositionY"]
-            X = dict([[m.image.sort_index, [[m.x], [m.y]]] for m in track.track_markers])
-            # M = dict([Measurement[m.measurement.PositionX,m.measurement.PositionY] for m in track.track_markers])
+            self.track_dict.update({n: track})
+            self.Tracks.update({track: Filter(Model(state_dim=2, meas_dim=2),
+                                                 no_dist=True,
+                                                 prob_update=False)})
+            self.Tracks[track].Model.Measured_Variables = ["PositionX", "PositionY"]
+            track_markers = all_markers[all_markers[:,0]==track]
+            X = dict(zip(track_markers.T[1].astype(int), track_markers[:, 2:, None]))
             for i in sorted(X):
                 try:
-                    self.Tracks[track.id].predict(i)
+                    self.Tracks[track].predict(i)
                 except:
                     pass
-                self.Tracks[track.id].update(i=i, z=Measurement(1., X[i]))
-        # time1 = time.clock()
-        # self.db = DataFileExtended(path)
-        # if self.db.getTracks(type=type)[0].markers[0].measurement is not None:
-        #     for track in self.db.getTracks(type=type):
-        #         self.Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
-        #         for m in track.markers:
-        #             meas = Measurement(1., [m.measurement[0].x,
-        #                                     m.measurement[0].y,
-        #                                     m.measurement[0].z])
-        #             self.Tracks[track.id].update(z=meas, i=m.image.sort_index)
-        # else:
-        #     for track in self.db.getTracks(type=type):
-        #         self.Tracks.update({track.id: Filter(VariableSpeed(dim=3))})
-        #         for m in track.markers:
-        #             meas = Measurement(1., [m.x,
-        #                                     m.y,
-        #                                     0])
-        #             self.Tracks[track.id].update(z=meas, i=m.image.sort_index)
-        # time2 = time.clock()
-        # self.db.db.close()
-        # print("Load Tracks Time:",time2 - time1)
+                self.Tracks[track].update(i=i, z=Measurement(1., X[i]))
+
     def pos_delta(self):
         first_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[self.Tracks.keys()[0]].Model.State_dim,1))
         last_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[self.Tracks.keys()[0]].Model.State_dim,1))
@@ -98,8 +85,8 @@ class Stitcher(object):
         return last_pos-first_pos
 
     def spatial_diff(self):
-        first_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[self.Tracks.keys()[0]].Model.State_dim,1))
-        last_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[self.Tracks.keys()[0]].Model.State_dim,1))
+        first_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[min(self.Tracks.keys())].Model.State_dim,1))
+        last_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[min(self.Tracks.keys())].Model.State_dim,1))
         for i in range(len(self.Tracks)):
             first_pos[:,i] = self.Tracks[self.track_dict[i]].X[min([k for k in self.Tracks[self.track_dict[i]].X])]
             last_pos[i,:] = self.Tracks[self.track_dict[i]].X[max([k for k in self.Tracks[self.track_dict[i]].X])]
@@ -145,8 +132,14 @@ class Stitcher(object):
                 pass
             elif t in self.Tracks[n_idx].X:
                 self.Tracks[idx].update(i=t, z=self.Tracks[n_idx].Measurements[t])
-        print("stitch!")
+        if self.db:
+            self.db.getTrack(idx).merge(n_idx)
+            iii = min(self.Tracks[n_idx].X)
+            m = self.Tracks[idx].X[iii]
+            self.db.setMarker(x=m[0], y=m[1], type=self.stiched_type, image=self.db.getImages(frame=iii)[0])
+        print("stitch!", i, j)
         self.Tracks.pop(n_idx)
+
 
     def stitch(self):
         pass
@@ -176,7 +169,6 @@ class Stitcher(object):
                               frame=[m["frame"] for m in small_set],
                               x=[m["x"] for m in small_set],
                               y=[m["y"] for m in small_set])
-
 
 class DistanceStitcher(Stitcher):
     def __init__(self, max_velocity, max_frames=3):
@@ -219,11 +211,6 @@ class expDistanceStitcher(Stitcher):
         cost[t.T[0].T>self.MaxDelay] = max_cost
         cost[t.T[0].T<0] = max_cost
         self._stitch_(cost, threshold=max_cost)
-
-
-
-
-
 
 class Heublein_Stitcher(Stitcher):
     """
@@ -459,4 +446,5 @@ class Heublein_Stitcher(Stitcher):
         print("stitch time:", end_time - start_time)
         print ("-----------Done with stitching-----------")
 
-
+# class Splitter(Stitcher):
+#     def

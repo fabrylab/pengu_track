@@ -10,7 +10,7 @@ import numpy as np
 from PenguTrack.Models import VariableSpeed
 
 
-def VariableSpeedTracker(dim=2, object_size=1., q=1., r=1.):
+def VariableSpeedTracker(dim=2, object_size=1., q=1., r=1., no_dist=False, prob_update=True):
     log_prob_threshold = -20.  # Threshold for track stopping
 
     # Initialize physical model as 2d variable speed model with 0.5 Hz frame-rate
@@ -24,7 +24,8 @@ def VariableSpeedTracker(dim=2, object_size=1., q=1., r=1.):
     Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
     # Initialize Filter/Tracker
     MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
-                           np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist, no_dist=True)
+                           np.diag(R), meas_dist=Meas_Dist, state_dist=State_Dist,
+                           no_dist=no_dist, prob_update=prob_update)
     MultiKal.LogProbabilityThreshold = log_prob_threshold
 
     return MultiKal
