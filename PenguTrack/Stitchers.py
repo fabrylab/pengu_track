@@ -176,7 +176,7 @@ class Stitcher(object):
 
         track_set = []
         for track in self.Tracks:
-            db_track = db.setTrack(type=type.name)
+            db_track = db.setTrack(type=type)
             for i in self.Tracks[track].X:
                 meas = self.Tracks[track].Measurements[i]
                 pos = self.Tracks[track].Model.vec_from_meas(meas)
