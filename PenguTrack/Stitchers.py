@@ -76,6 +76,31 @@ class Stitcher(object):
                     pass
                 self.Tracks[track].update(i=i, z=Measurement(1., X[i]))
 
+    def load_measurements_from_clickpoints(self, path, type, measured_variables=["PositionX", "PositionY"]):
+        self.db = DataFileExtended(path)
+        db=self.db
+        self.stiched_type = db.setMarkerType(name="Stitched", color="F0F0FF")
+        tracks = db.getTracks(type=type)
+        all_markers = db.db.execute_sql('SELECT track_id, (SELECT sort_index FROM image WHERE image.id = image_id) as sort_index, measurement.x, measurement.y, z FROM marker JOIN measurement ON marker.id = measurement.marker_id WHERE type_id = ?', str(db.getMarkerType(name=type).id)).fetchall()
+        all_markers = np.array(all_markers)
+
+        for track in tracks:
+            track = track.id
+            n = len(self.track_dict)
+            self.track_dict.update({n: track})
+            self.Tracks.update({track: Filter(Model(state_dim=2, meas_dim=2),
+                                                 no_dist=True,
+                                                 prob_update=False)})
+            self.Tracks[track].Model.Measured_Variables = measured_variables
+            track_markers = all_markers[all_markers[:,0]==track]
+            X = dict(zip(track_markers.T[1].astype(int), track_markers[:, 2:, None]))
+            for i in sorted(X):
+                try:
+                    self.Tracks[track].predict(i)
+                except:
+                    pass
+                self.Tracks[track].update(i=i, z=Measurement(1., X[i]))
+
     def pos_delta(self):
         first_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[self.Tracks.keys()[0]].Model.State_dim,1))
         last_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[self.Tracks.keys()[0]].Model.State_dim,1))
@@ -156,7 +181,7 @@ class Stitcher(object):
                 meas = self.Tracks[track].Measurements[i]
                 pos = self.Tracks[track].Model.vec_from_meas(meas)
                 pos = function(pos)
-                track_set.append(dict(track=db_track.id, type=type.name, frame=i, x=pos[1], y=pos[0]))
+                track_set.append(dict(track=db_track.id, type=type, frame=i, x=pos[1], y=pos[0]))
         try:
             db.setMarkers(track=[m["track"] for m in track_set],
                                frame=[m["frame"] for m in track_set],
