@@ -407,8 +407,7 @@ class Heublein_Stitcher(Stitcher):
         """
         Uses all the functions and runs the main process
         """
-        self.end_frame = max([max(track.Measurements) for track in self.Tracks.values()])
-        print (self.end_frame)
+        self.end_frame = max([max(track.Measurements) for track in self.Tracks.values() if len(track.Measurements)])
         start_time = time.clock()
         len_test = 0
         len_test2 = 1
