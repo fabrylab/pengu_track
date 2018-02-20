@@ -29,14 +29,14 @@ from .DataFileExtended import DataFileExtended
 from scipy.optimize import linear_sum_assignment
 import time
 import peewee
-
-
+from copy import copy
 
 class Stitcher(object):
     def __init__(self):
         self.Tracks = {}
         self.db = None
         self.track_dict = {}
+        self.name = "Stitcher"
 
     def add_PT_Tracks(self, tracks):
         for track in tracks:
@@ -54,7 +54,7 @@ class Stitcher(object):
     def load_tracks_from_clickpoints(self, path, type):
         self.db = DataFileExtended(path)
         db=self.db
-        self.stiched_type = db.setMarkerType(name="Stitched", color="F0F0FF")
+        self.stiched_type = db.setMarkerType(name=self.name, color="F0F0FF")
         tracks = db.getTracks(type=type)
         all_markers = db.db.execute_sql('SELECT track_id, (SELECT sort_index FROM image WHERE image.id = image_id) as sort_index, x, y FROM marker WHERE type_id = ?', str(db.getMarkerType(name=type).id)).fetchall()
         all_markers = np.array(all_markers)
@@ -200,6 +200,7 @@ class DistanceStitcher(Stitcher):
             super(DistanceStitcher, self).__init__()
             self.MaxV = float(max_velocity)
             self.MaxF = int(max_frames)
+            self.name ="DistanceStitcher"
 
     def stitch(self):
         s = self.spatial_diff()
@@ -224,6 +225,7 @@ class expDistanceStitcher(Stitcher):
         self.MaxDist=float(max_distance)
         self.MaxDelay=float(max_delay)
         self.Dim = dim
+        self.name ="expDistanceStitcher"
 
     def stitch(self):
         s = self.pos_delta()
@@ -281,6 +283,7 @@ class Heublein_Stitcher(Stitcher):
         self.a5 = float(a5)
 
         self.end_frame = None
+        self.name ="Heublein_Stitcher"
 
     def __ndargmin__(self,array):
         """
@@ -470,5 +473,95 @@ class Heublein_Stitcher(Stitcher):
         print("stitch time:", end_time - start_time)
         print ("-----------Done with stitching-----------")
 
-# class Splitter(Stitcher):
-#     def
+class Splitter(Stitcher):
+    def __init__(self):
+        super(Splitter, self).__init__()
+        self.name = "Splitter"
+    def v(self):
+        T = set()
+        for track in self.Tracks.values():
+            T.update(track.X.keys())
+        t_dict=dict(enumerate(T))
+        x_1 = np.zeros((len(self.track_dict), len(t_dict), 2, 1))
+
+        for i in range(len(self.Tracks)):
+            X = self.Tracks[self.track_dict[i]].X
+            if len(X)<1:
+                continue
+            x_1[i, sorted(X.keys())[1:]] = np.array(list(X.values()), dtype=float)[1:,:2]-np.array(list(X.values()), dtype=float)[:-1,:2]
+        return x_1.T[0].T
+
+    def pos(self):
+        return np.cumsum(self.v(), axis=1)
+
+    def abs_v(self):
+        return np.linalg.norm(self.v(), axis=-1)
+
+    def abs_pos(self):
+        return np.linalg.norm(self.pos(), axis=-1)
+
+    def switch_mode(self):
+        # sm = np.array([np.abs(np.convolve(np.abs(x - np.cumsum(x) / np.arange(len(x))),
+        #                              [-0.1, 0., 0., 0., 0., 0.1], mode="same")) for x in self.abs_pos()])
+        sm = np.abs([np.convolve(x, [ 1,  2,  3,  0, -3, -6, -3,  0,  3,  2,  1], mode="same") for x in self.abs_pos()])
+        return sm
+
+    def _temp_local_max_(self, array, threshold):
+        mat = np.array(array)
+        mat[mat<threshold] = np.amin(mat)
+        b = np.zeros_like(mat, dtype=bool)
+        b[:, :-1] = mat[:, 1:] < mat[:, :-1]
+        b[:, 1:] &= mat[:, :-1] < mat[:, 1:]
+        return np.where(b)
+
+    def _split_(self, row, collumn):
+        for r,c in zip(row,collumn):
+            track_id = self.track_dict[r]
+            time = c
+            new_id = max(self.Tracks.keys())+1
+            new_track = copy(self.Tracks[track_id])
+            self.Tracks.update({new_id: new_track})
+            times = list(self.Tracks[track_id].X.keys())
+            for t in times:
+                if t<time:
+                    new_track.downfilter(t)
+                else:
+                    self.Tracks[track_id].downfilter(t)
+            if self.db is not None:
+                db_track = self.db.getTrack(track_id)
+                db_times = np.array([m.image.sort_index for m in db_track.markers])
+                if len(db_times)<1:
+                    pass
+                else:
+                    db_time = db_times[np.argmin((db_times-time)**2)]
+                    m = self.db.getMarkers(track=track_id, frame=db_time)[0]
+                    self.db.setMarker(x=m.x, y=m.y, frame=db_time, type=self.stiched_type)
+                    db_track.split(m)
+                print("split")
+
+    # def temporal_delta(self):
+    #     e = self.existence()
+    #     o = (e.astype(int)-(~e).astype(int))
+    #     out = np.cumsum(o, axis=1)
+    #     return (out-np.amin(out, axis=1)) *o
+    #     # T = set()
+    #     # for track in self.Tracks:
+    #     #     T.update(self.Tracks[track].X.keys())
+    #     # temporal_diff = np.ones((len(self.Tracks), int(max(T)-min(T))))*np.arange(int(min(T)), int(max(T)))
+    #     # temporal_diff -= temporal_diff[:, 0][:, None]
+    #     # return temporal_diff
+
+    def existence(self):
+        T = set()
+        for track in self.Tracks.values():
+            T.update(track.X.keys())
+        t_dict=dict(enumerate(T))
+        e = np.zeros((len(self.track_dict), len(t_dict), 1), dtype=bool)
+
+        for i in range(len(self.Tracks)):
+            X = self.Tracks[self.track_dict[i]].X
+            e[i, sorted(X.keys())] = True
+        return e
+
+
+
