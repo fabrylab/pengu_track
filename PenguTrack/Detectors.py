@@ -2979,16 +2979,23 @@ class EmperorDetector(FlowDetector):
             raise ValueError("Initial Image must be a RGB or Gray image!")
         self.update(np.ones_like(image_int, dtype=bool), image_int)
 
-    def detect(self, image, *args, **kwargs):
-        image = np.array(image)
-        if len(image.shape) == 3:
-            image_int = rgb2gray(image)
-        elif len(image.shape) == 2:
-            image_int = image
+    def detect(self, image0, image1, *args, **kwargs):
+        image0 = np.array(image0)
+        image1 = np.array(image1)
+        if len(image0.shape) == 3:
+            image0_int = rgb2gray(image0)
+        elif len(image0.shape) == 2:
+            image0_int = image0
         else:
             raise ValueError("Input Image must be a RGB or Gray image!")
-        flow = super(EmperorDetector, self).detect(image_int, *args, **kwargs)
-        if not flow.shape == image.shape[:2]+(2,):
+        if len(image1.shape) == 3:
+            image1_int = rgb2gray(image1)
+        elif len(image1.shape) == 2:
+            image1_int = image1
+        else:
+            raise ValueError("Input Image must be a RGB or Gray image!")
+        flow = super(EmperorDetector, self).detect(image1_int, *args, **kwargs)
+        if not flow.shape == image1.shape[:2]+(2,):
             raise ValueError("Input Flow must be of shape [M,N,2]! (M,N being the image dimensions)")
         win_size = self.WinSize
         flowX = flow.T[0].T
@@ -3003,8 +3010,8 @@ class EmperorDetector(FlowDetector):
         window_size = int(np.round(np.round(np.sqrt(self.Area))/np.pi)*2 + 1)*3
 
         measurements = self.RegionDetector.detect(
-            image_int > self.LuminanceThreshold*threshold_niblack(image_int, window_size=window_size)
-            , image_int)
+            image0_int > self.LuminanceThreshold*threshold_niblack(image_int, window_size=window_size)
+            , image0_int)
 
         indices, points_x, points_y = np.array([[i, m.PositionX, m.PositionY] for i, m in enumerate(measurements)],
                                                dtype=object).T
