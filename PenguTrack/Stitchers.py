@@ -444,7 +444,7 @@ class Heublein_Stitcher(Stitcher):
                 elif start < end:
                     # Reposition Marker
                     for frame in track2.Measurements:
-                        if track1.Measurements.has_key(frame):
+                        if frame in track1.Measurements:
                             meas1 = track1.Measurements[frame]
                             meas2 = track2.Measurements[frame]
                             try:
