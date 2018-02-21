@@ -636,13 +636,21 @@ class DataFileExtended(clickpoints.DataFile):
                 # Case 2: we want to see the prediction markers
                 if i in Tracker.Filters[k].Predicted_X.keys() and (debug_mode&0b010):
                     prediction = Tracker.Model.measure(Tracker.Filters[k].Predicted_X[i])
-                    pred_x = prediction[Tracker.Model.Measured_Variables.index("PositionX")]
-                    pred_y = prediction[Tracker.Model.Measured_Variables.index("PositionY")]
+                    try:
+                        prediction_err = Tracker.Model.measure(Tracker.Filters[k].Predicted_X_error[i])
+                    except KeyError:
+                        prediction_err = np.zeros((len(prediction), len(prediction)))
+                    i_x = Tracker.Model.Measured_Variables.index("PositionX")
+                    i_y = Tracker.Model.Measured_Variables.index("PositionY")
+                    pred_x = prediction[i_x]
+                    pred_y = prediction[i_y]
+
+                    pred_err = (prediction_err[i_x,i_x]**2+prediction_err[i_y,i_y]**2)**0.5
 
                     # pred_marker = self.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
                     #                            type=self.prediction_marker_type)
                     prediction_markerset.append(dict(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
-                                               type=self.prediction_marker_type))
+                                               type=self.prediction_marker_type, style='{"shape":"circle","transform": "image","scale":%s}'%(2*pred_err)))
                     predictionset.append(dict(log_prob=prob,
                                               prediction_vector=Tracker.Filters[k].Predicted_X[i],
                                               prediction_error=Tracker.Filters[k].Predicted_X_error.get(i, None)))
@@ -697,7 +705,8 @@ class DataFileExtended(clickpoints.DataFile):
                             type=[m["type"] for m in prediction_markerset],
                             x=[m["x"] for m in prediction_markerset],
                             y=[m["y"] for m in prediction_markerset],
-                            text=[m["text"] for m in prediction_markerset])
+                            text=[m["text"] for m in prediction_markerset],
+                            style=[m["style"] for m in prediction_markerset])
             pred_markers = self.getMarkers(image=image,
                                            x=[m["x"] for m in prediction_markerset],
                                            y=[m["y"] for m in prediction_markerset],
