@@ -169,7 +169,7 @@ class Stitcher(object):
     def stitch(self):
         pass
 
-    def save_tracks_to_db(self, path, type, function=None):
+    def save_tracks_to_db(self, path, type, function=None, flip=False):
         if function is None:
             function = lambda x : x
         db = DataFileExtended(path)
@@ -181,7 +181,10 @@ class Stitcher(object):
                 meas = self.Tracks[track].Measurements[i]
                 pos = self.Tracks[track].Model.vec_from_meas(meas)
                 pos = function(pos)
-                track_set.append(dict(track=db_track.id, type=type, frame=i, x=pos[1], y=pos[0]))
+                if flip:
+                    track_set.append(dict(track=db_track.id, type=type, frame=i, x=pos[0], y=pos[1]))
+                else:
+                    track_set.append(dict(track=db_track.id, type=type, frame=i, x=pos[1], y=pos[0]))
         try:
             db.setMarkers(track=[m["track"] for m in track_set],
                                frame=[m["frame"] for m in track_set],
@@ -332,6 +335,8 @@ class Heublein_Stitcher(Stitcher):
         H_Tracks = []
         for track in self.Tracks:
             track_data = self.Tracks[track]
+            if len(track_data.X)<1:
+                continue
             t_start = min(track_data.X.keys())
             t_end = max(track_data.X.keys())
             meas_start = self.Tracks[track].Measurements[t_start]
