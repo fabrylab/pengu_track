@@ -607,7 +607,7 @@ class KalmanFilter(Filter):
         self.C = self.Model.Measurement_Matrix
         self.G = self.Model.Evolution_Matrix
 
-        p = np.diag(np.ones(self.Model.State_dim) * max(measurement_variance))
+        p = np.dot(np.dot(self.C.T, self.R_0), self.C) + np.dot(np.dot(self.G, self.Q), self.G.T)#np.diag(np.ones(self.Model.State_dim) * max(measurement_variance))
         self.P_0 = p
 
         kwargs.update(dict(meas_dist=ss.multivariate_normal(cov=self.R),
