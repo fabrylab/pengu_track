@@ -26,10 +26,14 @@ from clickpoints.DataFile import noNoneDict, setFields, addFilter, PY3, packToDi
 import numpy as np
 import PenguTrack
 from PenguTrack.Filters import Filter as PT_Filter
+import PenguTrack.Filters
 from PenguTrack.Detectors import Measurement as PT_Measurement
 from PenguTrack.Models import VariableSpeed
 import ast
 import scipy.stats as ss
+import json
+import inspect
+
 try:
     from cStringIO import StringIO
 except ImportError:
@@ -38,37 +42,51 @@ except ImportError:
     except ImportError:
         import io
 
-def parse_dict(dictionary):
-    out = dict(dictionary)
-    for entry in dictionary:
-        if type(dictionary[entry]) not in [str, int, float, tuple, list, dict, bool, type(None)]:
-            if str(type(dictionary[entry])).count("scipy.stats"):
-                dist = dictionary[entry]
-                out[entry] = "ss."+str(dist.__class__).split("'")[1].split(".")[-1].replace(
-                    "_frozen", "") + "(mean=%s,cov=%s)" % (dist.mean, dist.cov)
-        else:
-            out[entry]=str(dictionary[entry])
-            # print(dictionary[entry])
-            # print("----------dict------------")
-    return str(out)
+def parse_list(x):
+    if listable(x):
+        return [parse(xx) for xx in x]
+    else:
+        raise TypeError("Type %s can not be parsed!"%type(x))
 
+def parse_dict(x):
+    if listable(x.keys()):
+        return dict([[xx,parse(x[xx])] for xx in x])
+    else:
+        raise TypeError("Type %s can not be parsed!"%type(x))
 
-def parse_list(input):
-    out = list(input)
-    for i,entry in enumerate(input):
-        if type(entry) not in [str, int, float, tuple, list, dict, bool, type(None)]:
-            if str(type(entry)).count("scipy.stats"):
-                out[i] = parse_dist(entry)
-            # print(entry)
-            # print("--------- list-------------")
-    return str(out)
+def parse(x):
+    if type(x) in [str, float, int, bool]:
+        return x
+    elif type(x) == np.ndarray:
+        return float(x)
+    elif type(x) == list:
+        return parse_list(x)
+    elif type(x) == dict:
+        return parse_dict(x)
+    elif listable(x):
+        return [parse(xx) for xx in x]
+    elif x is None:
+        return None
+    else:
+        raise TypeError("Type %s can not be parsed!"%type(x))
+
+def listable(x):
+    try:
+        list(x)
+    except TypeError:
+        return False
+    else:
+        return len(list(x))>0
+
+def is_dist(x):
+    return str(type(x)).count("scipy.stats")
 
 
 def parse_dist(dist):
-    out = str(dist.__class__).split("'")[1].split(".")[-1].replace(
-        "_frozen", "")
-    # out += "(mean=%s,cov=%s)" % (dist.mean, dist.cov)
-    return out
+    return [parse_dist_name(dist), parse_dist_dict(dist.__dict__)]
+
+def parse_dist_name(dist):
+    return str(dist.__class__).split("'")[1].split(".")[-1].replace("_frozen", "")
 
 
 def parse_dist_dict(dist_dict):
@@ -125,57 +143,26 @@ class MatrixField(peewee.BlobField):
 class ListField(peewee.TextField):
     """A database field, that"""
     def db_value(self, value):
-        value=str(value)
+        value=json.dumps(parse_list(value))
         if PY3:
             return super(ListField, self).db_value(value)
         return super(ListField, self).db_value(peewee.binary_construct(value))
+
     def python_value(self, value):
-        value = super(ListField, self).python_value(value)
-        value = self.parse2python(value)
-        if not PY3:
-            value = str(value)
-            value = value.replace("array","np.array")
-            return eval(value)
-        return eval(io.BytesIO(value))
+        return json.loads(super(ListField, self).python_value(value))
 
-    def parse2python(self,value):
-        return value
-
-    def parse2db(self, value):
-        # for v in value:
-        #     #strings, numbers, tuples, lists, dicts, booleans, and None
-        #     if type(v) not in [str, int, float, tuple, list, dict, bool, type(None)]:
-        #         if type(v) == np.ndarray:
-        #             pass
-        #         if str(v).contains("PenguTrack.Filters"):
-        #             v = str(v).split("PenguTrack.Filters")[1].split(" ")[0]
-        #     else:
-        #         v = str(v)
-        # print(value)
-        return value
 
 class DictField(peewee.TextField):
     """A database field, that"""
     def db_value(self, value):
-        value = self.parse2db(value)
-        # value.pop("state_dist", None)
-        # value.pop("meas_dist", None)
-        value=str(value)
+        value = json.dumps(parse_dict(value))
         if PY3:
             return super(DictField, self).db_value(value)
         return super(DictField, self).db_value(peewee.binary_construct(value))
-    def python_value(self, value):
-        super(DictField, self).python_value(value)
-        value = str(value)
-        value = value.replace("array","np.array")
-        out = eval(value)
-        return dict([[v, eval(out[v])] for v in out])
 
-    def parse2db(self, value):
-        # for v in value:
-        #     if type(value[v]) not in [list, str, int, float, np.ndarray]:
-        #         print(type(value[v]), type(v))
-        return value
+    def python_value(self, value):
+        return json.loads(super(DictField, self).python_value(value))
+
 
 class NumDictField(peewee.BlobField):
     """ A database field, that """
@@ -247,24 +234,6 @@ class DataFileExtended(clickpoints.DataFile):
         # Marker.create_table()
         # self.table_marker = Marker
 
-
-        """Tracker Entry"""
-        class Tracker(db.base_model):
-            # track = peewee.ForeignKeyField(self.table_track, related_name="tracker", on_delete="CASCADE")
-            tracker_class = peewee.TextField()
-            filter_class = peewee.TextField()
-            # model = peewee.ForeignKeyField(self.table_model, related_name="tracker", on_delete='CASCADE')
-            filter_threshold = peewee.IntegerField()
-            log_probability_threshold = peewee.FloatField()
-            measurement_probability_threshold = peewee.FloatField()
-            assignment_probability_threshold = peewee.FloatField()
-            filter_args = ListField()
-            filter_kwargs = DictField()
-
-        if "tracker" not in db.db.get_tables():
-            Tracker.create_table()
-        self.table_tracker = Tracker
-
         """Dist Entry"""
         class Distribution(db.base_model):
             name = peewee.TextField()
@@ -294,6 +263,33 @@ class DataFileExtended(clickpoints.DataFile):
         if "model" not in db.db.get_tables():
             Model.create_table()
         self.table_model = Model
+
+
+        """Tracker Entry"""
+        class Tracker(db.base_model):
+            # track = peewee.ForeignKeyField(self.table_track, related_name="tracker", on_delete="CASCADE")
+            tracker_class = peewee.TextField()
+            filter_class = peewee.TextField()
+            # model = peewee.ForeignKeyField(self.table_model, related_name="tracker", on_delete='CASCADE')
+            model = peewee.ForeignKeyField(db.table_model,
+                                           related_name='tracker_model',
+                                           on_delete='CASCADE')
+            filter_threshold = peewee.IntegerField()
+            log_probability_threshold = peewee.FloatField()
+            measurement_probability_threshold = peewee.FloatField()
+            assignment_probability_threshold = peewee.FloatField()
+            filter_args = ListField()
+            filter_kwargs = DictField()
+
+            def __getattribute__(self, item):
+                if item == "tracks":
+                    return .select().join(self.table_filter).where(self.table_filter.tracker_id==self.id)
+                return super(Tracker, self).__getattribute__(item)
+
+        if "tracker" not in db.db.get_tables():
+            Tracker.create_table()
+        self.table_tracker = Tracker
+
 
         """Filter Entry"""
         class Filter(db.base_model):
@@ -387,7 +383,7 @@ class DataFileExtended(clickpoints.DataFile):
     #     return item
 
 
-    def setTracker(self,tracker_class="", filter_class="",# model=None,
+    def setTracker(self,tracker_class="", filter_class="", model=None,
                filter_threshold=3,log_probability_threshold=0.,
                measurement_probability_threshold=0.0,
                assignment_probability_threshold=0.0,
@@ -400,8 +396,14 @@ class DataFileExtended(clickpoints.DataFile):
                 item = self.table_tracker()
         else:
             item = self.table_tracker()
+
+        for k in filter_kwargs:
+            if is_dist(filter_kwargs[k]):
+                filter_kwargs[k] = parse_dist(filter_kwargs[k])
+
         dictionary.update(dict(tracker_class=tracker_class,
                                filter_class=filter_class,
+                               model=model,
                                filter_threshold=filter_threshold,
                                log_probability_threshold=log_probability_threshold,
                                measurement_probability_threshold=measurement_probability_threshold,
@@ -413,10 +415,10 @@ class DataFileExtended(clickpoints.DataFile):
         return item
 
 
-    def getTrackers(self, tracker_class="", filter_class="",
-                    filter_threshold=3,log_probability_threshold=0.,
-                    measurement_probability_threshold=0.0,
-                    assignment_probability_threshold=0.0,
+    def getTrackers(self, tracker_class=None, filter_class=None,
+                    filter_threshold=None,log_probability_threshold=None,
+                    measurement_probability_threshold=None,
+                    assignment_probability_threshold=None,
                     id=None):
         query = self.table_tracker.select()
         query = addFilter(query, id, self.table_tracker.id)
@@ -555,9 +557,9 @@ class DataFileExtended(clickpoints.DataFile):
                       meas_dim=model.Meas_dim, evolution_dim=model.Evolution_dim,
                       state_matrix=model.State_Matrix, control_matrix=model.Control_Matrix,
                       measurement_matrix=model.Measurement_Matrix, evolution_matrix=model.Evolution_Matrix)
-        tracker_item = self.setTracker(tracker_class=tracker.__class__,
-                                       filter_class=tracker.Filter_Class,
-                                       # model=model_item,
+        tracker_item = self.setTracker(tracker_class=parse_tracker_class(tracker.__class__),
+                                       filter_class=parse_filter_class(tracker.Filter_Class),
+                                       model=model_item,
                         filter_threshold=tracker.FilterThreshold,
                         log_probability_threshold=tracker.LogProbabilityThreshold,
                         measurement_probability_threshold=tracker.MeasurementProbabilityThreshold,
@@ -596,9 +598,9 @@ class DataFileExtended(clickpoints.DataFile):
                     db_filter = db_track.filter_track[0]
                 else:
                     new = "new "
-                    db_dist_s = self.setDistribution(name=parse_dist(Tracker.Filters[k].State_Distribution),
+                    db_dist_s = self.setDistribution(name=parse_dist_name(Tracker.Filters[k].State_Distribution),
                                                      **parse_dist_dict(Tracker.Filters[k].State_Distribution.__dict__))
-                    db_dist_m = self.setDistribution(name=parse_dist(Tracker.Filters[k].Measurement_Distribution),
+                    db_dist_m = self.setDistribution(name=parse_dist_name(Tracker.Filters[k].Measurement_Distribution),
                                                      **parse_dist_dict(Tracker.Filters[k].Measurement_Distribution.__dict__))
                     db_filter_model = self.setModel(state_dim=db_model.state_dim, control_dim=db_model.control_dim,
                                                     meas_dim=db_model.meas_dim, evolution_dim=db_model.evolution_dim,
@@ -870,8 +872,8 @@ class DataFileExtended(clickpoints.DataFile):
         db_trackers = self.getTrackers()
         out = []
         for db_tracker in db_trackers:
-            tracker_class = eval("PenguTrack.Filters."+db_tracker.tracker_class)
-            filter_class = eval("PenguTrack.Filters."+db_tracker.filter_class)
+            tracker_class = dict(inspect.getmembers(PenguTrack.Filters))[db_tracker.tracker_class]
+            filter_class = dict(inspect.getmembers(PenguTrack.Filters))[db_tracker.filter_class]
             model = self.model_from_db(db_tracker.model)
             # print(db_tracker.filter_args)
             # print(db_tracker.filter_kwargs)

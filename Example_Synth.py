@@ -105,11 +105,15 @@ if __name__ == '__main__':
     # MultiKal.LogProbabilityThreshold = -3.
     # Physical Model (used for predictions)
     from PenguTrack.Models import VariableSpeed
+    from PenguTrack.DataFileExtended import DataFileExtended
 
     Generator = SyntheticDataGenerator(10, 10., 1., VariableSpeed(dim=2, timeconst=0.5, damping=1.), loose=True)
 
     MultiKal = track(MultiKal, Generator)
 
+
+    db = DataFileExtended("./synth_data.cdb", "r")
+    Tracker = db.tracker_from_db()
     # def retrieve_db():
     #     # Extended Clickpoints Database for usage with pengutack
     #     from PenguTrack.DataFileExtended import DataFileExtended
