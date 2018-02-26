@@ -101,26 +101,53 @@ class Stitcher(object):
                     pass
                 self.Tracks[track].update(i=i, z=Measurement(1., X[i]))
 
-    def pos_delta(self):
-        first_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[self.Tracks.keys()[0]].Model.State_dim,1))
-        last_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[self.Tracks.keys()[0]].Model.State_dim,1))
+    def vel_delta(self, kernel=np.ones(1)):
+        first_vel = np.zeros(
+            (len(self.Tracks), len(self.Tracks), self.Tracks[min(self.Tracks.keys())].Model.State_dim, 1))
+        last_vel = np.zeros(
+            (len(self.Tracks), len(self.Tracks), self.Tracks[min(self.Tracks.keys())].Model.State_dim, 1))
         for i in range(len(self.Tracks)):
-            first_pos[:,i] = self.Tracks[self.track_dict[i]].X[min([k for k in self.Tracks[self.track_dict[i]].X])]
-            last_pos[i,:] = self.Tracks[self.track_dict[i]].X[max([k for k in self.Tracks[self.track_dict[i]].X])]
+            X = self.Tracks[self.track_dict[i]].X
+            if len(X)<1:
+                continue
+            frames = sorted(list(X.keys()))
+            l = min(len(kernel), len(frames))
+            first_vals = np.array([X[k] for k in frames[-1-l:]])/np.array([k for k in frames[-1-l:]])
+            last_vals = np.array([X[k] for k in frames[:l+1]])/np.array([k for k in frames[:l+1]])
+
+            first_vals = first_vals[1:]-first_vals[:-1]
+            last_vals = last_vals[1:]-last_vals[:-1]
+
+            first_vel[:,i] = np.array([np.dot(val, kernel[:l]) for val in first_vals.T[0]]).T[:, None]
+            last_vel[i:,] = np.array([np.dot(val, kernel[:l]) for val in last_vals.T[0]]).T[:, None]
+        return last_vel-first_vel
+
+    def pos_delta(self, kernel=np.ones(1)):
+        first_pos = np.zeros(
+            (len(self.Tracks), len(self.Tracks), self.Tracks[min(self.Tracks.keys())].Model.State_dim, 1))
+        last_pos = np.zeros(
+            (len(self.Tracks), len(self.Tracks), self.Tracks[min(self.Tracks.keys())].Model.State_dim, 1))
+        for i in range(len(self.Tracks)):
+            X = self.Tracks[self.track_dict[i]].X
+            if len(X)<1:
+                continue
+            frames = sorted(list(X.keys()))
+            l = min(len(kernel), len(frames))
+            first_vals = np.array([X[k] for k in frames[:l]])
+            last_vals = np.array([X[k] for k in frames[-l:]])
+            first_pos[:,i] = np.array([np.dot(val, kernel[:l]) for val in first_vals.T[0]]).T[:, None]
+            last_pos[i,:] = np.array([np.dot(val, kernel[:l]) for val in last_vals.T[0]]).T[:, None]
         return last_pos-first_pos
 
     def spatial_diff(self):
-        first_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[min(self.Tracks.keys())].Model.State_dim,1))
-        last_pos = np.zeros((len(self.Tracks), len(self.Tracks), self.Tracks[min(self.Tracks.keys())].Model.State_dim,1))
-        for i in range(len(self.Tracks)):
-            first_pos[:,i] = self.Tracks[self.track_dict[i]].X[min([k for k in self.Tracks[self.track_dict[i]].X])]
-            last_pos[i,:] = self.Tracks[self.track_dict[i]].X[max([k for k in self.Tracks[self.track_dict[i]].X])]
-        return np.linalg.norm(last_pos-first_pos, axis=(2,3))
+        return np.linalg.norm(self.pos_delta(), axis=(2,3))
 
     def temporal_diff(self):
         first_time = np.zeros((len(self.Tracks), len(self.Tracks)))
         last_time = np.zeros((len(self.Tracks), len(self.Tracks)))
         for i in range(len(self.Tracks)):
+            if len(self.Tracks[self.track_dict[i]].X) <1:
+                continue
             first_time[:,i] = min([k for k in self.Tracks[self.track_dict[i]].X])
             last_time[i,:] = max([k for k in self.Tracks[self.track_dict[i]].X])
         return first_time-last_time
@@ -216,6 +243,25 @@ class DistanceStitcher(Stitcher):
         cost[np.abs(t)>self.MaxF]=self.MaxV
         self._stitch_(cost, threshold=self.MaxV)
 
+class MotionStitcher(Stitcher):
+    def __init__(self, window_length, max_diff, max_distance=np.inf, max_delay=np.inf):
+        self.kernel = np.ones(int(window_length))/float(window_length)
+        super(MotionStitcher, self).__init__()
+        self.max_diff = float(max_diff)
+        self.MaxDist=float(max_distance)
+        self.MaxDelay=float(max_delay)
+
+    def stitch(self):
+        cost = np.linalg.norm(self.vel_delta(kernel=self.kernel), axis=(2,3))
+        s = self.pos_delta()
+        s_abs = np.linalg.norm(s,axis=(2,3))
+        t = self.temporal_diff()[:,:,None]
+        cost[cost>self.max_diff] = self.max_diff
+        cost[np.isnan(cost)] = self.max_diff
+        cost[s_abs>self.MaxDist] =  self.max_diff
+        cost[t.T[0].T>self.MaxDelay] =  self.max_diff
+        self._stitch_(cost, threshold=self.max_diff)
+
 class expDistanceStitcher(Stitcher):
     def __init__(self, k, w, max_distance=np.inf, max_delay=np.inf, dim=(1,)):
         super(expDistanceStitcher, self).__init__()
@@ -235,7 +281,7 @@ class expDistanceStitcher(Stitcher):
         s_abs = np.linalg.norm(s,axis=(2,3))
         t = self.temporal_diff()[:,:,None]
         cost = np.exp((np.dot(self.K, np.abs(s)) + self.W*np.abs(t)))[0].T[0].T
-        max_cost =  max_cost = np.exp((np.dot(self.K, np.abs(self.MaxDist)) + self.W * np.abs(self.MaxDelay)))[0,0]
+        max_cost = np.exp((np.dot(self.K, np.abs(self.MaxDist)) + self.W * np.abs(self.MaxDelay)))[0,0]
         cost[np.diag(np.ones(len(cost), dtype=bool))] = max_cost
         cost[s_abs>self.MaxDist] = max_cost
         cost[t.T[0].T>self.MaxDelay] = max_cost
