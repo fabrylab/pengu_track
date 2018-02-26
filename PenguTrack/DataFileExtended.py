@@ -196,8 +196,10 @@ class DataFileExtended(clickpoints.DataFile):
         clickpoints.DataFile.__init__(self, *args, **kwargs)
         # Define ClickPoints Marker
         self.detection_marker_type = self.setMarkerType(name="Detection_Marker", color="#FF0000", style='{"scale":1.2}')
-        self.track_marker_type = self.setMarkerType(name="Track_Marker", color="#00FF00", mode=self.TYPE_Track)
-        self.prediction_marker_type = self.setMarkerType(name="Prediction_Marker", color="#0000FF")
+        self.track_marker_type = self.setMarkerType(name="Track_Marker", color="#00FF00", mode=self.TYPE_Track,
+                                                    style='{"shape":"circle","transform": "image","color":"hsv"}')
+        self.prediction_marker_type = self.setMarkerType(name="Prediction_Marker", color="#0000FF",
+                                                         style='{"shape": "circle", "transform": "image"}')
 
         db = self
 
@@ -612,17 +614,26 @@ class DataFileExtended(clickpoints.DataFile):
                 if i in Tracker.Filters[k].Measurements.keys() and (debug_mode&0b001):
                     meas = Tracker.Filters[k].Measurements[i]
                     state = Tracker.Filters[k].X[i]
+                    try:
+                        state_err = Tracker.Model.measure(Tracker.Filters[k].X_error[i])
+                    except KeyError:
+                        state_err = np.zeros((len(state), len(state)))
+                    i_x = Tracker.Model.Measured_Variables.index("PositionX")
+                    i_y = Tracker.Model.Measured_Variables.index("PositionY")
+                    state_err = (state_err[i_x,i_x]**2+state_err[i_y,i_y]**2)**0.5
+
                     if cam_values:
                         x = meas.PositionX_Cam
                         y = meas.PositionY_Cam
                     else:
-                        x = Tracker.Model.measure(state)[Tracker.Model.Measured_Variables.index("PositionX")]
-                        y = Tracker.Model.measure(state)[Tracker.Model.Measured_Variables.index("PositionY")]
+                        x = Tracker.Model.measure(state)[i_x]
+                        y = Tracker.Model.measure(state)[i_y]
                     print('Setting %sTrack(%s)-Marker at %s, %s' % (new, (100 + k), x, y))
                     if set_text:
                         text = 'Track %s, Prob %.2f' % ((100 + k), prob)
                     track_markerset.append(dict(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
-                                                  text=text))
+                                                text=text,
+                                                style='{"scale":%.2f}'%(2*state_err)))
                     stateset.append(dict(log_prob=prob,
                                          state_vector=Tracker.Filters[k].X[i],
                                          state_error=Tracker.Filters[k].X_error.get(i, None)))
@@ -650,7 +661,8 @@ class DataFileExtended(clickpoints.DataFile):
                     # pred_marker = self.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
                     #                            type=self.prediction_marker_type)
                     prediction_markerset.append(dict(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
-                                               type=self.prediction_marker_type, style='{"shape":"circle","transform": "image","scale":%s}'%(2*pred_err)))
+                                                     type=self.prediction_marker_type,
+                                                     style='{"scale":%.2f}'%(2*pred_err)))
                     predictionset.append(dict(log_prob=prob,
                                               prediction_vector=Tracker.Filters[k].Predicted_X[i],
                                               prediction_error=Tracker.Filters[k].Predicted_X_error.get(i, None)))
@@ -691,7 +703,8 @@ class DataFileExtended(clickpoints.DataFile):
                             track=[m["track"] for m in track_markerset],
                             x=[m["x"] for m in track_markerset],
                             y=[m["y"] for m in track_markerset],
-                            text=[m["text"] for m in track_markerset])
+                            text=[m["text"] for m in track_markerset],
+                            style=[m["style"] for m in track_markerset])
             state_markers = self.getMarkers(image=image,
                                            x=[m["x"] for m in track_markerset],
                                            y=[m["y"] for m in track_markerset],
@@ -710,7 +723,7 @@ class DataFileExtended(clickpoints.DataFile):
             pred_markers = self.getMarkers(image=image,
                                            x=[m["x"] for m in prediction_markerset],
                                            y=[m["y"] for m in prediction_markerset],
-                                           type=[m["type"] for m in prediction_markerset])
+                                          type=[m["type"] for m in prediction_markerset])
             self.setPredictions(marker=[m.id for m in pred_markers],
                                  log_prob=[m["log_prob"] for m in predictionset],
                                  prediction_vector=[m["prediction_vector"] for m in predictionset],
@@ -765,15 +778,17 @@ class DataFileExtended(clickpoints.DataFile):
                         'CREATE TABLE "measurement_tmp" ("id" INTEGER NOT NULL PRIMARY KEY, "marker_id" INTEGER NOT NULL, "log_prob" REAL, "measurement_vector" BLOB NOT NULL, "measurement_error" BLOB, FOREIGN KEY ("marker_id") REFERENCES "marker" ("id") ON DELETE CASCADE)')
                     # self.db.execute_sql(
                     #     'CREATE TABLE "measurement_tmp" ("id" INTEGER NOT NULL PRIMARY KEY, "marker_id" INTEGER NOT NULL, "log" REAL NOT NULL, "x" REAL NOT NULL, "y" REAL NOT NULL, "z" REAL NOT NULL, FOREIGN KEY ("marker_id") REFERENCES "marker" ("id") ON DELETE CASCADE)')
-
-                    measurements = self.db.execute_sql('SELECT * from measurement').fetchall()
-                    for meas in measurements:
-                        self.db.execute_sql(
-                            'INSERT INTO measurement_tmp ("id", "marker_id", "log_prob", "measurement_vector", measurement_error"") VALUES(?, ?, ?, ?, ?)',
-                            [meas["id"], meas["marker_id"], meas["log"], np.array([meas.get("x",0),
-                                                                                           meas.get("y", 0),
-                                                                                           meas.get("z", 0)]), None])
-                    self.db.execute_sql('DROP TABLE measurement')
+                    try:
+                        measurements = self.db.execute_sql('SELECT * from measurement').fetchall()
+                        for meas in measurements:
+                            self.db.execute_sql(
+                                'INSERT INTO measurement_tmp ("id", "marker_id", "log_prob", "measurement_vector", measurement_error"") VALUES(?, ?, ?, ?, ?)',
+                                [meas["id"], meas["marker_id"], meas["log"], np.array([meas.get("x",0),
+                                                                                               meas.get("y", 0),
+                                                                                               meas.get("z", 0)]), None])
+                        self.db.execute_sql('DROP TABLE measurement')
+                    except peewee.OperationalError:
+                        pass
                     self.db.execute_sql('ALTER TABLE measurement_tmp RENAME TO measurement')
                     self.db.execute_sql('CREATE INDEX "measurement_marker_id" ON "measurement" ("marker_id");')
                 except peewee.OperationalError:
