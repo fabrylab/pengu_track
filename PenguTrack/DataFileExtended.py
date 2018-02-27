@@ -30,7 +30,7 @@ import PenguTrack.Filters
 from PenguTrack.Detectors import Measurement as PT_Measurement
 from PenguTrack.Models import VariableSpeed
 import ast
-import scipy.stats as ss
+import scipy.stats
 import json
 import inspect
 
@@ -44,27 +44,37 @@ except ImportError:
 
 def parse_list(x):
     if listable(x):
-        return [parse(xx) for xx in x]
+        if len(x)>0:
+            return [parse(xx) for xx in x]
+        else:
+            return parse(None)
     else:
         raise TypeError("Type %s can not be parsed!"%type(x))
 
 def parse_dict(x):
     if listable(x.keys()):
-        return dict([[xx,parse(x[xx])] for xx in x])
+        if len(list(x))>0:
+            return dict([[xx,parse(x[xx])] for xx in x])
+        else:
+            return parse(None)
     else:
         raise TypeError("Type %s can not be parsed!"%type(x))
 
 def parse(x):
     if type(x) in [str, float, int, bool]:
         return x
-    elif type(x) == np.ndarray:
-        return float(x)
     elif type(x) == list:
+        return parse_list(x)
+    elif type(x) == tuple:
         return parse_list(x)
     elif type(x) == dict:
         return parse_dict(x)
     elif listable(x):
         return [parse(xx) for xx in x]
+    elif type(x) == np.ndarray:
+        return float(x)
+    elif str(type(x)).split("'")[1].split(".")[-1] in dict(inspect.getmembers(np)):
+        return float(x)
     elif x is None:
         return None
     else:
@@ -76,11 +86,14 @@ def listable(x):
     except TypeError:
         return False
     else:
-        return len(list(x))>0
+        return True#len(list(x))>0
+
+def parse_model_name(model):
+    return str(model.__class__).split("'")[1].split(".")[-1]
+
 
 def is_dist(x):
     return str(type(x)).count("scipy.stats")
-
 
 def parse_dist(dist):
     return [parse_dist_name(dist), parse_dist_dict(dist.__dict__)]
@@ -110,26 +123,31 @@ def parse_tracker_class(filter_class):
     except IndexError:
         return "MultiFilter"
 
+
+def reverse_dict(D):
+    return dict([[D[d],d] for d in D])
+
 class MatrixField(peewee.BlobField):
     """ A database field, that """
-    def db_value(self, value):
+    @staticmethod
+    def encode(value):
         if np.all(value == np.nan):
             value = np.array([None])
         value_b = np.array(value).astype(np.float64).tobytes()
         shape_b = np.array(np.array(value).shape).astype(np.int64).tobytes()
         len_shape_b = np.array(len(np.array(value).shape)).astype(np.int64).tobytes()
         value = len_shape_b+shape_b+value_b
+        return value
+
+    def db_value(self, value):
+        value = self.encode(value)
         if not PY3:
             return super(MatrixField, self).db_value(value)
         else:
-            return super(MatrixField, self).db_value(value)#peewee.binary_construct(value)
+            return super(MatrixField, self).db_value(value)
 
-    def python_value(self, value):
-        value = super(MatrixField, self).python_value(value)
-        # if not PY3:
-        #     pass
-        # else:
-        #     value = io.BytesIO(value)
+    @staticmethod
+    def decode(value):
         if value is not None and not len(value) == 0:
             l = np.frombuffer(value, dtype=np.int64, count=1, offset=0)
             if l == 0:
@@ -139,6 +157,11 @@ class MatrixField(peewee.BlobField):
             return array.reshape(shape)
         else:
             return None
+
+    def python_value(self, value):
+        value = super(MatrixField, self).python_value(value)
+        return self.decode(value)
+
 
 class ListField(peewee.TextField):
     """A database field, that"""
@@ -193,47 +216,6 @@ class DataFileExtended(clickpoints.DataFile):
         self._current_ext_version = 1
         ext_version = self._CheckExtVersion()
 
-
-        """State Entry"""
-        class State(db.base_model):
-            marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name='state_marker', on_delete='CASCADE')
-            log_prob = peewee.FloatField(null=True, default=0)
-            state_vector = MatrixField()
-            state_error = MatrixField(null=True)
-        if "state" not in db.db.get_tables():
-            State.create_table()
-        self.table_state = State
-
-
-        """Measurement Entry"""
-        class Measurement(db.base_model):
-            marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name='measurement_marker', on_delete='CASCADE')
-            log_prob = peewee.FloatField(null=True, default=0)
-            measurement_vector = MatrixField()
-            measurement_error = MatrixField(null=True)
-        if "measurement" not in db.db.get_tables():
-            Measurement.create_table()
-
-        self.table_measurement = Measurement
-
-        """Prediction Entry"""
-        class Prediction(db.base_model):
-            marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name='prediction_marker', on_delete='CASCADE')
-            log_prob = peewee.FloatField(null=True, default=0)
-            prediction_vector = MatrixField()
-            prediction_error = MatrixField(null=True)
-        if "prediction" not in db.db.get_tables():
-            Prediction.create_table()
-        self.table_prediction = Prediction
-
-        # """Marker Entry"""
-        # class Marker(db.table_marker):
-        #     state = peewee.ForeignKeyField(State, null=True, related_name='state_marker', on_delete='CASCADE')
-        #     measurement = peewee.ForeignKeyField(Measurement, null=True, related_name='measurement_marker', on_delete='CASCADE')
-        #     prediction = peewee.ForeignKeyField(State, null=True, related_name='prediction_marker', on_delete='CASCADE')
-        # Marker.create_table()
-        # self.table_marker = Marker
-
         """Dist Entry"""
         class Distribution(db.base_model):
             name = peewee.TextField()
@@ -247,14 +229,23 @@ class DataFileExtended(clickpoints.DataFile):
 
         """Model Entry"""
         class Model(self.base_model):
+            name = peewee.TextField()
+
+            opt_params = ListField()
+            opt_params_shape = DictField()
+            opt_params_borders = DictField()
+
+            initial_args = ListField()
+            initial_kwargs = DictField()
+
+            extensions = ListField()
+
+            measured_variables = ListField()
+
             state_dim = peewee.IntegerField(default=1)
             control_dim = peewee.IntegerField(default=1)
             meas_dim = peewee.IntegerField(default=1)
             evolution_dim = peewee.IntegerField(default=1)
-
-            # opt_params = peewee.TextField(default="")
-            # opt_params_shape = ListField()
-            # opt_params_borders = ListField()
 
             state_matrix = MatrixField()
             control_matrix = MatrixField()
@@ -283,7 +274,7 @@ class DataFileExtended(clickpoints.DataFile):
 
             def __getattribute__(self, item):
                 if item == "tracks":
-                    return .select().join(self.table_filter).where(self.table_filter.tracker_id==self.id)
+                    return [f.track for f in self.tracker_filters]
                 return super(Tracker, self).__getattribute__(item)
 
         if "tracker" not in db.db.get_tables():
@@ -295,24 +286,61 @@ class DataFileExtended(clickpoints.DataFile):
         class Filter(db.base_model):
             track = peewee.ForeignKeyField(db.table_track,
                                            unique=True,
-                                           related_name='filter_track', on_delete='CASCADE')
+                                           related_name='track_filter', on_delete='CASCADE')
             tracker = peewee.ForeignKeyField(db.table_tracker,
-                                             related_name='filter_tracker', on_delete='CASCADE')
+                                             related_name='tracker_filters', on_delete='CASCADE')
             measurement_distribution = peewee.ForeignKeyField(db.table_distribution,
                                                               unique=True,
-                                                              related_name='filter_meas_dist',
+                                                              related_name='mdist_filter',
                                                               on_delete='CASCADE')
             state_distribution = peewee.ForeignKeyField(db.table_distribution,
                                                         unique=True,
-                                                        related_name='filter_state_dist',
+                                                        related_name='sdist_filter',
                                                         on_delete='CASCADE')
             model = peewee.ForeignKeyField(db.table_model,
                                            unique=True,
-                                           related_name='filter_model',
+                                           related_name='model_filter',
                                            on_delete='CASCADE')
         if "filter" not in db.db.get_tables():
             Filter.create_table()
         self.table_filter = Filter
+
+        """State Entry"""
+        class State(db.base_model):
+            filter = peewee.ForeignKeyField(db.table_filter,
+                                           related_name='filter_states', on_delete='CASCADE')
+            marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name='state', on_delete='CASCADE')
+            log_prob = peewee.FloatField(null=True, default=0)
+            state_vector = MatrixField()
+            state_error = MatrixField(null=True)
+        if "state" not in db.db.get_tables():
+            State.create_table()
+        self.table_state = State
+
+        """Measurement Entry"""
+        class Measurement(db.base_model):
+            filter = peewee.ForeignKeyField(db.table_filter,
+                                           related_name='filter_measurements', on_delete='CASCADE')
+            marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name='measurement', on_delete='CASCADE')
+            log_prob = peewee.FloatField(null=True, default=0)
+            measurement_vector = MatrixField()
+            measurement_error = MatrixField(null=True)
+        if "measurement" not in db.db.get_tables():
+            Measurement.create_table()
+
+        self.table_measurement = Measurement
+
+        """Prediction Entry"""
+        class Prediction(db.base_model):
+            filter = peewee.ForeignKeyField(db.table_filter,
+                                           related_name='filter_predictions', on_delete='CASCADE')
+            marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name='prediction', on_delete='CASCADE')
+            log_prob = peewee.FloatField(null=True, default=0)
+            prediction_vector = MatrixField()
+            prediction_error = MatrixField(null=True)
+        if "prediction" not in db.db.get_tables():
+            Prediction.create_table()
+        self.table_prediction = Prediction
 
         """Probability Gain Entry"""
         class Probability_Gain(db.base_model):
@@ -320,12 +348,13 @@ class DataFileExtended(clickpoints.DataFile):
             tracker = peewee.ForeignKeyField(db.table_tracker, related_name="tracker_prob_gain", on_delete='CASCADE')
             probability_gain = MatrixField()
             probability_gain_dict = NumDictField()
+            probability_assignment_dict = NumDictField()
         if "probability_gain" not in db.db.get_tables():
             Probability_Gain.create_table()
         self.table_probability_gain = Probability_Gain
 
 
-    def setState(self, id=None, marker=None, log_prob=None, state_vector=None, state_error=None):
+    def setState(self, id=None, marker=None, filter=None, log_prob=None, state_vector=None, state_error=None):
         dictionary = dict(id=id, marker=marker)
         if id is not None:
             try:
@@ -334,7 +363,8 @@ class DataFileExtended(clickpoints.DataFile):
                 item = self.table_state()
         else:
             item = self.table_state()
-        dictionary.update(dict(log_prob=log_prob,
+        dictionary.update(dict(filter=filter,
+                               log_prob=log_prob,
                                state_vector=state_vector,
                                state_error=state_error))
         setFields(item, dictionary)
@@ -342,7 +372,7 @@ class DataFileExtended(clickpoints.DataFile):
         return item
 
 
-    def setMeasurement(self, id=None, marker=None, log_prob=None, measurement_vector=None, measurement_error=None):
+    def setMeasurement(self, id=None, marker=None, filter=filter, log_prob=None, measurement_vector=None, measurement_error=None):
         dictionary = dict(id=id, marker=marker)
         if id is not None:
             try:
@@ -351,7 +381,8 @@ class DataFileExtended(clickpoints.DataFile):
                 item = self.table_measurement()
         else:
             item = self.table_measurement()
-        dictionary.update(dict(log_prob=log_prob,
+        dictionary.update(dict(filter=filter,
+                               log_prob=log_prob,
                                measurement_vector=measurement_vector,
                                measurement_error=measurement_error))
         setFields(item, dictionary)
@@ -359,7 +390,7 @@ class DataFileExtended(clickpoints.DataFile):
         return item
 
 
-    def setPrediction(self, id=None, marker=None, log_prob=None, prediction_vector=None, prediction_error=None):
+    def setPrediction(self, id=None, marker=None, filter=None, log_prob=None, prediction_vector=None, prediction_error=None):
         dictionary = dict(id=id, marker=marker)
         if id is not None:
             try:
@@ -368,7 +399,8 @@ class DataFileExtended(clickpoints.DataFile):
                 item = self.table_prediction()
         else:
             item = self.table_prediction()
-        dictionary.update(dict(log_prob=log_prob,
+        dictionary.update(dict(filter=filter,
+                               log_prob=log_prob,
                                prediction_vector=prediction_vector,
                                prediction_error=prediction_error))
         setFields(item, dictionary)
@@ -449,8 +481,10 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
-    def setModel(self, id=None, state_dim=1, control_dim=1, meas_dim=1, evolution_dim=1,
-                 state_matrix=None, control_matrix=None, measurement_matrix=None, evolution_matrix=None):
+    def setModel(self, id=None, name="Model", state_dim=1, control_dim=1, meas_dim=1, evolution_dim=1,
+                 state_matrix=None, control_matrix=None, measurement_matrix=None, evolution_matrix=None,
+                 opt_params=[], opt_params_shape={}, opt_params_borders={}, initial_args=[], initial_kwargs={},
+                 extensions=[], measured_variables=[]):
 
         dictionary = dict(id=id)
         try:
@@ -468,8 +502,13 @@ class DataFileExtended(clickpoints.DataFile):
             measurement_matrix = np.identity(max(state_dim, meas_dim))[: meas_dim, :state_dim]
         if evolution_matrix is None:
             evolution_matrix = np.identity(max(evolution_dim, state_dim))[:state_dim, :evolution_dim]
-        dictionary.update(dict(state_matrix=state_matrix, control_matrix=control_matrix,
-                               measurement_matrix=measurement_matrix, evolution_matrix=evolution_matrix))
+        dictionary.update(dict(name=name,
+                               state_matrix=state_matrix, control_matrix=control_matrix,
+                               measurement_matrix=measurement_matrix, evolution_matrix=evolution_matrix,
+                               opt_params=opt_params, opt_params_shape=opt_params_shape,
+                               opt_params_borders=opt_params_borders, initial_args=initial_args,
+                               initial_kwargs=initial_kwargs,extensions=extensions,
+                               measured_variables=measured_variables))
         setFields(item, dictionary)
         item.save()
         return item
@@ -486,8 +525,7 @@ class DataFileExtended(clickpoints.DataFile):
             # except peewee.OperationalError:
             #     model = self.table_model()
 
-        dictionary.update(dict(track=track,
-                               tracker=tracker,
+        dictionary.update(dict(tracker=tracker,
                                measurement_distribution=measurement_distribution,
                                state_distribution=state_distribution,
                                model=model))
@@ -506,7 +544,7 @@ class DataFileExtended(clickpoints.DataFile):
 
 
     def setProbabilityGain(self, id=None, image=None, tracker=None,
-                           probability_gain=None, probability_gain_dict=None):
+                           probability_gain=None, probability_gain_dict=None, probability_assignment_dict=None):
         dictionary = dict(id=id, image=image, tracker=tracker)
         if id is not None:
             try:
@@ -518,24 +556,27 @@ class DataFileExtended(clickpoints.DataFile):
         dictionary.update(dict(image=image,
                                tracker=tracker,
                                probability_gain=probability_gain,
-                               probability_gain_dict=probability_gain_dict))
+                               probability_gain_dict=probability_gain_dict,
+                               probability_assignment_dict=probability_assignment_dict))
         setFields(item, dictionary)
         item.save()
         return item
 
-    def setMeasurements(self, marker=None, log_prob=None, measurement_vector=None, measurement_error=None):
-        data = packToDictList(self.table_measurement, marker=marker, measurement_vector=measurement_vector,
+    def setMeasurements(self, marker=None, filter=None, log_prob=None, measurement_vector=None, measurement_error=None):
+        data = packToDictList(self.table_measurement, marker=marker, filter=filter,
+                              log_prob=log_prob,
+                              measurement_vector=measurement_vector,
                               measurement_error=measurement_error)
         return self.saveUpsertMany(self.table_measurement, data)
 
-    def setPredictions(self, marker=None, log_prob=None, prediction_vector=None, prediction_error=None):
-        data = packToDictList(self.table_prediction, marker=marker, log_prob=log_prob,
+    def setPredictions(self, marker=None, filter=None, log_prob=None, prediction_vector=None, prediction_error=None):
+        data = packToDictList(self.table_prediction, marker=marker, filter=filter, log_prob=log_prob,
                               prediction_vector=prediction_vector,
                               prediction_error=prediction_error)
         return self.saveUpsertMany(self.table_prediction, data)
 
-    def setStates(self, marker=None, log_prob=None, state_vector=None, state_error=None):
-        data = packToDictList(self.table_state, marker=marker, log_prob=log_prob,
+    def setStates(self, marker=None, filter=None, log_prob=None, state_vector=None, state_error=None):
+        data = packToDictList(self.table_state, marker=marker, filter=filter, log_prob=log_prob,
                               state_vector=state_vector,
                               state_error=state_error)
         return self.saveUpsertMany(self.table_state, data)
@@ -553,10 +594,14 @@ class DataFileExtended(clickpoints.DataFile):
 
 
     def init_tracker(self, model, tracker):
-        model_item = self.setModel(state_dim=model.State_dim, control_dim=model.Control_dim,
+        model_item = self.setModel(name=parse_model_name(model), state_dim=model.State_dim, control_dim=model.Control_dim,
                       meas_dim=model.Meas_dim, evolution_dim=model.Evolution_dim,
                       state_matrix=model.State_Matrix, control_matrix=model.Control_Matrix,
-                      measurement_matrix=model.Measurement_Matrix, evolution_matrix=model.Evolution_Matrix)
+                      measurement_matrix=model.Measurement_Matrix, evolution_matrix=model.Evolution_Matrix,
+                               opt_params=model.Opt_Params, opt_params_shape=model.Opt_Params_Shape,
+                               opt_params_borders=model.Opt_Params_Borders, initial_args=model.Initial_Args,
+                               initial_kwargs=model.Initial_KWArgs,extensions=model.Extensions,
+                               measured_variables=model.Measured_Variables)
         tracker_item = self.setTracker(tracker_class=parse_tracker_class(tracker.__class__),
                                        filter_class=parse_filter_class(tracker.Filter_Class),
                                        model=model_item,
@@ -584,28 +629,41 @@ class DataFileExtended(clickpoints.DataFile):
             measurementset = []
             prediction_markerset = []
             predictionset = []
+            db_tracks=dict([[t.id, t] for t in self.getTracks(type=self.track_marker_type)])
             # Get Tracks from Filters
             for k in Tracker.Filters.keys():
                 x = y = np.nan
-                prob = Tracker.Filters[k].log_prob(keys=[i], update=Tracker.Filters[k].ProbUpdate)
+                # prob = Tracker.Filters[k].log_prob(keys=[i], update=Tracker.Filters[k].ProbUpdate)
+                if i not in Tracker.Probability_Gain:
+                    prob = Tracker.Filters[k].log_prob(keys=[i], update=Tracker.Filters[k].ProbUpdate)
+                else:
+                    if k not in Tracker.Probability_Assignment_Dicts[i]:
+                        prob = Tracker.Filters[k].log_prob(keys=[i], update=Tracker.Filters[k].ProbUpdate)
+                    else:
+                        prob = Tracker.Probability_Gain[i][reverse_dict(Tracker.Probability_Gain_Dicts[i])[k], Tracker.Probability_Assignment_Dicts[i][k]]
 
-                if self.getTrack(id=100 + k):
-                    db_track = self.getTrack(id=100 + k)
+                if 100+k in db_tracks:#self.getTrack(id=100 + k):
+                    db_track = db_tracks[100+k]#self.getTrack(id=100 + k)
                 else:
                     db_track = self.setTrack(self.track_marker_type, id=100 + k)
-                if len(db_track.filter_track)>0:
+                if len(db_track.track_filter)>0:
                     new = ""
-                    db_filter = db_track.filter_track[0]
+                    db_filter = db_track.track_filter[0]
                 else:
                     new = "new "
                     db_dist_s = self.setDistribution(name=parse_dist_name(Tracker.Filters[k].State_Distribution),
                                                      **parse_dist_dict(Tracker.Filters[k].State_Distribution.__dict__))
                     db_dist_m = self.setDistribution(name=parse_dist_name(Tracker.Filters[k].Measurement_Distribution),
                                                      **parse_dist_dict(Tracker.Filters[k].Measurement_Distribution.__dict__))
-                    db_filter_model = self.setModel(state_dim=db_model.state_dim, control_dim=db_model.control_dim,
+                    db_filter_model = self.setModel(name=db_model.name,
+                                                    state_dim=db_model.state_dim, control_dim=db_model.control_dim,
                                                     meas_dim=db_model.meas_dim, evolution_dim=db_model.evolution_dim,
                                                     state_matrix=db_model.state_matrix, control_matrix=db_model.control_matrix,
-                                                    measurement_matrix=db_model.measurement_matrix, evolution_matrix=db_model.evolution_matrix)
+                                                    measurement_matrix=db_model.measurement_matrix, evolution_matrix=db_model.evolution_matrix,
+                               opt_params=db_model.opt_params, opt_params_shape=db_model.opt_params_shape,
+                               opt_params_borders=db_model.opt_params_borders, initial_args=db_model.initial_args,
+                               initial_kwargs=db_model.initial_kwargs,extensions=db_model.extensions,
+                               measured_variables=db_model.measured_variables)
                     db_filter = self.setFilter(model=db_filter_model, tracker=db_tracker,
                                                # id=100 + k,
                                                track=db_track,
@@ -637,6 +695,7 @@ class DataFileExtended(clickpoints.DataFile):
                                                 text=text,
                                                 style='{"scale":%.2f}'%(2*state_err)))
                     stateset.append(dict(log_prob=prob,
+                                         filter=db_filter,
                                          state_vector=Tracker.Filters[k].X[i],
                                          state_error=Tracker.Filters[k].X_error.get(i, None)))
                     # track_marker = self.setMarker(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
@@ -666,6 +725,7 @@ class DataFileExtended(clickpoints.DataFile):
                                                      type=self.prediction_marker_type,
                                                      style='{"scale":%.2f}'%(2*pred_err)))
                     predictionset.append(dict(log_prob=prob,
+                                              filter=db_filter,
                                               prediction_vector=Tracker.Filters[k].Predicted_X[i],
                                               prediction_error=Tracker.Filters[k].Predicted_X_error.get(i, None)))
                     # db_pred = self.setPrediction(marker=pred_marker,
@@ -683,7 +743,8 @@ class DataFileExtended(clickpoints.DataFile):
                     #                            type=self.detection_marker_type)
                     measurement_markerset.append(dict(image=image, x=meas_y, y=meas_x, text="Track %s" % (100 + k),
                                                       type=self.detection_marker_type))
-                    measurementset.append(dict(log_prob=prob,
+                    measurementset.append(dict(filter=db_filter,
+                                               log_prob=prob,
                                                measurement_vector=np.array([meas_x, meas_y])))
                     # db_meas = self.setMeasurement(marker=meas_marker,
                     #                               log_prob=prob,
@@ -693,9 +754,11 @@ class DataFileExtended(clickpoints.DataFile):
         try:
             prob_gain = Tracker.Probability_Gain[i]
             prob_gain_dict = Tracker.Probability_Gain_Dicts[i]
+            prob_assign_dict = Tracker.Probability_Assignment_Dicts[i]
             self.setProbabilityGain(image=image,tracker=db_tracker,
                                     probability_gain=prob_gain,
-                                    probability_gain_dict=prob_gain_dict)
+                                    probability_gain_dict=prob_gain_dict,
+                                    probability_assignment_dict=prob_assign_dict)
         except KeyError:
             pass
 
@@ -712,6 +775,7 @@ class DataFileExtended(clickpoints.DataFile):
                                            y=[m["y"] for m in track_markerset],
                                             type= [m["type"] for m in track_markerset])
             self.setStates(marker=[m.id for m in state_markers],
+                                 filter=[m["filter"] for m in stateset],
                                  log_prob=[m["log_prob"] for m in stateset],
                                  state_vector=[m["state_vector"] for m in stateset],
                                  state_error=[m["state_error"] for m in stateset])
@@ -727,6 +791,7 @@ class DataFileExtended(clickpoints.DataFile):
                                            y=[m["y"] for m in prediction_markerset],
                                           type=[m["type"] for m in prediction_markerset])
             self.setPredictions(marker=[m.id for m in pred_markers],
+                                filter=[m["filter"] for m in predictionset],
                                  log_prob=[m["log_prob"] for m in predictionset],
                                  prediction_vector=[m["prediction_vector"] for m in predictionset],
                                  prediction_error=[m["prediction_error"] for m in predictionset])
@@ -741,6 +806,7 @@ class DataFileExtended(clickpoints.DataFile):
                                            y=[m["y"] for m in measurement_markerset],
                                            type=[m["type"] for m in measurement_markerset])
             self.setMeasurements(marker=[m.id for m in meas_markers],
+                                 filter=[m["filter"] for m in measurementset],
                                  log_prob=[m["log_prob"] for m in measurementset],
                                  measurement_vector=[m["measurement_vector"] for m in measurementset],
                                  measurement_error=[m.get("measurement_error", None) for m in measurementset])
@@ -777,15 +843,15 @@ class DataFileExtended(clickpoints.DataFile):
             with self.db.transaction():
                 try:
                     self.db.execute_sql(
-                        'CREATE TABLE "measurement_tmp" ("id" INTEGER NOT NULL PRIMARY KEY, "marker_id" INTEGER NOT NULL, "log_prob" REAL, "measurement_vector" BLOB NOT NULL, "measurement_error" BLOB, FOREIGN KEY ("marker_id") REFERENCES "marker" ("id") ON DELETE CASCADE)')
+                        'CREATE TABLE `measurement_tmp` ( `id`	INTEGER NOT NULL, `filter_id`	INTEGER NOT NULL, `marker_id`	INTEGER NOT NULL, `log_prob`	REAL, `measurement_vector`	BLOB NOT NULL, `measurement_error`	BLOB, PRIMARY KEY(id), FOREIGN KEY(`filter_id`) REFERENCES "filter" ( "id" ) ON DELETE CASCADE, FOREIGN KEY(`marker_id`) REFERENCES "marker" ( "id" ) ON DELETE CASCADE)')
                     # self.db.execute_sql(
                     #     'CREATE TABLE "measurement_tmp" ("id" INTEGER NOT NULL PRIMARY KEY, "marker_id" INTEGER NOT NULL, "log" REAL NOT NULL, "x" REAL NOT NULL, "y" REAL NOT NULL, "z" REAL NOT NULL, FOREIGN KEY ("marker_id") REFERENCES "marker" ("id") ON DELETE CASCADE)')
                     try:
                         measurements = self.db.execute_sql('SELECT * from measurement').fetchall()
                         for meas in measurements:
                             self.db.execute_sql(
-                                'INSERT INTO measurement_tmp ("id", "marker_id", "log_prob", "measurement_vector", measurement_error"") VALUES(?, ?, ?, ?, ?)',
-                                [meas["id"], meas["marker_id"], meas["log"], np.array([meas.get("x",0),
+                                'INSERT INTO measurement_tmp ("id", "marker_id", "filter_id", "log_prob", "measurement_vector", measurement_error"") VALUES(?, ?, ?, ?, ?)',
+                                [meas["id"], meas["marker_id"], meas["filter_id"], meas["log"], np.array([meas.get("x",0),
                                                                                                meas.get("y", 0),
                                                                                                meas.get("z", 0)]), None])
                         self.db.execute_sql('DROP TABLE measurement')
@@ -829,14 +895,30 @@ class DataFileExtended(clickpoints.DataFile):
 
 
     def model_from_db(self, db_model):
-        out=PenguTrack.Models.Model(state_dim=db_model.state_dim,
-                                control_dim=db_model.control_dim,
-                                meas_dim=db_model.meas_dim,
-                                evo_dim=db_model.evolution_dim)
+        args = db_model.initial_args
+        args = [] if args is None else args
+        kwargs = db_model.initial_kwargs
+        kwargs = {} if kwargs is None else kwargs
+        Model_class = dict(inspect.getmembers(PenguTrack.Models))[db_model.name]
+        out = Model_class(*args, **kwargs)
+        out.State_dim = db_model.state_dim
+        out.Control_dim = db_model.control_dim
+        out.Meas_dim = db_model.meas_dim
+        out.Evolution_dim = db_model.evolution_dim
+
         out.State_Matrix = db_model.state_matrix.reshape((db_model.state_dim,db_model.state_dim))
         out.Control_Matrix = db_model.control_matrix.reshape((db_model.state_dim,db_model.control_dim))
         out.Measurement_Matrix = db_model.measurement_matrix.reshape((db_model.meas_dim,db_model.state_dim))
         out.Evolution_Matrix = db_model.evolution_matrix.reshape((db_model.state_dim,db_model.evolution_dim))
+
+        out.Opt_Params = db_model.opt_params
+        out.Opt_Params_Shape = db_model.opt_params_shape
+        out.Opt_Params_Borders = db_model.opt_params_borders
+
+        out.Initial_Args = args
+        out.Initial_KWArgs = kwargs
+        out.Extensions = db_model.extensions
+        out.Measured_Variables = db_model.measured_variables
         return out
 
 
@@ -845,7 +927,8 @@ class DataFileExtended(clickpoints.DataFile):
                          cov=db_dist.cov,
                          lower=db_dist.lower,
                          upper=db_dist.upper)
-        dist_class = eval("ss."+db_dist.name)
+        dist_class = dict(inspect.getmembers(scipy.stats))[db_dist.name]
+        # dist_class = eval("ss."+db_dist.name)
         return dist_class(**noNoneDict(**dist_dict))
 
 
@@ -858,12 +941,31 @@ class DataFileExtended(clickpoints.DataFile):
         else:
             filter = filter_class(model, *filter_args, **filter_kwargs)
 
-        filter.X.update(dict([[state.marker.image.sort_index, state.state_vector] for state in db_filter.filter_states]))
-        filter.Predicted_X.update(dict([[pred.marker.image.sort_index, pred.prediction_vector] for pred in db_filter.filter_predictions]))
-        filter.Measurements.update(dict([[meas.marker.image.sort_index, meas.measurement_vector] for meas in db_filter.filter_measurements]))
+        X_raw = self.db.execute_sql('select sort_index, state_vector from (((select * from filter where id = ?) f inner join state s on f.id == s.filter_id)s inner join marker m on s.marker_id == m.id) m inner join image i on m.image_id == i.id',
+                                    [db_filter.id])
+        Pred_raw = self.db.execute_sql('select sort_index, prediction_vector from (((select * from filter where id =?) f inner join prediction p on f.id == p.filter_id)p inner join marker m on p.marker_id == m.id) m inner join image i on m.image_id == i.id',
+                                       [db_filter.id])
+        Meas_raw = self.db.execute_sql('select sort_index, measurement_vector from (((select * from filter where id =?) f inner join measurement mm on f.id == mm.filter_id)mm inner join marker m on mm.marker_id == m.id) m inner join image i on m.image_id == i.id',
+                                       [db_filter.id])
 
-        filter.X_error.update(dict([[state.marker.image.sort_index, state.state_error] for state in db_filter.filter_states]))
-        filter.Predicted_X_error.update(dict([[pred.marker.image.sort_index, pred.prediction_error] for pred in db_filter.filter_predictions]))
+        X_err_raw = self.db.execute_sql('select sort_index, state_error from (((select * from filter where id = ?) f inner join state s on f.id == s.filter_id)s inner join marker m on s.marker_id == m.id) m inner join image i on m.image_id == i.id',
+                                    [db_filter.id])
+        Pred_err_raw = self.db.execute_sql('select sort_index, prediction_error from (((select * from filter where id =?) f inner join prediction p on f.id == p.filter_id)p inner join marker m on p.marker_id == m.id) m inner join image i on m.image_id == i.id',
+                                       [db_filter.id])
+
+        filter.X.update(dict([[v[0], MatrixField.decode(v[1])] for v in X_raw]))
+        filter.Predicted_X.update(dict([[v[0], MatrixField.decode(v[1])] for v in Pred_raw]))
+        filter.Measurements.update(dict([[v[0], MatrixField.decode(v[1])] for v in Meas_raw]))
+
+        filter.X_error.update(dict([[v[0], MatrixField.decode(v[1])] for v in X_err_raw]))
+        filter.Predicted_X_error.update(dict([[v[0], MatrixField.decode(v[1])] for v in Pred_err_raw]))
+
+        # filter.X.update(dict([[state.marker.image.sort_index, state.state_vector] for state in db_filter.filter_states]))
+        # filter.Predicted_X.update(dict([[pred.marker.image.sort_index, pred.prediction_vector] for pred in db_filter.filter_predictions]))
+        # filter.Measurements.update(dict([[meas.marker.image.sort_index, meas.measurement_vector] for meas in db_filter.filter_measurements]))
+        #
+        # filter.X_error.update(dict([[state.marker.image.sort_index, state.state_error] for state in db_filter.filter_states]))
+        # filter.Predicted_X_error.update(dict([[pred.marker.image.sort_index, pred.prediction_error] for pred in db_filter.filter_predictions]))
 
         return db_filter.id, filter
 
@@ -878,12 +980,19 @@ class DataFileExtended(clickpoints.DataFile):
             # print(db_tracker.filter_args)
             # print(db_tracker.filter_kwargs)
             tracker = tracker_class(filter_class, model, *db_tracker.filter_args, **db_tracker.filter_kwargs)
-            tracker.Filters.update(dict([self.filter_from_db(db_filter, filter_class=filter_class) for db_filter in db_tracker.tracks]))
+            tracker.Filters.update(dict([self.filter_from_db(db_filter,
+                                                             filter_class=filter_class,
+                                                             filter_args=db_tracker.filter_args,
+                                                             filter_kwargs=db_tracker.filter_kwargs) for db_filter in db_tracker.tracker_filters]))
             tracker.LogProbabilityThreshold = db_tracker.log_probability_threshold
             tracker.FilterThreshold = db_tracker.filter_threshold
             tracker.AssignmentProbabilityThreshold = db_tracker.assignment_probability_threshold
             tracker.MeasurementProbabilityThreshold = db_tracker.measurement_probability_threshold
-            tracker.Probability_Gain.update(dict([[pg.image.sort_index, pg.gain.reshape((len(pg.gain_dict), -1))] for pg in db_tracker.tracker_probability_gains]))
-            tracker.Probability_Gain_Dicts.update(dict([[pg.image.sort_index, pg.gain_dict] for pg in db_tracker.tracker_probability_gains]))
+            p_gain_raw = self.db.execute_sql('select sort_index, probability_gain from (select * from probability_gain where tracker_id == ?) p inner join image i on p.image_id == i.id',
+                                              [db_tracker.id])
+            tracker.Probability_Gain.update(dict([[v[0], MatrixField.decode(v[1])] for v in p_gain_raw]))
+            p_dict_raw = self.db.execute_sql('select sort_index, probability_gain_dict from (select * from probability_gain where tracker_id == ?) p inner join image i on p.image_id == i.id',
+                                              [db_tracker.id])
+            tracker.Probability_Gain_Dicts.update(dict([[v[0], MatrixField.decode(v[1])] for v in p_dict_raw]))
             out.append(tracker)
         return out

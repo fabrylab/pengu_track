@@ -1078,6 +1078,7 @@ class MultiFilter(Filter):
         self.CriticalIndex = None
         self.Probability_Gain = {}
         self.Probability_Gain_Dicts = {}
+        self.Probability_Assignment_Dicts = {}
         self.ProbUpdate = kwargs.get("prob_update", True)
 
     def predict(self, u=None, i=None):
@@ -1266,7 +1267,6 @@ class MultiFilter(Filter):
                 probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas},
                                                                         update=self.ProbUpdate)
         gain_dict = dict(gain_dict)
-        self.Probability_Gain_Dicts.update({i: gain_dict})
 
         probability_gain[np.isinf(probability_gain)] = np.nan
         if np.all(np.isnan(probability_gain)):
@@ -1330,10 +1330,14 @@ class MultiFilter(Filter):
 
                 self.ActiveFilters.update({l: _filter})
                 self.Filters.update({l: _filter})
+                gain_dict.update({k:l})
 
             probability_gain[k, :] = np.nan
             probability_gain[:, m] = np.nan
 
+
+        self.Probability_Gain_Dicts.update({i: gain_dict})
+        self.Probability_Assignment_Dicts.update({i: dict([[gain_dict[r], c] for r,c in zip(rows, cols)])})
         return measurements, i
 
     def fit(self, u, z):
@@ -1526,7 +1530,6 @@ class HungarianTracker(MultiFilter):
                 probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas},
                                                                         update=self.ProbUpdate)
         gain_dict = dict(gain_dict)
-        self.Probability_Gain_Dicts.update({i: gain_dict})
 
         probability_gain[np.isinf(probability_gain)] = np.nan
         if np.all(np.isnan(probability_gain)):
@@ -1592,9 +1595,13 @@ class HungarianTracker(MultiFilter):
                 self.ActiveFilters.update({l: _filter})
                 self.Filters.update({l: _filter})
 
+                gain_dict.update({k:l})
+
             probability_gain[k, :] = np.nan
             probability_gain[:, m] = np.nan
 
+        self.Probability_Gain_Dicts.update({i: gain_dict})
+        self.Probability_Assignment_Dicts.update({i: dict([[gain_dict[r], c] for r,c in zip(rows, cols)])})
         return measurements, i
 
 

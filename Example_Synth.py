@@ -51,7 +51,11 @@ class SyntheticDataGenerator(object):
             for pos in positions])))
         out = [Measurement(1.0, self.Model.measure(pos)) for pos in self.Objects[i+1].values()]
         if self.Loose:
-            out.pop(np.random.randint(0,self.N))
+            for k in set(np.random.randint(low=0, high=self.N, size=int(self.N*0.1))):
+                try:
+                    out.pop(k)
+                except IndexError:
+                    pass
         return out
 
 if __name__ == '__main__':
@@ -67,7 +71,7 @@ if __name__ == '__main__':
 
         # Start Iteration over Images
         print('Starting Iteration')
-        for i in range(30):
+        for i in range(3600):
             image = db.setImage(filename="%s.png"%i, frame=i)
             # Prediction step, without applied control(vector of zeros)
             filter.predict(i=i)
@@ -101,19 +105,19 @@ if __name__ == '__main__':
 
     from PenguTrack.Trackers import VariableSpeedTracker
 
-    MultiKal = VariableSpeedTracker(r=0.1)
+    MultiKal = VariableSpeedTracker(r=0.1, no_dist=False, prob_update=False)
     # MultiKal.LogProbabilityThreshold = -3.
     # Physical Model (used for predictions)
     from PenguTrack.Models import VariableSpeed
     from PenguTrack.DataFileExtended import DataFileExtended
 
-    Generator = SyntheticDataGenerator(10, 10., 1., VariableSpeed(dim=2, timeconst=0.5, damping=1.), loose=True)
+    Generator = SyntheticDataGenerator(220, 10., 1., VariableSpeed(dim=2, timeconst=0.5, damping=1.), loose=True)
 
     MultiKal = track(MultiKal, Generator)
 
 
     db = DataFileExtended("./synth_data.cdb", "r")
-    Tracker = db.tracker_from_db()
+    Tracker = db.tracker_from_db()[0]
     # def retrieve_db():
     #     # Extended Clickpoints Database for usage with pengutack
     #     from PenguTrack.DataFileExtended import DataFileExtended
