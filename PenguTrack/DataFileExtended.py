@@ -202,6 +202,9 @@ class NumDictField(peewee.BlobField):
         return dict([[v[0], v[1]] for v in np.frombuffer(value, dtype=int).reshape((-1, 2))])
 
 class DataFileExtended(clickpoints.DataFile):
+    TYPE_BELIEVE = 0
+    TYPE_PREDICTION = 1
+    TYPE_MEASUREMENT = 2
     def __init__(self, *args, **kwargs):
         clickpoints.DataFile.__init__(self, *args, **kwargs)
         # Define ClickPoints Marker
@@ -309,38 +312,17 @@ class DataFileExtended(clickpoints.DataFile):
         class State(db.base_model):
             filter = peewee.ForeignKeyField(db.table_filter,
                                            related_name='filter_states', on_delete='CASCADE')
-            marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name='state', on_delete='CASCADE')
+            image = peewee.ForeignKeyField(db.table_image,
+                                           related_name='image_states', on_delete='CASCADE')
+            # marker = peewee.ForeignKeyField(db.table_marker,
+            #                                 unique=True, related_name='marker_state', on_delete='CASCADE', null=True)
+            type = peewee.IntegerField(default=0)
             log_prob = peewee.FloatField(null=True, default=0)
             state_vector = MatrixField()
             state_error = MatrixField(null=True)
         if "state" not in db.db.get_tables():
             State.create_table()
         self.table_state = State
-
-        """Measurement Entry"""
-        class Measurement(db.base_model):
-            filter = peewee.ForeignKeyField(db.table_filter,
-                                           related_name='filter_measurements', on_delete='CASCADE')
-            marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name='measurement', on_delete='CASCADE')
-            log_prob = peewee.FloatField(null=True, default=0)
-            measurement_vector = MatrixField()
-            measurement_error = MatrixField(null=True)
-        if "measurement" not in db.db.get_tables():
-            Measurement.create_table()
-
-        self.table_measurement = Measurement
-
-        """Prediction Entry"""
-        class Prediction(db.base_model):
-            filter = peewee.ForeignKeyField(db.table_filter,
-                                           related_name='filter_predictions', on_delete='CASCADE')
-            marker = peewee.ForeignKeyField(db.table_marker, unique=True, related_name='prediction', on_delete='CASCADE')
-            log_prob = peewee.FloatField(null=True, default=0)
-            prediction_vector = MatrixField()
-            prediction_error = MatrixField(null=True)
-        if "prediction" not in db.db.get_tables():
-            Prediction.create_table()
-        self.table_prediction = Prediction
 
         """Probability Gain Entry"""
         class Probability_Gain(db.base_model):
@@ -354,8 +336,8 @@ class DataFileExtended(clickpoints.DataFile):
         self.table_probability_gain = Probability_Gain
 
 
-    def setState(self, id=None, marker=None, filter=None, log_prob=None, state_vector=None, state_error=None):
-        dictionary = dict(id=id, marker=marker)
+    def setState(self, id=None, filter=None, image=None, type=None, log_prob=None, state_vector=None, state_error=None):
+        dictionary = dict(id=id, filter=filter, image=image, type=type)
         if id is not None:
             try:
                 item = self.table_state.get(**dictionary)
@@ -363,56 +345,12 @@ class DataFileExtended(clickpoints.DataFile):
                 item = self.table_state()
         else:
             item = self.table_state()
-        dictionary.update(dict(filter=filter,
-                               log_prob=log_prob,
+        dictionary.update(dict(log_prob=log_prob,
                                state_vector=state_vector,
                                state_error=state_error))
         setFields(item, dictionary)
         item.save()
         return item
-
-
-    def setMeasurement(self, id=None, marker=None, filter=filter, log_prob=None, measurement_vector=None, measurement_error=None):
-        dictionary = dict(id=id, marker=marker)
-        if id is not None:
-            try:
-                item = self.table_measurement.get(**dictionary)
-            except peewee.DoesNotExist:
-                item = self.table_measurement()
-        else:
-            item = self.table_measurement()
-        dictionary.update(dict(filter=filter,
-                               log_prob=log_prob,
-                               measurement_vector=measurement_vector,
-                               measurement_error=measurement_error))
-        setFields(item, dictionary)
-        item.save()
-        return item
-
-
-    def setPrediction(self, id=None, marker=None, filter=None, log_prob=None, prediction_vector=None, prediction_error=None):
-        dictionary = dict(id=id, marker=marker)
-        if id is not None:
-            try:
-                item = self.table_prediction.get(**dictionary)
-            except peewee.DoesNotExist:
-                item = self.table_prediction()
-        else:
-            item = self.table_prediction()
-        dictionary.update(dict(filter=filter,
-                               log_prob=log_prob,
-                               prediction_vector=prediction_vector,
-                               prediction_error=prediction_error))
-        setFields(item, dictionary)
-        item.save()
-        return item
-
-
-    # def setMarker(self, state=None, measurement=None, prediction=None, **kwargs):
-    #     item = super(DataFileExtended, self).setMarker(**kwargs)
-    #     kwargs.update(dict(state=state, measurement=measurement, prediction=prediction))
-    #     setFields(item, **kwargs)
-    #     return item
 
 
     def setTracker(self,tracker_class="", filter_class="", model=None,
@@ -533,10 +471,10 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
-    def getFilter(self, track=None):
+    def getFilter(self, id=None, track_id=None):
         query = self.table_filter.select()
-        query = addFilter(query, track, self.table_track)
-        # query = addFilter(query, id, self.table_filter.id)
+        query = addFilter(query, track_id, self.table_filter.track_id)
+        query = addFilter(query, id, self.table_filter.id)
         if len(query) > 0:
             return query[0]
         else:
@@ -562,21 +500,9 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
-    def setMeasurements(self, marker=None, filter=None, log_prob=None, measurement_vector=None, measurement_error=None):
-        data = packToDictList(self.table_measurement, marker=marker, filter=filter,
+    def setStates(self, image=None, filter=None, type=None, log_prob=None, state_vector=None, state_error=None):
+        data = packToDictList(self.table_state, image=image, filter=filter, type=type,
                               log_prob=log_prob,
-                              measurement_vector=measurement_vector,
-                              measurement_error=measurement_error)
-        return self.saveUpsertMany(self.table_measurement, data)
-
-    def setPredictions(self, marker=None, filter=None, log_prob=None, prediction_vector=None, prediction_error=None):
-        data = packToDictList(self.table_prediction, marker=marker, filter=filter, log_prob=log_prob,
-                              prediction_vector=prediction_vector,
-                              prediction_error=prediction_error)
-        return self.saveUpsertMany(self.table_prediction, data)
-
-    def setStates(self, marker=None, filter=None, log_prob=None, state_vector=None, state_error=None):
-        data = packToDictList(self.table_state, marker=marker, filter=filter, log_prob=log_prob,
                               state_vector=state_vector,
                               state_error=state_error)
         return self.saveUpsertMany(self.table_state, data)
@@ -623,12 +549,13 @@ class DataFileExtended(clickpoints.DataFile):
             i = image.sort_index
 
         with self.db.atomic() as transaction:
-            track_markerset = []
+            markerset = []
+            # track_stateset = []
             stateset = []
-            measurement_markerset = []
-            measurementset = []
-            prediction_markerset = []
-            predictionset = []
+            # measurement_markerset = []
+            # measurementset = []
+            # prediction_markerset = []
+            # predictionset = []
             db_tracks=dict([[t.id, t] for t in self.getTracks(type=self.track_marker_type)])
             # Get Tracks from Filters
             for k in Tracker.Filters.keys():
@@ -691,19 +618,15 @@ class DataFileExtended(clickpoints.DataFile):
                     print('Setting %sTrack(%s)-Marker at %s, %s' % (new, (100 + k), x, y))
                     if set_text:
                         text = 'Track %s, Prob %.2f' % ((100 + k), prob)
-                    track_markerset.append(dict(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
+                    markerset.append(dict(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
                                                 text=text,
                                                 style='{"scale":%.2f}'%(2*state_err)))
                     stateset.append(dict(log_prob=prob,
                                          filter=db_filter,
+                                         image=image,
+                                         type=self.TYPE_BELIEVE,
                                          state_vector=Tracker.Filters[k].X[i],
                                          state_error=Tracker.Filters[k].X_error.get(i, None)))
-                    # track_marker = self.setMarker(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
-                    #                               text=text)
-                    # db_state = self.setState(marker=track_marker,
-                    #                          log_prob=prob,
-                    #                          state_vector=Tracker.Filters[k].X[i],
-                    #                          state_error=Tracker.Filters[k].X_error.get(i, None))
 
                 # Case 2: we want to see the prediction markers
                 if i in Tracker.Filters[k].Predicted_X.keys() and (debug_mode&0b010):
@@ -721,17 +644,15 @@ class DataFileExtended(clickpoints.DataFile):
 
                     # pred_marker = self.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
                     #                            type=self.prediction_marker_type)
-                    prediction_markerset.append(dict(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
-                                                     type=self.prediction_marker_type,
-                                                     style='{"scale":%.2f}'%(2*pred_err)))
-                    predictionset.append(dict(log_prob=prob,
-                                              filter=db_filter,
-                                              prediction_vector=Tracker.Filters[k].Predicted_X[i],
-                                              prediction_error=Tracker.Filters[k].Predicted_X_error.get(i, None)))
-                    # db_pred = self.setPrediction(marker=pred_marker,
-                    #                              log_prob=prob,
-                    #                              prediction_vector=Tracker.Filters[k].Predicted_X[i],
-                    #                              prediction_error=Tracker.Filters[k].Predicted_X_error.get(i, None))
+                    # prediction_markerset.append(dict(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
+                    #                                  type=self.prediction_marker_type,
+                    #                                  style='{"scale":%.2f}'%(2*pred_err)))
+                    stateset.append(dict(log_prob=prob,
+                                         filter=db_filter,
+                                         image=image,
+                                         type=self.TYPE_PREDICTION,
+                                         state_vector=Tracker.Filters[k].Predicted_X[i],
+                                         state_error=Tracker.Filters[k].Predicted_X_error.get(i, None)))
 
 
                 # Case 3: we want to see the measurement markers
@@ -741,15 +662,14 @@ class DataFileExtended(clickpoints.DataFile):
                     meas_y = meas.PositionY
                     # meas_marker = self.setMarker(image=image, x=meas_y, y=meas_x, text="Track %s" % (100 + k),
                     #                            type=self.detection_marker_type)
-                    measurement_markerset.append(dict(image=image, x=meas_y, y=meas_x, text="Track %s" % (100 + k),
-                                                      type=self.detection_marker_type))
-                    measurementset.append(dict(filter=db_filter,
-                                               log_prob=prob,
-                                               measurement_vector=np.array([meas_x, meas_y])))
-                    # db_meas = self.setMeasurement(marker=meas_marker,
-                    #                               log_prob=prob,
-                    #                               measurement_vector=np.array([meas_x, meas_y]))#,
-                    #                               measurement_error=db_filter.measurement_distribution.cov)
+                    # measurement_markerset.append(dict(image=image, x=meas_y, y=meas_x, text="Track %s" % (100 + k),
+                    #                                   type=self.detection_marker_type))
+                    stateset.append(dict(filter=db_filter,
+                                         log_prob=prob,
+                                         image=image,
+                                         type=self.TYPE_MEASUREMENT,
+                                         state_vector=np.array([meas_x, meas_y]),
+                                         state_error=None))
 
         try:
             prob_gain = Tracker.Probability_Gain[i]
@@ -763,53 +683,54 @@ class DataFileExtended(clickpoints.DataFile):
             pass
 
         if (debug_mode&0b001):
-            self.setMarkers(image=[m["image"] for m in track_markerset],
-                            type=[m["type"] for m in track_markerset],
-                            track=[m["track"] for m in track_markerset],
-                            x=[m["x"] for m in track_markerset],
-                            y=[m["y"] for m in track_markerset],
-                            text=[m["text"] for m in track_markerset],
-                            style=[m["style"] for m in track_markerset])
-            state_markers = self.getMarkers(image=image,
-                                           x=[m["x"] for m in track_markerset],
-                                           y=[m["y"] for m in track_markerset],
-                                            type= [m["type"] for m in track_markerset])
-            self.setStates(marker=[m.id for m in state_markers],
-                                 filter=[m["filter"] for m in stateset],
-                                 log_prob=[m["log_prob"] for m in stateset],
-                                 state_vector=[m["state_vector"] for m in stateset],
-                                 state_error=[m["state_error"] for m in stateset])
-        if (debug_mode&0b010):
-            self.setMarkers(image=[m["image"] for m in prediction_markerset],
-                            type=[m["type"] for m in prediction_markerset],
-                            x=[m["x"] for m in prediction_markerset],
-                            y=[m["y"] for m in prediction_markerset],
-                            text=[m["text"] for m in prediction_markerset],
-                            style=[m["style"] for m in prediction_markerset])
-            pred_markers = self.getMarkers(image=image,
-                                           x=[m["x"] for m in prediction_markerset],
-                                           y=[m["y"] for m in prediction_markerset],
-                                          type=[m["type"] for m in prediction_markerset])
-            self.setPredictions(marker=[m.id for m in pred_markers],
-                                filter=[m["filter"] for m in predictionset],
-                                 log_prob=[m["log_prob"] for m in predictionset],
-                                 prediction_vector=[m["prediction_vector"] for m in predictionset],
-                                 prediction_error=[m["prediction_error"] for m in predictionset])
-        if (debug_mode&0b100):
-            self.setMarkers(image=[m["image"] for m in measurement_markerset],
-                            type=[m["type"] for m in measurement_markerset],
-                            x=[m["x"] for m in measurement_markerset],
-                            y=[m["y"] for m in measurement_markerset],
-                            text=[m["text"] for m in measurement_markerset])
-            meas_markers = self.getMarkers(image=image,
-                                           x=[m["x"] for m in measurement_markerset],
-                                           y=[m["y"] for m in measurement_markerset],
-                                           type=[m["type"] for m in measurement_markerset])
-            self.setMeasurements(marker=[m.id for m in meas_markers],
-                                 filter=[m["filter"] for m in measurementset],
-                                 log_prob=[m["log_prob"] for m in measurementset],
-                                 measurement_vector=[m["measurement_vector"] for m in measurementset],
-                                 measurement_error=[m.get("measurement_error", None) for m in measurementset])
+            self.setMarkers(image=[m["image"] for m in markerset],
+                            type=[m["type"] for m in markerset],
+                            track=[m["track"] for m in markerset],
+                            x=[m["x"] for m in markerset],
+                            y=[m["y"] for m in markerset],
+                            text=[m["text"] for m in markerset],
+                            style=[m["style"] for m in markerset])
+            # track_markers = self.getMarkers(image=image,
+            #                                 x=[m["x"] for m in markerset],
+            #                                 y=[m["y"] for m in markerset],
+            #                                 type=[m["type"] for m in markerset])
+        self.setStates(image=[m["image"] for m in stateset],
+                       filter=[m["filter"] for m in stateset],
+                       type=[m["type"] for m in stateset],
+                       log_prob=[m["log_prob"] for m in stateset],
+                       state_vector=[m["state_vector"] for m in stateset],
+                       state_error=[m["state_error"] for m in stateset])
+        # if (debug_mode&0b010):
+        #     self.setMarkers(image=[m["image"] for m in prediction_markerset],
+        #                     type=[m["type"] for m in prediction_markerset],
+        #                     x=[m["x"] for m in prediction_markerset],
+        #                     y=[m["y"] for m in prediction_markerset],
+        #                     text=[m["text"] for m in prediction_markerset],
+        #                     style=[m["style"] for m in prediction_markerset])
+        #     pred_markers = self.getMarkers(image=image,
+        #                                    x=[m["x"] for m in prediction_markerset],
+        #                                    y=[m["y"] for m in prediction_markerset],
+        #                                   type=[m["type"] for m in prediction_markerset])
+        #     self.setPredictions(marker=[m.id for m in pred_markers],
+        #                         filter=[m["filter"] for m in predictionset],
+        #                          log_prob=[m["log_prob"] for m in predictionset],
+        #                          prediction_vector=[m["prediction_vector"] for m in predictionset],
+        #                          prediction_error=[m["prediction_error"] for m in predictionset])
+        # if (debug_mode&0b100):
+        #     self.setMarkers(image=[m["image"] for m in measurement_markerset],
+        #                     type=[m["type"] for m in measurement_markerset],
+        #                     x=[m["x"] for m in measurement_markerset],
+        #                     y=[m["y"] for m in measurement_markerset],
+        #                     text=[m["text"] for m in measurement_markerset])
+        #     meas_markers = self.getMarkers(image=image,
+        #                                    x=[m["x"] for m in measurement_markerset],
+        #                                    y=[m["y"] for m in measurement_markerset],
+        #                                    type=[m["type"] for m in measurement_markerset])
+        #     self.setMeasurements(marker=[m.id for m in meas_markers],
+        #                          filter=[m["filter"] for m in measurementset],
+        #                          log_prob=[m["log_prob"] for m in measurementset],
+        #                          measurement_vector=[m["measurement_vector"] for m in measurementset],
+        #                          measurement_error=[m.get("measurement_error", None) for m in measurementset])
 
         print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
 
@@ -863,6 +784,7 @@ class DataFileExtended(clickpoints.DataFile):
                     raise
                 pass
             self._SetExtVersion(1)
+
 
         self.db.get_conn().row_factory = None
 
@@ -941,17 +863,17 @@ class DataFileExtended(clickpoints.DataFile):
         else:
             filter = filter_class(model, *filter_args, **filter_kwargs)
 
-        X_raw = self.db.execute_sql('select sort_index, state_vector from (((select * from filter where id = ?) f inner join state s on f.id == s.filter_id)s inner join marker m on s.marker_id == m.id) m inner join image i on m.image_id == i.id',
-                                    [db_filter.id])
-        Pred_raw = self.db.execute_sql('select sort_index, prediction_vector from (((select * from filter where id =?) f inner join prediction p on f.id == p.filter_id)p inner join marker m on p.marker_id == m.id) m inner join image i on m.image_id == i.id',
-                                       [db_filter.id])
-        Meas_raw = self.db.execute_sql('select sort_index, measurement_vector from (((select * from filter where id =?) f inner join measurement mm on f.id == mm.filter_id)mm inner join marker m on mm.marker_id == m.id) m inner join image i on m.image_id == i.id',
-                                       [db_filter.id])
+        X_raw = self.db.execute_sql('select sort_index, state_vector from (select * from state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
+                                    [db_filter.id, self.TYPE_BELIEVE])
+        Pred_raw = self.db.execute_sql('select sort_index, state_vector from (select * from state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
+                                    [db_filter.id, self.TYPE_PREDICTION])
+        Meas_raw = self.db.execute_sql('select sort_index, state_vector from (select * from state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
+                                    [db_filter.id, self.TYPE_MEASUREMENT])
 
-        X_err_raw = self.db.execute_sql('select sort_index, state_error from (((select * from filter where id = ?) f inner join state s on f.id == s.filter_id)s inner join marker m on s.marker_id == m.id) m inner join image i on m.image_id == i.id',
-                                    [db_filter.id])
-        Pred_err_raw = self.db.execute_sql('select sort_index, prediction_error from (((select * from filter where id =?) f inner join prediction p on f.id == p.filter_id)p inner join marker m on p.marker_id == m.id) m inner join image i on m.image_id == i.id',
-                                       [db_filter.id])
+        X_err_raw = self.db.execute_sql('select sort_index, state_error from (select * from state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
+                                    [db_filter.id, self.TYPE_BELIEVE])
+        Pred_err_raw = self.db.execute_sql('select sort_index, state_error from (select * from state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
+                                    [db_filter.id, self.TYPE_PREDICTION])
 
         filter.X.update(dict([[v[0], MatrixField.decode(v[1])] for v in X_raw]))
         filter.Predicted_X.update(dict([[v[0], MatrixField.decode(v[1])] for v in Pred_raw]))
@@ -959,13 +881,6 @@ class DataFileExtended(clickpoints.DataFile):
 
         filter.X_error.update(dict([[v[0], MatrixField.decode(v[1])] for v in X_err_raw]))
         filter.Predicted_X_error.update(dict([[v[0], MatrixField.decode(v[1])] for v in Pred_err_raw]))
-
-        # filter.X.update(dict([[state.marker.image.sort_index, state.state_vector] for state in db_filter.filter_states]))
-        # filter.Predicted_X.update(dict([[pred.marker.image.sort_index, pred.prediction_vector] for pred in db_filter.filter_predictions]))
-        # filter.Measurements.update(dict([[meas.marker.image.sort_index, meas.measurement_vector] for meas in db_filter.filter_measurements]))
-        #
-        # filter.X_error.update(dict([[state.marker.image.sort_index, state.state_error] for state in db_filter.filter_states]))
-        # filter.Predicted_X_error.update(dict([[pred.marker.image.sort_index, pred.prediction_error] for pred in db_filter.filter_predictions]))
 
         return db_filter.id, filter
 
@@ -996,3 +911,16 @@ class DataFileExtended(clickpoints.DataFile):
             tracker.Probability_Gain_Dicts.update(dict([[v[0], MatrixField.decode(v[1])] for v in p_dict_raw]))
             out.append(tracker)
         return out
+
+    def split(self, marker):
+        new_track = super(DataFileExtended, self).split(marker)
+        old_filter = self.getFilter(track_id=marker.track_id)
+        new_filter = self.setFilter(track=new_track, tracker=old_filter.tracker,
+                                    measurement_distribution=old_filter.measurement_distribution,
+                                    state_distribution=old_filter.state_distribution,
+                                    model=old_filter.model)
+        self.db.execute_sql('update state set filter_id=? where filter_id==? and image_id>?',
+                            [new_filter.id, old_filter.id, marker.image_id])
+        # pgains = self.db.execute_sql('',
+        #                     [new_filter.id, old_filter.id, marker.image_id])
+
