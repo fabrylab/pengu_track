@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="8.4772415mm"
+   height="12.872534mm"
+   viewBox="0 0 30.03747 45.61134"
+   id="svg4233"
+   version="1.1"
+   inkscape:version="0.91 r13725"
+   sodipodi:docname="penguin_foot.svg">
+  <defs
+     id="defs4235" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="11.2"
+     inkscape:cx="33.574895"
+     inkscape:cy="9.3780609"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     inkscape:window-width="1920"
+     inkscape:window-height="1171"
+     inkscape:window-x="1920"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     fit-margin-top="0"
+     fit-margin-left="0"
+     fit-margin-right="0"
+     fit-margin-bottom="0" />
+  <metadata
+     id="metadata4238">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-14.672856,-11.442327)">
+    <path
+       d="m 26.586722,38.639138 c 1.440313,-4.337829 -0.481264,-23.762234 3.615236,-27.196813 3.378817,2.788495 2.578317,19.747972 3.478226,27.101062 7.316994,-6.579738 4.938291,-16.766281 6.787075,-25.098049 6.882636,6.900381 3.897515,20.026598 1.411625,26.774449 C 39.404008,46.937743 35.174305,58.787 29.047217,56.840505 21.900652,58.162971 18.530835,45.842185 17.329684,39.492487 15.297307,28.748641 12.026177,20.811548 18.466409,13.849816 c 3.208318,8.946139 1.066376,18.833727 8.120313,24.789322 z"
+       style="fill:#666666;fill-rule:evenodd"
+       id="path4198"
+       inkscape:connector-curvature="0"
+       sodipodi:nodetypes="ccccscscc" />
+  </g>
+</svg>
