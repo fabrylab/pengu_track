@@ -1056,7 +1056,7 @@ class DataFileExtended(clickpoints.DataFile):
             tracker.Filters.update(dict([self.filter_from_db(db_filter,
                                                              filter_class=filter_class,
                                                              filter_args=db_tracker.filter_args,
-                                                             filter_kwargs=db_tracker.filter_kwargs) for db_filter in db_tracker.tracker_filters[:500]]))
+                                                             filter_kwargs=db_tracker.filter_kwargs) for db_filter in db_tracker.tracker_filters]))
             tracker.LogProbabilityThreshold = db_tracker.log_probability_threshold
             tracker.FilterThreshold = db_tracker.filter_threshold
             tracker.AssignmentProbabilityThreshold = db_tracker.assignment_probability_threshold
