@@ -1753,6 +1753,18 @@ def cost_from_logprob(logprob):
     return cost_matrix
 
 
+def greedy_assignment(cost):
+    r_out=[]
+    c_out=[]
+    rows, cols = np.unravel_index(np.argsort(cost,kind="heapsort", axis=None), cost.shape)
+    while len(rows)>0:
+        r_out.append(rows[0])
+        c_out.append(cols[0])
+        mask = (rows!=rows[0])&(cols!=cols[0])
+        rows = rows[mask]
+        cols = cols[mask]
+    return r_out, c_out
+
 # class AdvancedMultiFilter(MultiFilter):
 #     def __init__(self, *args, **kwargs):
 #         super(AdvancedMultiFilter, self).__init__(*args,**kwargs)
