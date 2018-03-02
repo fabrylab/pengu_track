@@ -71,7 +71,7 @@ if __name__ == '__main__':
 
         # Start Iteration over Images
         print('Starting Iteration')
-        for i in range(10):
+        for i in range(11):
             image = db.setImage(filename="%s.png"%i, frame=i)
             # Prediction step, without applied control(vector of zeros)
             filter.predict(i=i)
@@ -111,13 +111,13 @@ if __name__ == '__main__':
     from PenguTrack.Models import VariableSpeed
     from PenguTrack.DataFileExtended import DataFileExtended
 
-    Generator = SyntheticDataGenerator(10, 10., 1., VariableSpeed(dim=2, timeconst=0.5, damping=1.), loose=True)
+    Generator = SyntheticDataGenerator(1138, 1000., 1., VariableSpeed(dim=2, timeconst=0.5, damping=1.), loose=True)
 
     MultiKal = track(MultiKal, Generator)
 
 
-    db = DataFileExtended("./synth_data.cdb", "r")
-    Tracker = db.tracker_from_db()[0]
+    # db = DataFileExtended("./synth_data.cdb", "r")
+    # Tracker = db.tracker_from_db()[0]
     # def retrieve_db():
     #     # Extended Clickpoints Database for usage with pengutack
     #     from PenguTrack.DataFileExtended import DataFileExtended
