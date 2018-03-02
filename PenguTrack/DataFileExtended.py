@@ -34,33 +34,17 @@ import scipy.stats
 import json
 import inspect
 
-try:
-    from cStringIO import StringIO
-except ImportError:
-    try:
-        from StringIO import StringIO
-    except ImportError:
-        import io
 
-def parse_list(x):
-    if listable(x):
-        if len(x)>0:
-            return [parse(xx) for xx in x]
-        else:
-            return parse(None)
-    else:
-        raise TypeError("Type %s can not be parsed!"%type(x))
-
-def parse_dict(x):
-    if listable(x.keys()):
-        if len(list(x))>0:
-            return dict([[xx,parse(x[xx])] for xx in x])
-        else:
-            return parse(None)
-    else:
-        raise TypeError("Type %s can not be parsed!"%type(x))
+""" Parse Functions """
 
 def parse(x):
+    """
+    Function to parse any object into a json-encodable form.
+    iterates over lists, tuples and dicts.
+    raises TypeError if object is not parsable.
+    :param x: any object
+    :return: object with json-encodable type
+    """
     if type(x) in [str, float, int, bool]:
         return x
     elif type(x) == list:
@@ -73,6 +57,7 @@ def parse(x):
         return [parse(xx) for xx in x]
     elif type(x) == np.ndarray:
         return float(x)
+    # handling of numpy data types
     elif str(type(x)).split("'")[1].split(".")[-1] in dict(inspect.getmembers(np)):
         return float(x)
     elif x is None:
@@ -80,7 +65,40 @@ def parse(x):
     else:
         raise TypeError("Type %s can not be parsed!"%type(x))
 
+def parse_list(x):
+    """
+    Iterates over a list and returns a json-encodable list.
+    :param x: list-like object
+    :return: list with json-encodable objects
+    """
+    if listable(x):
+        if len(x)>0:
+            return [parse(xx) for xx in x]
+        else:
+            return parse(None)
+    else:
+        raise TypeError("Type %s can not be parsed!"%type(x))
+
+def parse_dict(x):
+    """
+    Iterates over a dict and returns a json-encodable dict.
+    :param x: dict-like object
+    :return: dict with json-encodable objects
+    """
+    if listable(x.keys()):
+        if len(list(x))>0:
+            return dict([[xx,parse(x[xx])] for xx in x])
+        else:
+            return parse(None)
+    else:
+        raise TypeError("Type %s can not be parsed!"%type(x))
+
 def listable(x):
+    """
+    Auxiliary function to determine if object can be parsed as list.
+    :param x: potential list like object
+    :return: bool
+    """
     try:
         list(x)
     except TypeError:
@@ -89,21 +107,42 @@ def listable(x):
         return True#len(list(x))>0
 
 def parse_model_name(model):
+    """
+    returns name of model class from class string
+    :param model: pengu-track model
+    :return: string
+    """
     return str(model.__class__).split("'")[1].split(".")[-1]
 
 
 def is_dist(x):
+    """
+    Checks if object is a scipy stats distribution
+    :param x: potential distribution
+    :return: bool
+    """
     return str(type(x)).count("scipy.stats")
 
 def parse_dist(dist):
+    """
+    Parses scipy stats distributions into a json-encodable form.
+    WARNING: not all dists will be recoverable from parsed object.
+    :param dist: scipy stats dist
+    :return: list of dist name and initialisation arguments.
+    """
     return [parse_dist_name(dist), parse_dist_dict(dist.__dict__)]
 
 def parse_dist_name(dist):
+    """
+    Returns name of scipy stats dist from class string.
+    :param dist: scipy stats dist
+    :return: string
+    """
     return str(dist.__class__).split("'")[1].split(".")[-1].replace("_frozen", "")
 
 
 def parse_dist_dict(dist_dict):
-    # print(dist_dict)
+    """Auxiliar function"""
     return dict(mean=dist_dict.get("mean",None),
                 cov=dist_dict.get("cov", None),
                 lower=dist_dict.get("lower", None),
@@ -111,6 +150,11 @@ def parse_dist_dict(dist_dict):
 
 
 def parse_filter_class(filter_class):
+    """
+    Parses Pengu Track Filter class string to human readable string
+    :param filter_class: PenguTrack Filter class
+    :return: string
+    """
     try:
         return str(filter_class).split("'")[1].split(".")[-1]
     except IndexError:
@@ -118,6 +162,11 @@ def parse_filter_class(filter_class):
 
 
 def parse_tracker_class(filter_class):
+    """
+    Parses Pengu Track Tracker class string to human readable string
+    :param filter_class: PenguTrack Tracker class
+    :return: string
+    """
     try:
         return str(filter_class).split("'")[1].split(".")[-1]
     except IndexError:
@@ -125,12 +174,24 @@ def parse_tracker_class(filter_class):
 
 
 def reverse_dict(D):
+    """
+    Auxiliar function to switch dict entries with keys.
+    :param D: dictionary
+    :return: dictionary
+    """
     return dict([[D[d],d] for d in D])
 
 class MatrixField(peewee.BlobField):
-    """ A database field, that """
+    """
+    DataBase field for numpy arrays. Encoding and decoding into and from binary object.
+    """
     @staticmethod
     def encode(value):
+        """
+        Encodes numpy array into binary object.
+        :param value: numpy array
+        :return: binary object
+        """
         if np.all(value == np.nan):
             value = np.array([None])
         value_b = np.array(value).astype(np.float64).tobytes()
@@ -140,6 +201,11 @@ class MatrixField(peewee.BlobField):
         return value
 
     def db_value(self, value):
+        """
+        Wraps encoding of numpy arrays into binary objects.
+        :param value: numpy array
+        :return: DataBase entry
+        """
         value = self.encode(value)
         if not PY3:
             return super(MatrixField, self).db_value(value)
@@ -148,6 +214,11 @@ class MatrixField(peewee.BlobField):
 
     @staticmethod
     def decode(value):
+        """
+        Decodes previously encoded binary object to numpy array.
+        :param value: binary object
+        :return: numpy array
+        """
         if value is not None and not len(value) == 0:
             l = np.frombuffer(value, dtype=np.int64, count=1, offset=0)
             if l == 0:
@@ -159,12 +230,19 @@ class MatrixField(peewee.BlobField):
             return None
 
     def python_value(self, value):
+        """
+        Wrapper for decoding function. Returns numpy array from binary object.
+        :param value: DataBase entry
+        :return: numpy array
+        """
         value = super(MatrixField, self).python_value(value)
         return self.decode(value)
 
 
 class ListField(peewee.TextField):
-    """A database field, that"""
+    """
+    A generic field for python list. Uses json encoding.
+    """
     def db_value(self, value):
         value=json.dumps(parse_list(value))
         if PY3:
@@ -172,11 +250,17 @@ class ListField(peewee.TextField):
         return super(ListField, self).db_value(peewee.binary_construct(value))
 
     def python_value(self, value):
-        return json.loads(super(ListField, self).python_value(value))
+        value = json.loads(super(ListField, self).python_value(value))
+        if value is None:
+            return []
+        else:
+            return value
 
 
 class DictField(peewee.TextField):
-    """A database field, that"""
+    """
+    A generic field for python dict. Uses json encoding.
+    """
     def db_value(self, value):
         value = json.dumps(parse_dict(value))
         if PY3:
@@ -184,11 +268,15 @@ class DictField(peewee.TextField):
         return super(DictField, self).db_value(peewee.binary_construct(value))
 
     def python_value(self, value):
-        return json.loads(super(DictField, self).python_value(value))
+        value = json.loads(super(DictField, self).python_value(value))
+        if value is None:
+            return {}
+        else:
+            return value
 
 
 class NumDictField(peewee.BlobField):
-    """ A database field, that """
+    """ A database field, that encodes purely numerical dicts to database entries."""
     def db_value(self, value):
         value = np.array([[v,value[v]] for v in value]).tobytes()
         if PY3:
@@ -198,29 +286,39 @@ class NumDictField(peewee.BlobField):
     def python_value(self, value):
         value=super(NumDictField, self).python_value(value)
         if not PY3:
-            return dict([[v[0],v[1]] for v in np.frombuffer(value, dtype=int).reshape((-1,2))])
-        return dict([[v[0], v[1]] for v in np.frombuffer(value, dtype=int).reshape((-1, 2))])
+            value = dict([[v[0],v[1]] for v in np.frombuffer(value, dtype=int).reshape((-1,2))])
+        else:
+            value = dict([[v[0], v[1]] for v in np.frombuffer(value, dtype=int).reshape((-1, 2))])
+        if value is None:
+            return {}
+        else:
+            return value
 
 class DataFileExtended(clickpoints.DataFile):
+    """
+    Extended DataBase Class to save PenguTrack objects generically and rebuilt them from databases.
+    """
     TYPE_BELIEVE = 0
     TYPE_PREDICTION = 1
     TYPE_MEASUREMENT = 2
     def __init__(self, *args, **kwargs):
+        """
+        Extended DataBase Class to save PenguTrack objects generically and rebuilt them from databases.
+        """
         clickpoints.DataFile.__init__(self, *args, **kwargs)
         # Define ClickPoints Marker
-        self.detection_marker_type = self.setMarkerType(name="Detection_Marker", color="#FF0000", style='{"scale":1.2}')
         self.track_marker_type = self.setMarkerType(name="Track_Marker", color="#00FF00", mode=self.TYPE_Track,
-                                                    style='{"shape":"circle","transform": "image","color":"hsv"}')
-        self.prediction_marker_type = self.setMarkerType(name="Prediction_Marker", color="#0000FF",
-                                                         style='{"shape": "circle", "transform": "image"}')
-
+                                                    style='{"transform": "image","color":"hsv"}')
+        #Namespace
         db = self
 
+        # Version Handling
         self._current_ext_version = 1
         ext_version = self._CheckExtVersion()
 
         """Dist Entry"""
         class Distribution(db.base_model):
+            """ Entry for scipy stats distributions """
             name = peewee.TextField()
             mean = MatrixField(null=True,default=None)
             cov = MatrixField(null=True,default=None)
@@ -232,28 +330,36 @@ class DataFileExtended(clickpoints.DataFile):
 
         """Model Entry"""
         class Model(self.base_model):
+            """ Entry for pengu track Models"""
+            # model name
             name = peewee.TextField()
 
+            # Optimisation lists.
             opt_params = ListField()
             opt_params_shape = DictField()
             opt_params_borders = DictField()
 
+            # Inititialisation Argmuents. Used later to restore the original object from database.
             initial_args = ListField()
             initial_kwargs = DictField()
 
+            # Possible extensions (untypical measured variables like object size or posture) are also stored
             extensions = ListField()
 
             measured_variables = ListField()
 
+            # Dimension Values are needed in any case
             state_dim = peewee.IntegerField(default=1)
             control_dim = peewee.IntegerField(default=1)
             meas_dim = peewee.IntegerField(default=1)
             evolution_dim = peewee.IntegerField(default=1)
 
+            # Mathematical description of model according to Kalman nomenclature
             state_matrix = MatrixField()
             control_matrix = MatrixField()
             measurement_matrix = MatrixField()
             evolution_matrix = MatrixField()
+        # Built table
         if "model" not in db.db.get_tables():
             Model.create_table()
         self.table_model = Model
@@ -261,25 +367,31 @@ class DataFileExtended(clickpoints.DataFile):
 
         """Tracker Entry"""
         class Tracker(db.base_model):
-            # track = peewee.ForeignKeyField(self.table_track, related_name="tracker", on_delete="CASCADE")
+            """Tracker object. In most cases a table with single entry."""
+            # e.g. Hungarian Tracker
             tracker_class = peewee.TextField()
+            # Class to built new Filters from
             filter_class = peewee.TextField()
-            # model = peewee.ForeignKeyField(self.table_model, related_name="tracker", on_delete='CASCADE')
+            # Model for new Filters
             model = peewee.ForeignKeyField(db.table_model,
                                            related_name='tracker_model',
                                            on_delete='CASCADE')
+            # Tracker Parameters
             filter_threshold = peewee.IntegerField()
             log_probability_threshold = peewee.FloatField()
             measurement_probability_threshold = peewee.FloatField()
             assignment_probability_threshold = peewee.FloatField()
+
+            # Inititialisation Arguments for new Filter
             filter_args = ListField()
             filter_kwargs = DictField()
 
             def __getattribute__(self, item):
+                # Easy access to tracks
                 if item == "tracks":
                     return [f.track for f in self.tracker_filters]
                 return super(Tracker, self).__getattribute__(item)
-
+        # built table
         if "tracker" not in db.db.get_tables():
             Tracker.create_table()
         self.table_tracker = Tracker
@@ -287,11 +399,15 @@ class DataFileExtended(clickpoints.DataFile):
 
         """Filter Entry"""
         class Filter(db.base_model):
+            """ Table to store (Kalman-)Filter Objects. Mostly holds junctions between other database entries."""
+            # clickpoints track (unique)
             track = peewee.ForeignKeyField(db.table_track,
                                            unique=True,
                                            related_name='track_filter', on_delete='CASCADE')
+            # tracker (e.g. Hungarian)
             tracker = peewee.ForeignKeyField(db.table_tracker,
                                              related_name='tracker_filters', on_delete='CASCADE')
+            # distributions from dist table
             measurement_distribution = peewee.ForeignKeyField(db.table_distribution,
                                                               unique=True,
                                                               related_name='mdist_filter',
@@ -300,43 +416,76 @@ class DataFileExtended(clickpoints.DataFile):
                                                         unique=True,
                                                         related_name='sdist_filter',
                                                         on_delete='CASCADE')
+            # model from model table
             model = peewee.ForeignKeyField(db.table_model,
                                            unique=True,
                                            related_name='model_filter',
                                            on_delete='CASCADE')
+        # built table
         if "filter" not in db.db.get_tables():
             Filter.create_table()
         self.table_filter = Filter
 
         """State Entry"""
         class State(db.base_model):
+            """ Table storing all kinds of states: Measurements, Predictions, Believes.
+             Including their covariance matrices and log_probability."""
+            # The filter this state belongs to
             filter = peewee.ForeignKeyField(db.table_filter,
                                            related_name='filter_states', on_delete='CASCADE')
+            # Corresponding image
             image = peewee.ForeignKeyField(db.table_image,
                                            related_name='image_states', on_delete='CASCADE')
-            # marker = peewee.ForeignKeyField(db.table_marker,
-            #                                 unique=True, related_name='marker_state', on_delete='CASCADE', null=True)
+            # Type: Believe, Prediction, Measurement
             type = peewee.IntegerField(default=0)
+            # Log_Probability assuming filter model
             log_prob = peewee.FloatField(null=True, default=0)
+            # Actual state vector and covariance matrix
             state_vector = MatrixField()
             state_error = MatrixField(null=True)
+        # built table
         if "state" not in db.db.get_tables():
             State.create_table()
         self.table_state = State
 
         """Probability Gain Entry"""
         class Probability_Gain(db.base_model):
+            """ Table holding the cost matrices for each frame """
+            # corresponding image
             image = peewee.ForeignKeyField(db.table_image, related_name="probability_gains", on_delete='CASCADE')
+            # corresponding tracker
             tracker = peewee.ForeignKeyField(db.table_tracker, related_name="tracker_prob_gain", on_delete='CASCADE')
+            # cost matrix
             probability_gain = MatrixField()
+            # dictionary linking filter ids with cost_matrix rows
             probability_gain_dict = NumDictField()
+            # dictionary linking filter ids and assigned measurements
             probability_assignment_dict = NumDictField()
+        # built table
         if "probability_gain" not in db.db.get_tables():
             Probability_Gain.create_table()
         self.table_probability_gain = Probability_Gain
 
 
     def setState(self, id=None, filter=None, image=None, type=None, log_prob=None, state_vector=None, state_error=None):
+        """
+        Update or create State entry.
+        :param id: int, optional
+            the id of the state entry
+        :param filter: entry of filter table
+            filter must be specified.
+        :param image: entry of image table
+            image must be specified
+        :param type: int, optional
+            defines if state is Believe, Measurement or Prediction
+        :param log_prob: float, optional
+            defines the probability of this state
+        :param state_vector: array-like
+            the mathematical state
+        :param state_error: array-like, optional
+            covariance matrix of the state, used to determine error
+        :return: State entry
+        """
         dictionary = dict(id=id, filter=filter, image=image, type=type)
         if id is not None:
             try:
@@ -358,6 +507,27 @@ class DataFileExtended(clickpoints.DataFile):
                measurement_probability_threshold=0.0,
                assignment_probability_threshold=0.0,
                filter_args=[], filter_kwargs={}, id=None):
+        """
+        Update or create Tracker entry.
+        :param tracker_class: PenguTrack MultiFilter Class
+        :param filter_class: PenguTrack Filter Class
+        :param model: PenguTrack Model Class
+        :param filter_threshold: int, optional
+            number of lag frames over which tracks will be deprecated
+        :param log_probability_threshold: float, optional
+            threshold for cost matrix
+        :param measurement_probability_threshold: float, optional
+            threshold for allowing assignment of measurements
+        :param assignment_probability_threshold: float, optional
+            threshold for assigning tracks
+        :param filter_args: list
+            initialisation list to create new filters with this tracker
+        :param filter_kwargs: dict
+            initialisation dict to create new filters with this tracker
+        :param id: int, optional
+            id of the tracker
+        :return: Tracker entry
+        """
         dictionary = dict(id=id)
         if id is not None:
             try:
@@ -390,6 +560,27 @@ class DataFileExtended(clickpoints.DataFile):
                     measurement_probability_threshold=None,
                     assignment_probability_threshold=None,
                     id=None):
+        """
+        Load Tracker entry from database
+        :param tracker_class: PenguTrack MultiFilter Class
+        :param filter_class: PenguTrack Filter Class
+        :param model: PenguTrack Model Class
+        :param filter_threshold: int, optional
+            number of lag frames over which tracks will be deprecated
+        :param log_probability_threshold: float, optional
+            threshold for cost matrix
+        :param measurement_probability_threshold: float, optional
+            threshold for allowing assignment of measurements
+        :param assignment_probability_threshold: float, optional
+            threshold for assigning tracks
+        :param filter_args: list
+            initialisation list to create new filters with this tracker
+        :param filter_kwargs: dict
+            initialisation dict to create new filters with this tracker
+        :param id: int, optional
+            id of the tracker
+        :return: Tracker entry
+        """
         query = self.table_tracker.select()
         query = addFilter(query, id, self.table_tracker.id)
         query = addFilter(query, tracker_class, self.table_tracker.tracker_class)
@@ -508,18 +699,20 @@ class DataFileExtended(clickpoints.DataFile):
         return self.saveUpsertMany(self.table_state, data)
 
     def deletetOld(self):
-        # Define ClickPoints Marker
-        self.detection_marker_type = self.setMarkerType(name="Detection_Marker", color="#FF0000", style='{"scale":1.2}')
-        self.deleteMarkers(type=self.detection_marker_type)
-        self.track_marker_type = self.setMarkerType(name="Track_Marker", color="#00FF00", mode=self.TYPE_Track)
+        """Deletes old Clickpoints marker entries"""
         self.deleteMarkers(type=self.track_marker_type)
-        self.prediction_marker_type = self.setMarkerType(name="Prediction_Marker", color="#0000FF")
-        self.deleteMarkers(type=self.prediction_marker_type)
         # Delete Old Tracks
         self.deleteTracks(type=self.track_marker_type)
 
 
     def init_tracker(self, model, tracker):
+        """
+        Initialise Database entries for tracker using PenguTrack model and tracker object
+        :param model: PenguTrack Model
+        :param tracker: PenguTrack Tracker
+        :return: model_db, tracker_db
+            entries of the extended Database. Use these to set new Filters.
+        """
         model_item = self.setModel(name=parse_model_name(model), state_dim=model.State_dim, control_dim=model.Control_dim,
                       meas_dim=model.Meas_dim, evolution_dim=model.Evolution_dim,
                       state_matrix=model.State_Matrix, control_matrix=model.Control_Matrix,
@@ -540,6 +733,18 @@ class DataFileExtended(clickpoints.DataFile):
 
     def write_to_DB(self, Tracker, image, i=None, text=None, cam_values=False, db_tracker=None, db_model=None,
                     debug_mode=0b111):
+        """
+        Writes a tracking step to the extended DataBase
+        :param Tracker: PenguTrack Tracker (e.g. Hungarian Tracker) holding multiple
+        :param image:
+        :param i:
+        :param text:
+        :param cam_values:
+        :param db_tracker:
+        :param db_model:
+        :param debug_mode:
+        :return:
+        """
         if text is None:
             set_text = True
         else:
@@ -550,17 +755,11 @@ class DataFileExtended(clickpoints.DataFile):
 
         with self.db.atomic() as transaction:
             markerset = []
-            # track_stateset = []
             stateset = []
-            # measurement_markerset = []
-            # measurementset = []
-            # prediction_markerset = []
-            # predictionset = []
             db_tracks=dict([[t.id, t] for t in self.getTracks(type=self.track_marker_type)])
             # Get Tracks from Filters
             for k in Tracker.Filters.keys():
                 x = y = np.nan
-                # prob = Tracker.Filters[k].log_prob(keys=[i], update=Tracker.Filters[k].ProbUpdate)
                 if i not in Tracker.Probability_Gain:
                     prob = Tracker.Filters[k].log_prob(keys=[i], update=Tracker.Filters[k].ProbUpdate)
                 else:
@@ -569,8 +768,8 @@ class DataFileExtended(clickpoints.DataFile):
                     else:
                         prob = Tracker.Probability_Gain[i][reverse_dict(Tracker.Probability_Gain_Dicts[i])[k], Tracker.Probability_Assignment_Dicts[i][k]]
 
-                if 100+k in db_tracks:#self.getTrack(id=100 + k):
-                    db_track = db_tracks[100+k]#self.getTrack(id=100 + k)
+                if 100+k in db_tracks:
+                    db_track = db_tracks[100+k]
                 else:
                     db_track = self.setTrack(self.track_marker_type, id=100 + k)
                 if len(db_track.track_filter)>0:
@@ -592,7 +791,6 @@ class DataFileExtended(clickpoints.DataFile):
                                initial_kwargs=db_model.initial_kwargs,extensions=db_model.extensions,
                                measured_variables=db_model.measured_variables)
                     db_filter = self.setFilter(model=db_filter_model, tracker=db_tracker,
-                                               # id=100 + k,
                                                track=db_track,
                                                measurement_distribution=db_dist_m,
                                                state_distribution=db_dist_s)
@@ -637,16 +835,7 @@ class DataFileExtended(clickpoints.DataFile):
                         prediction_err = np.zeros((len(prediction), len(prediction)))
                     i_x = Tracker.Model.Measured_Variables.index("PositionX")
                     i_y = Tracker.Model.Measured_Variables.index("PositionY")
-                    pred_x = prediction[i_x]
-                    pred_y = prediction[i_y]
 
-                    pred_err = (prediction_err[i_x,i_x]**2+prediction_err[i_y,i_y]**2)**0.5
-
-                    # pred_marker = self.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
-                    #                            type=self.prediction_marker_type)
-                    # prediction_markerset.append(dict(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
-                    #                                  type=self.prediction_marker_type,
-                    #                                  style='{"scale":%.2f}'%(2*pred_err)))
                     stateset.append(dict(log_prob=prob,
                                          filter=db_filter,
                                          image=image,
@@ -660,10 +849,6 @@ class DataFileExtended(clickpoints.DataFile):
                     meas = Tracker.Filters[k].Measurements[i]
                     meas_x = meas.PositionX
                     meas_y = meas.PositionY
-                    # meas_marker = self.setMarker(image=image, x=meas_y, y=meas_x, text="Track %s" % (100 + k),
-                    #                            type=self.detection_marker_type)
-                    # measurement_markerset.append(dict(image=image, x=meas_y, y=meas_x, text="Track %s" % (100 + k),
-                    #                                   type=self.detection_marker_type))
                     stateset.append(dict(filter=db_filter,
                                          log_prob=prob,
                                          image=image,
@@ -690,47 +875,12 @@ class DataFileExtended(clickpoints.DataFile):
                             y=[m["y"] for m in markerset],
                             text=[m["text"] for m in markerset],
                             style=[m["style"] for m in markerset])
-            # track_markers = self.getMarkers(image=image,
-            #                                 x=[m["x"] for m in markerset],
-            #                                 y=[m["y"] for m in markerset],
-            #                                 type=[m["type"] for m in markerset])
         self.setStates(image=[m["image"] for m in stateset],
                        filter=[m["filter"] for m in stateset],
                        type=[m["type"] for m in stateset],
                        log_prob=[m["log_prob"] for m in stateset],
                        state_vector=[m["state_vector"] for m in stateset],
                        state_error=[m["state_error"] for m in stateset])
-        # if (debug_mode&0b010):
-        #     self.setMarkers(image=[m["image"] for m in prediction_markerset],
-        #                     type=[m["type"] for m in prediction_markerset],
-        #                     x=[m["x"] for m in prediction_markerset],
-        #                     y=[m["y"] for m in prediction_markerset],
-        #                     text=[m["text"] for m in prediction_markerset],
-        #                     style=[m["style"] for m in prediction_markerset])
-        #     pred_markers = self.getMarkers(image=image,
-        #                                    x=[m["x"] for m in prediction_markerset],
-        #                                    y=[m["y"] for m in prediction_markerset],
-        #                                   type=[m["type"] for m in prediction_markerset])
-        #     self.setPredictions(marker=[m.id for m in pred_markers],
-        #                         filter=[m["filter"] for m in predictionset],
-        #                          log_prob=[m["log_prob"] for m in predictionset],
-        #                          prediction_vector=[m["prediction_vector"] for m in predictionset],
-        #                          prediction_error=[m["prediction_error"] for m in predictionset])
-        # if (debug_mode&0b100):
-        #     self.setMarkers(image=[m["image"] for m in measurement_markerset],
-        #                     type=[m["type"] for m in measurement_markerset],
-        #                     x=[m["x"] for m in measurement_markerset],
-        #                     y=[m["y"] for m in measurement_markerset],
-        #                     text=[m["text"] for m in measurement_markerset])
-        #     meas_markers = self.getMarkers(image=image,
-        #                                    x=[m["x"] for m in measurement_markerset],
-        #                                    y=[m["y"] for m in measurement_markerset],
-        #                                    type=[m["type"] for m in measurement_markerset])
-        #     self.setMeasurements(marker=[m.id for m in meas_markers],
-        #                          filter=[m["filter"] for m in measurementset],
-        #                          log_prob=[m["log_prob"] for m in measurementset],
-        #                          measurement_vector=[m["measurement_vector"] for m in measurementset],
-        #                          measurement_error=[m.get("measurement_error", None) for m in measurementset])
 
         print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
 
@@ -898,7 +1048,7 @@ class DataFileExtended(clickpoints.DataFile):
             tracker.Filters.update(dict([self.filter_from_db(db_filter,
                                                              filter_class=filter_class,
                                                              filter_args=db_tracker.filter_args,
-                                                             filter_kwargs=db_tracker.filter_kwargs) for db_filter in db_tracker.tracker_filters]))
+                                                             filter_kwargs=db_tracker.filter_kwargs) for db_filter in db_tracker.tracker_filters[:500]]))
             tracker.LogProbabilityThreshold = db_tracker.log_probability_threshold
             tracker.FilterThreshold = db_tracker.filter_threshold
             tracker.AssignmentProbabilityThreshold = db_tracker.assignment_probability_threshold
@@ -923,4 +1073,24 @@ class DataFileExtended(clickpoints.DataFile):
                             [new_filter.id, old_filter.id, marker.image_id])
         # pgains = self.db.execute_sql('',
         #                     [new_filter.id, old_filter.id, marker.image_id])
+
+    def merge(self, track0, track1):
+        # if we are not given a track..
+        if not isinstance(track0, self.table_track):
+            # interpret it as a track id and get the track entry
+            track0 = self.table_track.get(id=track0)
+            # if we don't get it, complain
+            if track0 is None:
+                raise ValueError("No valid track given.")
+        if not isinstance(track1, self.table_track):
+            # interpret it as a track id and get the track entry
+            track1 = self.table_track.get(id=track1)
+            # if we don't get it, complain
+            if track1 is None:
+                raise ValueError("No valid track given.")
+
+        # find the image ids from this track and the other track
+        image_ids0 = [m.image_id for m in track0.markers]
+        image_ids1 = [m.image_id for m in track1.markers]
+        self.db.execute_sql()
 
