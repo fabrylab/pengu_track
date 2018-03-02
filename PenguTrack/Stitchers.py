@@ -24,19 +24,26 @@ import clickpoints
 import numpy as np
 from .Detectors import Measurement
 from .Filters import Filter
+from PenguTrack import Filters
 from .Models import Model, VariableSpeed
 from .DataFileExtended import DataFileExtended
+from PenguTrack.Filters import greedy_assignment
 from scipy.optimize import linear_sum_assignment
 import time
 import peewee
 from copy import copy
+import inspect
+
+
+all_filters = tuple([v for v in dict(inspect.getmembers(Filters)).values() if type(v)==type])
 
 class Stitcher(object):
-    def __init__(self):
+    def __init__(self, greedy=False):
         self.Tracks = {}
         self.db = None
         self.track_dict = {}
         self.name = "Stitcher"
+        self.greedy = bool(greedy)
 
     def add_PT_Tracks(self, tracks):
         for track in tracks:
@@ -52,29 +59,30 @@ class Stitcher(object):
             self.Tracks.update({i: tracks[i]})
 
     def load_tracks_from_clickpoints(self, path, type):
-        self.db = DataFileExtended(path)
-        db=self.db
-        self.stiched_type = db.setMarkerType(name=self.name, color="F0F0FF")
-        tracks = db.getTracks(type=type)
-        all_markers = db.db.execute_sql('SELECT track_id, (SELECT sort_index FROM image WHERE image.id = image_id) as sort_index, x, y FROM marker WHERE type_id = ?', str(db.getMarkerType(name=type).id)).fetchall()
-        all_markers = np.array(all_markers)
+        self.db = clickpoints.DataFile(path)
+        if "DataFileExtendedVersion" in [item.key for item in self.db.table_meta.select()]:
+            self.db.db.close()
+            self.db = DataFileExtended(path)
+            db=self.db
+            self.stiched_type = db.setMarkerType(name=self.name, color="F0F0FF")
+            self.Tracks = self.db.tracker_from_db()[0].Filters
+            self.track_dict = dict(zip(range(len(self.Tracks)), self.Tracks.keys()))
+            self.db_track_dict = dict(self.db.db.execute_sql('select id, track_id from filter').fetchall())
+        else:
+            tracks = self.db.getTracks(type=type)
+            for track in tracks:
+                filter = Filters.Filter(Model())
+                X_raw = self.db.execute_sql(
+                    'select sort_index, y, x from marker m inner join image i on i.id ==m.image_id where m.track_id = ?',
+                    [track.id])
 
-        for track in tracks:
-            track = track.id
-            n = len(self.track_dict)
-            self.track_dict.update({n: track})
-            self.Tracks.update({track: Filter(Model(state_dim=2, meas_dim=2),
-                                                 no_dist=True,
-                                                 prob_update=False)})
-            self.Tracks[track].Model.Measured_Variables = ["PositionX", "PositionY"]
-            track_markers = all_markers[all_markers[:,0]==track]
-            X = dict(zip(track_markers.T[1].astype(int), track_markers[:, 2:, None]))
-            for i in sorted(X):
-                try:
-                    self.Tracks[track].predict(i)
-                except:
-                    pass
-                self.Tracks[track].update(i=i, z=Measurement(1., X[i]))
+                filter.X.update(dict([[v[0], np.array([[v[1]],[v[2]]], dtype=float)] for v in X_raw]))
+                self.Tracks({track.id:filter})
+            self.track_dict = dict(zip(range(len(self.Tracks)), self.Tracks.keys()))
+            self.db_track_dict = dict(zip(self.Tracks.keys(), self.Tracks.keys()))
+
+        print("Tracks loaded!")
+
 
     def load_measurements_from_clickpoints(self, path, type, measured_variables=["PositionX", "PositionY"]):
         self.db = DataFileExtended(path)
@@ -88,7 +96,7 @@ class Stitcher(object):
             track = track.id
             n = len(self.track_dict)
             self.track_dict.update({n: track})
-            self.Tracks.update({track: Filter(Model(state_dim=2, meas_dim=2),
+            self.Tracks.update({track: Filters.Filter(Model(state_dim=2, meas_dim=2),
                                                  no_dist=True,
                                                  prob_update=False)})
             self.Tracks[track].Model.Measured_Variables = measured_variables
@@ -117,9 +125,14 @@ class Stitcher(object):
 
             first_vals = first_vals[1:]-first_vals[:-1]
             last_vals = last_vals[1:]-last_vals[:-1]
-
-            first_vel[:,i] = np.array([np.dot(val, kernel[:l]) for val in first_vals.T[0]]).T[:, None]
-            last_vel[i:,] = np.array([np.dot(val, kernel[:l]) for val in last_vals.T[0]]).T[:, None]
+            try:
+                first_vel[:,i] = np.array([np.dot(val, kernel[:l]) for val in first_vals.T[0]]).T[:, None]
+            except ValueError:
+                first_vel[:,i] = np.array([np.dot(val, kernel[:l-1]) for val in first_vals.T[0]]).T[:, None]
+            try:
+                last_vel[i:,] = np.array([np.dot(val, kernel[:l]) for val in last_vals.T[0]]).T[:, None]
+            except ValueError:
+                last_vel[i:,] = np.array([np.dot(val, kernel[:l-1]) for val in last_vals.T[0]]).T[:, None]
         return last_vel-first_vel
 
     def pos_delta(self, kernel=np.ones(1)):
@@ -154,11 +167,18 @@ class Stitcher(object):
 
     def _stitch_(self, cost, threshold=np.inf):
         print(np.mean(cost>=threshold))
-        if np.any(cost==np.inf):
-            cost[cost==np.inf]=np.amax(cost!=np.inf)
-            if threshold==np.inf:
-                threshold=np.amax(cost)
-        rows, cols = linear_sum_assignment(cost)
+        # if np.any(cost==np.inf):
+        #     cost[cost==np.inf]=np.amax(cost[cost!=np.inf])
+        #     if threshold==np.inf:
+        #         threshold=np.amax(cost)
+        cost [cost==np.amax(cost)] == np.nextafter(np.inf, 0)/(max(cost.shape)**2)
+
+        if self.greedy:
+            rows, cols = greedy_assignment(cost)
+        else:
+            rows, cols = linear_sum_assignment(cost)
+
+        print("Assigned Tracks!")
         dr = dict(np.array([rows, cols]).T)
         dc = dict(np.array([cols, rows]).T)
         for j, k in enumerate(rows):
@@ -171,23 +191,24 @@ class Stitcher(object):
                     b = dr[b]
                 self.__stitch__(self.track_dict[a], self.track_dict[b])
 
-
     def __stitch__(self, i, j):
         idx = [i,j][np.argmin([min(self.Tracks[i].X), min(self.Tracks[j].X)])]
         n_idx = i if j==idx else j
-        times = set([ii for ii in self.Tracks[i].X])
-        times.update([ii for ii in self.Tracks[j].X])
-        for t in times:
-            if t not in self.Tracks[idx].Predicted_X and t not in self.Tracks[idx].X:
-                self.Tracks[idx].predict(i=t)
-            if t in self.Tracks[idx].X and t in self.Tracks[n_idx].X:
-                pass
-            elif t in self.Tracks[n_idx].X:
-                self.Tracks[idx].update(i=t, z=self.Tracks[n_idx].Measurements[t])
+        times = set(self.Tracks[i].X.keys())
+        times.update(self.Tracks[j].X.keys())
+        self.Tracks[idx].X.update(self.Tracks[n_idx].X)
+        self.Tracks[idx].X_error.update(self.Tracks[n_idx].X_error)
+        self.Tracks[idx].Predicted_X.update(self.Tracks[n_idx].Predicted_X)
+        self.Tracks[idx].Predicted_X_error.update(self.Tracks[n_idx].Predicted_X_error)
+        self.Tracks[idx].Measurements.update(self.Tracks[n_idx].Measurements)
         if self.db:
-            self.db.getTrack(idx).merge(n_idx)
+            self.db.getTrack(self.db_track_dict[idx]).merge(self.db_track_dict[n_idx], mode="average")
             iii = min(self.Tracks[n_idx].X)
             m = self.Tracks[idx].X[iii]
+            if isinstance(self.Tracks[idx], all_filters):
+                m = self.Tracks[idx].Model.measure(m)
+                m = [m[self.Tracks[idx].Model.Measured_Variables.index("PositionX")],
+                     self.Tracks[idx].Model.Measured_Variables.index("PositionY")]
             self.db.setMarker(x=m[0], y=m[1], type=self.stiched_type, image=self.db.getImages(frame=iii)[0])
         print("stitch!", i, j)
         self.Tracks.pop(n_idx)
@@ -255,11 +276,13 @@ class MotionStitcher(Stitcher):
         cost = np.linalg.norm(self.vel_delta(kernel=self.kernel), axis=(2,3))
         s = self.pos_delta()
         s_abs = np.linalg.norm(s,axis=(2,3))
-        t = self.temporal_diff()[:,:,None]
+        t = self.temporal_diff()
         cost[cost>self.max_diff] = self.max_diff
         cost[np.isnan(cost)] = self.max_diff
         cost[s_abs>self.MaxDist] =  self.max_diff
-        cost[t.T[0].T>self.MaxDelay] =  self.max_diff
+        # cost[np.abs(t)>self.MaxDelay] =  self.max_diff
+        cost[t>self.MaxDelay] =  self.max_diff
+        cost[t<=0] = self.max_diff
         self._stitch_(cost, threshold=self.max_diff)
 
 class expDistanceStitcher(Stitcher):
@@ -567,7 +590,7 @@ class Splitter(Stitcher):
 
     def _split_(self, row, collumn):
         for r,c in zip(row,collumn):
-            track_id = self.track_dict[r]
+            track_id = self.db_track_dict[self.track_dict[r]]
             time = c
             new_id = max(self.Tracks.keys())+1
             new_track = copy(self.Tracks[track_id])

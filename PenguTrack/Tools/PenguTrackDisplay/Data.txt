@@ -1,0 +1,5 @@
+[addon]
+name=PenguTrackDisplay
+file=PenguTrackDisplay.py
+icon=penguin_foot.ico
+image=penguin_feet.jpg

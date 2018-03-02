@@ -84,11 +84,12 @@ if __name__ == '__main__':
     db.deleteTracks(type=track_marker_type)
 
     # Start Iteration over Images
+    db_path = db.setPath("")
     print('Starting Iteration')
     for i in range(T):
         # Prediction step, without applied control(vector of zeros)
         MultiKal.predict(i=i)
-        image = db.setImage("","",timestamp=i)
+        image = db.setImage("",db_path,timestamp=i)
         # Detection step
         SegMap = TS.detect(image.data)
         X,Y = np.random.rand(0,1,(2,N))
