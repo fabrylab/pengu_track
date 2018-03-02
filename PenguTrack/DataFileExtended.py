@@ -745,6 +745,14 @@ class DataFileExtended(clickpoints.DataFile):
         :param debug_mode:
         :return:
         """
+
+        if db_tracker is None or db_model is None:
+            if len(self.getTrackers())>0:
+                db_tracker = self.getTrackers()[0]
+                db_model = db_tracker.model
+            else:
+                db_tracker, db_model = self.init_tracker(Tracker.Filters[0].Model, Tracker)
+
         if text is None:
             set_text = True
         else:
