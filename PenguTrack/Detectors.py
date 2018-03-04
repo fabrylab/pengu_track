@@ -3010,7 +3010,7 @@ class EmperorDetector(FlowDetector):
         window_size = int(np.round(np.round(np.sqrt(self.Area))/np.pi)*2 + 1)*3
 
         measurements = self.RegionDetector.detect(
-            image0_int > self.LuminanceThreshold*threshold_niblack(image_int, window_size=window_size)
+            image0_int > self.LuminanceThreshold*threshold_niblack(image0_int, window_size=window_size)
             , image0_int)
 
         indices, points_x, points_y = np.array([[i, m.PositionX, m.PositionY] for i, m in enumerate(measurements)],
