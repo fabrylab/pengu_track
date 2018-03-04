@@ -735,7 +735,7 @@ class DataFileExtended(clickpoints.DataFile):
         return model_item, tracker_item
 
     def write_to_DB(self, Tracker, image, i=None, text=None, cam_values=False, db_tracker=None, db_model=None,
-                    debug_mode=0b1111):
+                    debug_mode=0b1111, image_transform=None):
         """
         Writes a tracking step to the extended DataBase
         :param Tracker: PenguTrack Tracker (e.g. Hungarian Tracker) holding multiple
@@ -748,7 +748,8 @@ class DataFileExtended(clickpoints.DataFile):
         :param debug_mode:
         :return:
         """
-
+        if image_transform is None:
+            image_transform = lambda x: x
         if db_tracker is None or db_model is None:
             if len(self.getTrackers())>0:
                 db_tracker = self.getTrackers()[0]
@@ -818,14 +819,18 @@ class DataFileExtended(clickpoints.DataFile):
                         state_err = np.zeros((len(state), len(state)))
                     i_x = Tracker.Model.Measured_Variables.index("PositionX")
                     i_y = Tracker.Model.Measured_Variables.index("PositionY")
-                    state_err = (state_err[i_x,i_x]**2+state_err[i_y,i_y]**2)**0.5
 
                     if cam_values:
-                        x = meas.PositionX_Cam
-                        y = meas.PositionY_Cam
+                        state_image = image_transform(state)
+                        x = Tracker.Model.measure(state_image)[i_x]
+                        y = Tracker.Model.measure(state_image)[i_y]
+                        error_image = image_transform(np.diag(state_err))
+                        state_err = (error_image[i_x]**2+error_image[i_y]**2)**0.5
                     else:
                         x = Tracker.Model.measure(state)[i_x]
                         y = Tracker.Model.measure(state)[i_y]
+                        state_err = (state_err[i_x,i_x]**2+state_err[i_y,i_y]**2)**0.5
+
                     print('Setting %sTrack(%s)-Marker at %s, %s' % (new, (100 + k), x, y))
                     if set_text:
                         text = 'Track %s, Prob %.2f' % ((100 + k), prob)
@@ -841,14 +846,6 @@ class DataFileExtended(clickpoints.DataFile):
 
                 # Case 2: we want to see the prediction markers
                 if i in Tracker.Filters[k].Predicted_X.keys() and (debug_mode&0b010):
-                    prediction = Tracker.Model.measure(Tracker.Filters[k].Predicted_X[i])
-                    try:
-                        prediction_err = Tracker.Model.measure(Tracker.Filters[k].Predicted_X_error[i])
-                    except KeyError:
-                        prediction_err = np.zeros((len(prediction), len(prediction)))
-                    i_x = Tracker.Model.Measured_Variables.index("PositionX")
-                    i_y = Tracker.Model.Measured_Variables.index("PositionY")
-
                     stateset.append(dict(log_prob=prob,
                                          filter=db_filter,
                                          image=image,
@@ -856,10 +853,24 @@ class DataFileExtended(clickpoints.DataFile):
                                          state_vector=Tracker.Filters[k].Predicted_X[i],
                                          state_error=Tracker.Filters[k].Predicted_X_error.get(i, None)))
                     if debug_mode&0b1010:
-                        pred_x = prediction[i_x]
-                        pred_y = prediction[i_y]
+                        prediction = Tracker.Model.measure(Tracker.Filters[k].Predicted_X[i])
+                        try:
+                            prediction_err = Tracker.Model.measure(Tracker.Filters[k].Predicted_X_error[i])
+                        except KeyError:
+                            prediction_err = np.zeros((len(prediction), len(prediction)))
+                        i_x = Tracker.Model.Measured_Variables.index("PositionX")
+                        i_y = Tracker.Model.Measured_Variables.index("PositionY")
 
-                        pred_err = (prediction_err[i_x, i_x] ** 2 + prediction_err[i_y, i_y] ** 2) ** 0.5
+                        if cam_values:
+                            state_image = image_transform(prediction)
+                            x = Tracker.Model.measure(state_image)[i_x]
+                            y = Tracker.Model.measure(state_image)[i_y]
+                            error_image = image_transform(np.diag(prediction_err))
+                            pred_err = (error_image[i_x]**2+error_image[i_y]**2)**0.5
+                        else:
+                            x = Tracker.Model.measure(state)[i_x]
+                            y = Tracker.Model.measure(state)[i_y]
+                            pred_err = (prediction_err[i_x,i_x]**2+prediction_err[i_y,i_y]**2)**0.5
 
                         prediction_markerset.append(dict(image=image, x=pred_y, y=pred_x, text="Track %s" % (db_track.id),
                                                          type=self.prediction_marker_type,
