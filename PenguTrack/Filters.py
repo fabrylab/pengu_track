@@ -60,7 +60,8 @@ class Filter(object):
         The time series of control-vectors assigned to this filter. The keys equal the time stamp.
 
     """
-    def __init__(self, model, no_dist=False, meas_dist=ss.uniform(), state_dist=ss.uniform(), prob_update=True):
+    def __init__(self, model, no_dist=False, meas_dist=ss.uniform(), state_dist=ss.uniform(), prob_update=True,
+                 *args, **kwargs):
         """
         This Class describes the abstract function of a filter in the pengu-track package.
         It is only meant for subclassing.
