@@ -309,6 +309,9 @@ class DataFileExtended(clickpoints.DataFile):
         # Define ClickPoints Marker
         self.track_marker_type = self.setMarkerType(name="Track_Marker", color="#00FF00", mode=self.TYPE_Track,
                                                     style='{"transform": "image","color":"hsv"}')
+        self.detection_marker_type = self.setMarkerType(name="Detection_Marker", color="#FF0000", style='{"scale":1.2}')
+        self.prediction_marker_type = self.setMarkerType(name="Prediction_Marker", color="#0000FF",
+                                                         style='{"shape": "circle", "transform": "image"}')
         #Namespace
         db = self
 
@@ -732,7 +735,7 @@ class DataFileExtended(clickpoints.DataFile):
         return model_item, tracker_item
 
     def write_to_DB(self, Tracker, image, i=None, text=None, cam_values=False, db_tracker=None, db_model=None,
-                    debug_mode=0b111):
+                    debug_mode=0b1111):
         """
         Writes a tracking step to the extended DataBase
         :param Tracker: PenguTrack Tracker (e.g. Hungarian Tracker) holding multiple
@@ -764,6 +767,8 @@ class DataFileExtended(clickpoints.DataFile):
         with self.db.atomic() as transaction:
             markerset = []
             stateset = []
+            prediction_markerset = []
+            measurement_markerset = []
             db_tracks=dict([[t.id, t] for t in self.getTracks(type=self.track_marker_type)])
             # Get Tracks from Filters
             for k in Tracker.Filters.keys():
@@ -850,7 +855,15 @@ class DataFileExtended(clickpoints.DataFile):
                                          type=self.TYPE_PREDICTION,
                                          state_vector=Tracker.Filters[k].Predicted_X[i],
                                          state_error=Tracker.Filters[k].Predicted_X_error.get(i, None)))
+                    if debug_mode&0b1010:
+                        pred_x = prediction[i_x]
+                        pred_y = prediction[i_y]
 
+                        pred_err = (prediction_err[i_x, i_x] ** 2 + prediction_err[i_y, i_y] ** 2) ** 0.5
+
+                        prediction_markerset.append(dict(image=image, x=pred_y, y=pred_x, text="Track %s" % (db_track.id),
+                                                         type=self.prediction_marker_type,
+                                                         style='{"scale":%.2f}'%(2*pred_err)))
 
                 # Case 3: we want to see the measurement markers
                 if i in Tracker.Filters[k].Measurements.keys() and (debug_mode&0b100):
@@ -863,6 +876,10 @@ class DataFileExtended(clickpoints.DataFile):
                                          type=self.TYPE_MEASUREMENT,
                                          state_vector=np.array([meas_x, meas_y]),
                                          state_error=None))
+                    if debug_mode&0b1100:
+                        measurement_markerset.append(dict(image=image, x=meas_y, y=meas_x, text="Track %s" % (db_track.id),
+                                                          type=self.detection_marker_type))
+
 
         try:
             prob_gain = Tracker.Probability_Gain[i]
@@ -889,6 +906,20 @@ class DataFileExtended(clickpoints.DataFile):
                        log_prob=[m["log_prob"] for m in stateset],
                        state_vector=[m["state_vector"] for m in stateset],
                        state_error=[m["state_error"] for m in stateset])
+
+        if (debug_mode&0b1010):
+            self.setMarkers(image=[m["image"] for m in prediction_markerset],
+                            type=[m["type"] for m in prediction_markerset],
+                            x=[m["x"] for m in prediction_markerset],
+                            y=[m["y"] for m in prediction_markerset],
+                            text=[m["text"] for m in prediction_markerset],
+                            style=[m["style"] for m in prediction_markerset])
+        if (debug_mode&0b1100):
+            self.setMarkers(image=[m["image"] for m in measurement_markerset],
+                            type=[m["type"] for m in measurement_markerset],
+                            x=[m["x"] for m in measurement_markerset],
+                            y=[m["y"] for m in measurement_markerset],
+                            text=[m["text"] for m in measurement_markerset])
 
         print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
 
@@ -921,23 +952,24 @@ class DataFileExtended(clickpoints.DataFile):
             print("\tto 1")
             with self.db.transaction():
                 try:
-                    self.db.execute_sql(
-                        'CREATE TABLE `measurement_tmp` ( `id`	INTEGER NOT NULL, `filter_id`	INTEGER NOT NULL, `marker_id`	INTEGER NOT NULL, `log_prob`	REAL, `measurement_vector`	BLOB NOT NULL, `measurement_error`	BLOB, PRIMARY KEY(id), FOREIGN KEY(`filter_id`) REFERENCES "filter" ( "id" ) ON DELETE CASCADE, FOREIGN KEY(`marker_id`) REFERENCES "marker" ( "id" ) ON DELETE CASCADE)')
                     # self.db.execute_sql(
-                    #     'CREATE TABLE "measurement_tmp" ("id" INTEGER NOT NULL PRIMARY KEY, "marker_id" INTEGER NOT NULL, "log" REAL NOT NULL, "x" REAL NOT NULL, "y" REAL NOT NULL, "z" REAL NOT NULL, FOREIGN KEY ("marker_id") REFERENCES "marker" ("id") ON DELETE CASCADE)')
+                    #     'CREATE TABLE `measurement_tmp` ( `id`	INTEGER NOT NULL, `filter_id`	INTEGER NOT NULL, `marker_id`	INTEGER NOT NULL, `log_prob`	REAL, `measurement_vector`	BLOB NOT NULL, `measurement_error`	BLOB, PRIMARY KEY(id), FOREIGN KEY(`filter_id`) REFERENCES "filter" ( "id" ) ON DELETE CASCADE, FOREIGN KEY(`marker_id`) REFERENCES "marker" ( "id" ) ON DELETE CASCADE)')
+                    self.db.execute_sql(
+                        'CREATE TABLE `state_tmp` (`id`	INTEGER NOT NULL,`filter_id`	INTEGER NOT NULL,`image_id`	INTEGER NOT NULL, `type`	INTEGER NOT NULL, `log_prob`	REAL,`state_vector`	BLOB NOT NULL, `state_error`	BLOB, FOREIGN KEY(`image_id`) REFERENCES `image`(`id`) ON DELETE CASCADE, FOREIGN KEY(`filter_id`) REFERENCES `filter`(`id`) ON DELETE CASCADE, PRIMARY KEY(`id`))')
                     try:
-                        measurements = self.db.execute_sql('SELECT * from measurement').fetchall()
+                        measurements = self.db.execute_sql('select * from measurement m inner join (select track_id, image_id, id as marker_id from marker)mm on mm.marker_id==m.marker_id').fetchall()
                         for meas in measurements:
                             self.db.execute_sql(
-                                'INSERT INTO measurement_tmp ("id", "marker_id", "filter_id", "log_prob", "measurement_vector", measurement_error"") VALUES(?, ?, ?, ?, ?)',
-                                [meas["id"], meas["marker_id"], meas["filter_id"], meas["log"], np.array([meas.get("x",0),
+                                'INSERT INTO state_tmp ("id", "filter_id", "image_id", "type", "log_prob","state_vector", "state_error") VALUES(?, ?, ?, ?, ?, ?, ?)',
+                                [meas["id"], meas["track_id"], meas["image_id"], self.TYPE_MEASUREMENT , meas["log"], np.array([meas.get("x",0),
                                                                                                meas.get("y", 0),
                                                                                                meas.get("z", 0)]), None])
                         self.db.execute_sql('DROP TABLE measurement')
                     except peewee.OperationalError:
                         pass
-                    self.db.execute_sql('ALTER TABLE measurement_tmp RENAME TO measurement')
-                    self.db.execute_sql('CREATE INDEX "measurement_marker_id" ON "measurement" ("marker_id");')
+                    self.db.execute_sql('ALTER TABLE state_tmp RENAME TO state')
+                    # self.db.execute_sql('CREATE INDEX "measurement_marker_id" ON "state" ("marker_id");')
+                    # self.db.execute_sql('CREATE INDEX "measurement_marker_id" ON "measurement" ("marker_id");')
                 except peewee.OperationalError:
                     raise
                 pass
@@ -1101,4 +1133,5 @@ class DataFileExtended(clickpoints.DataFile):
         image_ids0 = [m.image_id for m in track0.markers]
         image_ids1 = [m.image_id for m in track1.markers]
         self.db.execute_sql()
+
 
