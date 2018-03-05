@@ -173,6 +173,8 @@ class Model(object):
         return np.dot(self.Control_Matrix, control_vector)
 
     def __measurement_function__(self, state_vector):
+        if np.prod(state_vector.shape)==self.State_dim**2:
+            return np.dot(self.Measurement_Matrix, np.dot(state_vector, self.Measurement_Matrix.T))
         return np.dot(self.Measurement_Matrix, state_vector)
 
     def __evolution_function__(self, random_vector):

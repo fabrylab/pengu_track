@@ -51,14 +51,29 @@ class MyPointItem(QtWidgets.QGraphicsPathItem):
 
         # set path
         self.setBrushes()
-        self.setPath(path_circle)
+        self.setPath(self.sized_cross(e[0], e[1], np.linalg.norm(e)*0.01))
         self.setPos(x[0], x[1])
         self.setScale(np.linalg.norm(e) * 2.)
-        self.Cross = QtWidgets.QGraphicsPathItem(self)
-        self.Cross.setPath(path1)
-        self.Cross.setPen(self.pen())
-        self.Cross.setBrush(QtGui.QBrush(QtGui.QColor("black")))
-        self.Cross.setScale(0.1/(np.linalg.norm(e) * 2.))
+        self.Cross = None#QtWidgets.QGraphicsPathItem(self)
+        # self.Cross.setPath(self.sized_cross(e[0], e[1], np.linalg.norm(e)*0.01))
+        # self.Cross.setPen(self.pen())
+        # self.Cross.setBrush(QtGui.QBrush(QtGui.QColor("black")))
+        # self.Cross.setScale(0.1/(np.linalg.norm(e) * 2.))
+
+    def sized_cross(self, w, b, r):
+        # a cross path
+        path = QtGui.QPainterPath()
+        path.addRect(-r, -w, b, w * 2)
+        path.addRect(r, -w, -b, w * 2)
+        path.addRect(-w, -r, w * 2, b)
+        path.addRect(-w, r, w * 2, -b)
+        path.addEllipse(-r, -r, r * 2, r * 2)
+        # path.addEllipse(-r, -r, r * 2, r * 2)
+        return path
+
+    def sized_circ(self, w, b, r):
+        path_circle = QtGui.QPainterPath()
+        path_circle.addEllipse(r, r, w, b)
 
         # self.lines=[]
 
@@ -94,6 +109,18 @@ class MyPointItem(QtWidgets.QGraphicsPathItem):
 
 
 
+class MyPointItem2(MyPointItem):
+    def __init__(self, parent, x, e):
+        # init and store parent
+        QtWidgets.QGraphicsPathItem.__init__(self, parent)
+        self.parent = parent
+
+        # set path
+        self.setBrushes()
+        self.setPath(self.sized_circ(e[0], e[1], np.linalg.norm(e)*0.01))
+        self.setPos(x[0], x[1])
+        self.setScale(np.linalg.norm(e) * 2.)
+        self.Cross = None
 
 class Addon(clickpoints.Addon):
     def __init__(self, *args, **kwargs):
@@ -130,7 +157,7 @@ class Addon(clickpoints.Addon):
         for filter in self.Tracker.Filters.values():
             i_x = filter.Model.Measured_Variables.index("PositionY")
             i_y = filter.Model.Measured_Variables.index("PositionX")
-            i=framenumber
+            i = framenumber
 
             if i in filter.Predicted_X:
                 P = filter.Model.measure(filter.Predicted_X[i])
@@ -139,18 +166,18 @@ class Addon(clickpoints.Addon):
                     P_err = filter.Model.measure(filter.Predicted_X_error[i])
                     p_err = [P_err[i_x, i_x], P_err[i_y, i_y]]
                 else:
-                    p_err = [1., 1.]
-                point_p = MyPointItem(self.cp.window.view.origin, p, p_err)
+                    p_err = [0., 0.]
+                point_p = MyPointItem2(self.cp.window.view.origin, p, p_err)
                 point_p.setColor(QtGui.QColor(0, 0, 255))
                 self.points.append(point_p)
 
-            if i in filter.Measurements:
-                M = filter.Measurements[i]
-                m = [M[i_x], M[i_y]]
-                m_err = [1.,1.]
-                point_m = MyPointItem(self.cp.window.view.origin, m, m_err)
-                point_m.setColor(QtGui.QColor(255, 0, 0))
-                self.points.append(point_m)
+            # if i in filter.Measurements:
+            #     M = filter.Measurements[i]
+            #     m = [M[i_x], M[i_y]]
+            #     m_err = [1.,1.]
+            #     point_m = MyPointItem(self.cp.window.view.origin, m, m_err)
+            #     point_m.setColor(QtGui.QColor(255, 0, 0))
+            #     self.points.append(point_m)
 
             if i in filter.X:
                 X = filter.Model.measure(filter.X[i])
@@ -159,7 +186,8 @@ class Addon(clickpoints.Addon):
                     X_err = filter.Model.measure(filter.X_error[i])
                     err = [X_err[i_x, i_x], X_err[i_y, i_y]]
                 else:
-                    err = [1., 1.]
+                    err = [0., 0.]
+                # print(err)
                 point_x = MyPointItem(self.cp.window.view.origin, x, err)
                 point_x.setColor(QtGui.QColor(0, 255, 0))
                 self.points.append(point_x)
