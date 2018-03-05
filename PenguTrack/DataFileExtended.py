@@ -504,6 +504,23 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
+    def getState(self, id=None, filter_id=None, image_id=None, type_id=None, log_prob=None):
+        query = self.table_state.select()
+        query = addFilter(query, id, self.table_state.id)
+        query = addFilter(query, filter_id, self.table_state.filter_id)
+        query = addFilter(query, image_id, self.table_state.image_id)
+        query = addFilter(query, type_id, self.table_state.type_id)
+        query = addFilter(query, log_prob, self.table_state.log_prob)
+        return query
+
+    def deleteState(self, id=None, filter_id=None, image_id=None, type_id=None, log_prob=None):
+        query = self.table_state.delete()
+        query = addFilter(query, id, self.table_state.id)
+        query = addFilter(query, filter_id, self.table_state.filter_id)
+        query = addFilter(query, image_id, self.table_state.image_id)
+        query = addFilter(query, type_id, self.table_state.type_id)
+        query = addFilter(query, log_prob, self.table_state.log_prob)
+        return query.execute()
 
     def setTracker(self,tracker_class="", filter_class="", model=None,
                filter_threshold=3,log_probability_threshold=0.,
@@ -594,6 +611,13 @@ class DataFileExtended(clickpoints.DataFile):
         query = addFilter(query, assignment_probability_threshold, self.table_tracker.assignment_probability_threshold)
         return query
 
+    def deleteTracker(self, id=None, tracker_class=None, filter_class=None):
+        query = self.table_tracker.delete()
+        query = addFilter(query, id, self.table_tracker.id)
+        query = addFilter(query, tracker_class, self.table_tracker.tracker_class)
+        query = addFilter(query, filter_class, self.table_tracker.filter_class)
+        return query.execute()
+
 
     def setDistribution(self, name=None, mean=None, cov=None, lower=None, upper=None, id=None):
         dictionary = dict(id=id)
@@ -612,6 +636,18 @@ class DataFileExtended(clickpoints.DataFile):
         setFields(item, dictionary)
         item.save()
         return item
+
+    def getDistribution(self, id=None, name=None):
+        query = self.table_distribution.select()
+        query = addFilter(query, id, self.table_distribution.id)
+        query = addFilter(query, name, self.table_distribution.name)
+        return query
+
+    def deleteDistribution(self, id=None, name=None):
+        query = self.table_distribution.delete()
+        query = addFilter(query, id, self.table_distribution.id)
+        query = addFilter(query, name, self.table_distribution.name)
+        return query.execute()
 
     def setModel(self, id=None, name="Model", state_dim=1, control_dim=1, meas_dim=1, evolution_dim=1,
                  state_matrix=None, control_matrix=None, measurement_matrix=None, evolution_matrix=None,
@@ -645,11 +681,23 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
-    def setFilter(self, track=None, tracker=None,
+    def getModel(self, id=None, name=None):
+        query = self.table_model.select()
+        query = addFilter(query, id, self.table_filter.id)
+        query = addFilter(query, name, self.table_filter.name)
+        return query
+
+    def deleteModel(self, id=None, name=None):
+        query = self.table_model.delete()
+        query = addFilter(query, id, self.table_filter.id)
+        query = addFilter(query, name, self.table_filter.name)
+        return query.execute()
+
+    def setFilter(self, id=None, track=None, tracker=None,
                   measurement_distribution=None,
                   state_distribution=None,
                   model=None):
-        dictionary = dict(track=track)
+        dictionary = dict(id=id, track=track)
         try:
             item = self.table_filter.get(**dictionary)
         except peewee.DoesNotExist:
@@ -665,6 +713,14 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
+    def setFilters(self, id=None, track=None, tracker=None, measurement_distribution=None,
+                  state_distribution=None, model=None):
+        data = packToDictList(self.table_filter, id=id, track=track, tracker=tracker,
+                              measurement_distribution=measurement_distribution,
+                              state_distribution=state_distribution,
+                              model=model)
+        return self.saveUpsertMany(self.table_filter, data)
+
     def getFilter(self, id=None, track_id=None):
         query = self.table_filter.select()
         query = addFilter(query, track_id, self.table_filter.track_id)
@@ -673,6 +729,23 @@ class DataFileExtended(clickpoints.DataFile):
             return query[0]
         else:
             return None
+
+    def getFilters(self, id=None, track_id=None):
+        query = self.table_filter.select()
+        query = addFilter(query, track_id, self.table_filter.track_id)
+        query = addFilter(query, id, self.table_filter.id)
+        return query
+
+    def deleteFilters(self, id=None, track_id=None, tracker_id=None, measurement_distribution_id=None,
+                      state_distribution_id=None, model_id=None):
+        query = self.table_filter.delete()
+        query = addFilter(query, id, self.table_filter.id)
+        query = addFilter(query, track_id, self.table_filter.track_id)
+        query = addFilter(query, tracker_id, self.table_filter.tracker_id)
+        query = addFilter(query, measurement_distribution_id, self.table_filter.measurement_distribution_id)
+        query = addFilter(query, state_distribution_id, self.table_filter.state_distribution_id)
+        query = addFilter(query, model_id, self.table_filter.model_id)
+        return query.execute()
 
 
     def setProbabilityGain(self, id=None, image=None, tracker=None,
@@ -694,6 +767,20 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
+    def getProbabilityGain(self, id=None, image_id=None, tracker_id=None):
+        query = self.table_probability_gain.select()
+        query = addFilter(query, id, self.table_probability_gain.id)
+        query = addFilter(query, image_id, self.table_probability_gain.image_id)
+        query = addFilter(query, tracker_id, self.table_probability_gain.tracker_id)
+        return query
+
+    def deleteProbabilityGain(self, id=None, image_id=None, tracker_id=None):
+        query = self.table_probability_gain.delete()
+        query = addFilter(query, id, self.table_probability_gain.id)
+        query = addFilter(query, image_id, self.table_probability_gain.image_id)
+        query = addFilter(query, tracker_id, self.table_probability_gain.tracker_id)
+        return query.execute()
+
     def setStates(self, image=None, filter=None, type=None, log_prob=None, state_vector=None, state_error=None):
         data = packToDictList(self.table_state, image=image, filter=filter, type=type,
                               log_prob=log_prob,
@@ -704,8 +791,21 @@ class DataFileExtended(clickpoints.DataFile):
     def deletetOld(self):
         """Deletes old Clickpoints marker entries"""
         self.deleteMarkers(type=self.track_marker_type)
+        self.deleteMarkers(type=self.prediction_marker_type)
+        self.deleteMarkers(type=self.detection_marker_type)
         # Delete Old Tracks
         self.deleteTracks(type=self.track_marker_type)
+        # Delete Distributions
+        self.deleteState()
+        # Delete Distributions
+        self.deleteDistribution()
+        # Delete Model
+        self.deleteModel()
+        # Delete Filter
+        self.deleteFilters()
+        # Delete Tracker
+        self.deleteTracker()
+
 
 
     def init_tracker(self, model, tracker):
@@ -770,7 +870,8 @@ class DataFileExtended(clickpoints.DataFile):
             stateset = []
             prediction_markerset = []
             measurement_markerset = []
-            db_tracks=dict([[t.id, t] for t in self.getTracks(type=self.track_marker_type)])
+            filter_list = []
+            db_filters = dict([[f.id, f] for f in self.getFilters()])
             # Get Tracks from Filters
             for k in Tracker.Filters.keys():
                 x = y = np.nan
@@ -782,36 +883,42 @@ class DataFileExtended(clickpoints.DataFile):
                     else:
                         prob = Tracker.Probability_Gain[i][reverse_dict(Tracker.Probability_Gain_Dicts[i])[k], Tracker.Probability_Assignment_Dicts[i][k]]
 
-                if 100+k in db_tracks:
-                    db_track = db_tracks[100+k]
-                else:
-                    db_track = self.setTrack(self.track_marker_type, id=100 + k)
-                if len(db_track.track_filter)>0:
+                if k in db_filters:
                     new = ""
-                    db_filter = db_track.track_filter[0]
+                    db_filter = db_filters[k]
+                    db_track = db_filter.track
                 else:
+                    db_track = self.setTrack(self.track_marker_type)
                     new = "new "
                     db_dist_s = self.setDistribution(name=parse_dist_name(Tracker.Filters[k].State_Distribution),
                                                      **parse_dist_dict(Tracker.Filters[k].State_Distribution.__dict__))
                     db_dist_m = self.setDistribution(name=parse_dist_name(Tracker.Filters[k].Measurement_Distribution),
                                                      **parse_dist_dict(Tracker.Filters[k].Measurement_Distribution.__dict__))
                     db_filter_model = self.setModel(name=db_model.name,
-                                                    state_dim=db_model.state_dim, control_dim=db_model.control_dim,
-                                                    meas_dim=db_model.meas_dim, evolution_dim=db_model.evolution_dim,
-                                                    state_matrix=db_model.state_matrix, control_matrix=db_model.control_matrix,
-                                                    measurement_matrix=db_model.measurement_matrix, evolution_matrix=db_model.evolution_matrix,
-                               opt_params=db_model.opt_params, opt_params_shape=db_model.opt_params_shape,
-                               opt_params_borders=db_model.opt_params_borders, initial_args=db_model.initial_args,
-                               initial_kwargs=db_model.initial_kwargs,extensions=db_model.extensions,
-                               measured_variables=db_model.measured_variables)
-                    db_filter = self.setFilter(model=db_filter_model, tracker=db_tracker,
-                                               track=db_track,
-                                               measurement_distribution=db_dist_m,
-                                               state_distribution=db_dist_s)
+                                                    state_dim=db_model.state_dim,
+                                                    control_dim=db_model.control_dim,
+                                                    meas_dim=db_model.meas_dim,
+                                                    evolution_dim=db_model.evolution_dim,
+                                                    state_matrix=db_model.state_matrix,
+                                                    control_matrix=db_model.control_matrix,
+                                                    measurement_matrix=db_model.measurement_matrix,
+                                                    evolution_matrix=db_model.evolution_matrix,
+                                                    opt_params=db_model.opt_params,
+                                                    opt_params_shape=db_model.opt_params_shape,
+                                                    opt_params_borders=db_model.opt_params_borders,
+                                                    initial_args=db_model.initial_args,
+                                                    initial_kwargs=db_model.initial_kwargs,
+                                                    extensions=db_model.extensions,
+                                                    measured_variables=db_model.measured_variables)
+
+                    filter_list.append(dict(id=k,
+                                            model=db_filter_model.id, tracker=db_tracker.id,
+                                            track=db_track.id,
+                                            measurement_distribution=db_dist_m.id,
+                                            state_distribution=db_dist_s.id))
 
                 # Case 1: we tracked something in this filter
                 if i in Tracker.Filters[k].Measurements.keys() and (debug_mode&0b001):
-                    meas = Tracker.Filters[k].Measurements[i]
                     state = Tracker.Filters[k].X[i]
                     try:
                         state_err = Tracker.Model.measure(Tracker.Filters[k].X_error[i])
@@ -829,16 +936,16 @@ class DataFileExtended(clickpoints.DataFile):
                     else:
                         x = Tracker.Model.measure(state)[i_x]
                         y = Tracker.Model.measure(state)[i_y]
-                        state_err = (state_err[i_x,i_x]**2+state_err[i_y,i_y]**2)**0.5
+                        state_err = (state_err[i_x, i_x]**2+state_err[i_y,i_y]**2)**0.5
 
-                    print('Setting %sTrack(%s)-Marker at %s, %s' % (new, (100 + k), x, y))
+                    print('Setting %sTrack(%s)-Marker at %s, %s' % (new, k, x, y))
                     if set_text:
-                        text = 'Track %s, Prob %.2f' % ((100 + k), prob)
-                    markerset.append(dict(image=image, type=self.track_marker_type, track=100 + k, x=y, y=x,
+                        text = 'Filter %s, Prob %.2f' % (k, prob)
+                    markerset.append(dict(image=image, type=self.track_marker_type, track=db_track, x=y, y=x,
                                                 text=text,
                                                 style='{"scale":%.2f}'%(2*state_err)))
                     stateset.append(dict(log_prob=prob,
-                                         filter=db_filter,
+                                         filter=k,
                                          image=image,
                                          type=self.TYPE_BELIEVE,
                                          state_vector=Tracker.Filters[k].X[i],
@@ -847,13 +954,13 @@ class DataFileExtended(clickpoints.DataFile):
                 # Case 2: we want to see the prediction markers
                 if i in Tracker.Filters[k].Predicted_X.keys() and (debug_mode&0b010):
                     stateset.append(dict(log_prob=prob,
-                                         filter=db_filter,
+                                         filter=k,
                                          image=image,
                                          type=self.TYPE_PREDICTION,
                                          state_vector=Tracker.Filters[k].Predicted_X[i],
                                          state_error=Tracker.Filters[k].Predicted_X_error.get(i, None)))
                     if debug_mode&0b1010:
-                        prediction = Tracker.Model.measure(Tracker.Filters[k].Predicted_X[i])
+                        prediction = Tracker.Filters[k].Predicted_X[i]
                         try:
                             prediction_err = Tracker.Model.measure(Tracker.Filters[k].Predicted_X_error[i])
                         except KeyError:
@@ -862,17 +969,18 @@ class DataFileExtended(clickpoints.DataFile):
                         i_y = Tracker.Model.Measured_Variables.index("PositionY")
 
                         if cam_values:
-                            state_image = image_transform(prediction)
-                            x = Tracker.Model.measure(state_image)[i_x]
-                            y = Tracker.Model.measure(state_image)[i_y]
+                            prediction_image = image_transform(prediction)
+                            pred_x = Tracker.Model.measure(prediction_image)[i_x]
+                            pred_y = Tracker.Model.measure(prediction_image)[i_y]
                             error_image = image_transform(np.diag(prediction_err))
                             pred_err = (error_image[i_x]**2+error_image[i_y]**2)**0.5
                         else:
-                            x = Tracker.Model.measure(state)[i_x]
-                            y = Tracker.Model.measure(state)[i_y]
-                            pred_err = (prediction_err[i_x,i_x]**2+prediction_err[i_y,i_y]**2)**0.5
+                            pred_x = Tracker.Model.measure(prediction)[i_x]
+                            pred_y = Tracker.Model.measure(prediction)[i_y]
+                            pred_err = (prediction_err[i_x, i_x]**2+prediction_err[i_y, i_y]**2)**0.5
 
-                        prediction_markerset.append(dict(image=image, x=pred_y, y=pred_x, text="Track %s" % (db_track.id),
+                        prediction_markerset.append(dict(image=image, x=pred_y, y=pred_x,
+                                                         text="Filter %s" % k,
                                                          type=self.prediction_marker_type,
                                                          style='{"scale":%.2f}'%(2*pred_err)))
 
@@ -881,14 +989,15 @@ class DataFileExtended(clickpoints.DataFile):
                     meas = Tracker.Filters[k].Measurements[i]
                     meas_x = meas.PositionX
                     meas_y = meas.PositionY
-                    stateset.append(dict(filter=db_filter,
+                    stateset.append(dict(filter=k,
                                          log_prob=prob,
                                          image=image,
                                          type=self.TYPE_MEASUREMENT,
                                          state_vector=np.array([meas_x, meas_y]),
                                          state_error=None))
                     if debug_mode&0b1100:
-                        measurement_markerset.append(dict(image=image, x=meas_y, y=meas_x, text="Track %s" % (db_track.id),
+                        measurement_markerset.append(dict(image=image, x=meas_y, y=meas_x,
+                                                          text="Track %s" % (db_track.id),
                                                           type=self.detection_marker_type))
 
 
@@ -896,12 +1005,19 @@ class DataFileExtended(clickpoints.DataFile):
             prob_gain = Tracker.Probability_Gain[i]
             prob_gain_dict = Tracker.Probability_Gain_Dicts[i]
             prob_assign_dict = Tracker.Probability_Assignment_Dicts[i]
-            self.setProbabilityGain(image=image,tracker=db_tracker,
+            self.setProbabilityGain(image=image, tracker=db_tracker,
                                     probability_gain=prob_gain,
                                     probability_gain_dict=prob_gain_dict,
                                     probability_assignment_dict=prob_assign_dict)
         except KeyError:
             pass
+
+        self.setFilters(id=[f["id"] for f in filter_list],
+                        track=[f["track"] for f in filter_list],
+                        tracker=[f["tracker"] for f in filter_list],
+                        measurement_distribution=[f["measurement_distribution"] for f in filter_list],
+                        state_distribution=[f["state_distribution"] for f in filter_list],
+                        model=[f["model"] for f in filter_list])
 
         if (debug_mode&0b001):
             self.setMarkers(image=[m["image"] for m in markerset],

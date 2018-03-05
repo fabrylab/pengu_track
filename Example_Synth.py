@@ -111,9 +111,10 @@ if __name__ == '__main__':
     from PenguTrack.Models import VariableSpeed
     from PenguTrack.DataFileExtended import DataFileExtended
 
-    Generator = SyntheticDataGenerator(1138, 1000., 1., VariableSpeed(dim=2, timeconst=0.5, damping=1.), loose=True)
+    Generator = SyntheticDataGenerator(114, 100., 1., VariableSpeed(dim=2, timeconst=0.5, damping=1.), loose=True)
 
     MultiKal = track(MultiKal, Generator)
+    MultiKal.LogProbabilityThreshold = -5.
 
 
     # db = DataFileExtended("./synth_data.cdb", "r")
