@@ -944,7 +944,7 @@ class DataFileExtended(clickpoints.DataFile):
                     markerset.append(dict(image=image, type=self.track_marker_type, track=db_track, x=y, y=x,
                                                 text=text,
                                                 style='{"scale":%.2f}'%(state_err)))
-                    if (debug_mode & 0b001)
+                    if (debug_mode & 0b001):
                         stateset.append(dict(log_prob=prob,
                                              filter=k,
                                              image=image,
