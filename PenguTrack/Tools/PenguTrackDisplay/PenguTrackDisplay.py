@@ -60,6 +60,9 @@ class StateMarker(QtWidgets.QGraphicsPathItem):
         elif self.type == "prediction":
             self.setPath(self.sized_circ(e[0], e[1], 0))
             self.setZValue(0.1)
+        elif self.type == "measurement":
+            self.setPath(self.sized_cross(e[0], e[1], np.linalg.norm(e)*0.1))
+            self.setZValue(0.2)
         self.setPos(x[0], x[1])
 
     def sized_cross(self, w, b, r):
@@ -88,14 +91,24 @@ class StateMarker(QtWidgets.QGraphicsPathItem):
             base_color = "00ff00"
         elif self.type == "prediction":
             base_color = "0000ff"
-        color = "#" + hex(np.uint8(max(255, 255./np.linalg.norm(self.e))))[2:] + base_color
-        self.setBrush(QtGui.QBrush(QtGui.QColor(color)))
+        elif self.type == "measurement":
+            base_color = "ff0000"
+        print(255./max(1.,self.e[0]*self.e[1]*np.pi))
+        maximum = np.uint8(255./max(1., self.e[0]*self.e[1]*np.pi))
+        maximum = 255
+        color = "#" + hex(maximum)[2:] + base_color
+        gradient = QtGui.QRadialGradient(0., 0., (self.e[0]+self.e[1])/2.)
+        gradient.setColorAt(0., QtGui.QColor(color))
+        gradient.setColorAt(np.exp(-1.), QtGui.QColor("#00000000"))
+        self.setBrush(gradient)
+        # self.setBrush(QtGui.QBrush(QtGui.QColor(color)))
 
         # set the pen to white with a border of 1
         pen = self.pen()
         # pen.setColor(QtGui.QColor("white"))
+        pen.setColor(QtGui.QColor("#00000000"))
         pen.setCosmetic(True)
-        # pen.setWidthF(1)
+        # pen.setWidthF(0.)
         self.setPen(pen)
 
     def setColor(self, color):
@@ -155,13 +168,13 @@ class Addon(clickpoints.Addon):
                 # point_p.setColor(QtGui.QBrush(QtGui.QColor("#88FF8800")))
                 self.points.append(point_p)
 
-            # if i in filter.Measurements:
-            #     M = filter.Measurements[i]
-            #     m = [M[i_x], M[i_y]]
-            #     m_err = [1.,1.]
-            #     point_m = MyPointItem(self.cp.window.view.origin, m, m_err)
-            #     point_m.setColor(QtGui.QColor(255, 0, 0))
-            #     self.points.append(point_m)
+            if i in filter.Measurements:
+                M = filter.Measurements[i]
+                m = [M[i_x], M[i_y]]
+                m_err = [1., 1.]
+                point_m = StateMarker(self.cp.window.view.origin, m, m_err, type="measurement")
+                # point_m.setColor(QtGui.QColor(255, 0, 0))
+                self.points.append(point_m)
 
             if i in filter.X:
                 X = filter.Model.measure(filter.X[i])

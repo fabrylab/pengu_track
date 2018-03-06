@@ -504,21 +504,21 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
-    def getState(self, id=None, filter_id=None, image_id=None, type_id=None, log_prob=None):
+    def getState(self, id=None, filter_id=None, image_id=None, type=None, log_prob=None):
         query = self.table_state.select()
         query = addFilter(query, id, self.table_state.id)
         query = addFilter(query, filter_id, self.table_state.filter_id)
         query = addFilter(query, image_id, self.table_state.image_id)
-        query = addFilter(query, type_id, self.table_state.type_id)
+        query = addFilter(query, type, self.table_state.type)
         query = addFilter(query, log_prob, self.table_state.log_prob)
         return query
 
-    def deleteState(self, id=None, filter_id=None, image_id=None, type_id=None, log_prob=None):
+    def deleteState(self, id=None, filter_id=None, image_id=None, type=None, log_prob=None):
         query = self.table_state.delete()
         query = addFilter(query, id, self.table_state.id)
         query = addFilter(query, filter_id, self.table_state.filter_id)
         query = addFilter(query, image_id, self.table_state.image_id)
-        query = addFilter(query, type_id, self.table_state.type_id)
+        query = addFilter(query, type, self.table_state.type)
         query = addFilter(query, log_prob, self.table_state.log_prob)
         return query.execute()
 
@@ -683,14 +683,14 @@ class DataFileExtended(clickpoints.DataFile):
 
     def getModel(self, id=None, name=None):
         query = self.table_model.select()
-        query = addFilter(query, id, self.table_filter.id)
-        query = addFilter(query, name, self.table_filter.name)
+        query = addFilter(query, id, self.table_model.id)
+        query = addFilter(query, name, self.table_model.name)
         return query
 
     def deleteModel(self, id=None, name=None):
         query = self.table_model.delete()
-        query = addFilter(query, id, self.table_filter.id)
-        query = addFilter(query, name, self.table_filter.name)
+        query = addFilter(query, id, self.table_model.id)
+        query = addFilter(query, name, self.table_model.name)
         return query.execute()
 
     def setFilter(self, id=None, track=None, tracker=None,
@@ -835,7 +835,7 @@ class DataFileExtended(clickpoints.DataFile):
         return model_item, tracker_item
 
     def write_to_DB(self, Tracker, image, i=None, text=None, cam_values=False, db_tracker=None, db_model=None,
-                    debug_mode=0b1111, image_transform=None):
+                    debug_mode=0b1111, image_transform=None, verbose=True):
         """
         Writes a tracking step to the extended DataBase
         :param Tracker: PenguTrack Tracker (e.g. Hungarian Tracker) holding multiple
@@ -938,7 +938,8 @@ class DataFileExtended(clickpoints.DataFile):
                         y = Tracker.Model.measure(state)[i_y]
                         state_err = (state_err[i_x, i_x]+state_err[i_y,i_y])*0.5
 
-                    print('Setting %sTrack(%s)-Marker at %s, %s' % (new, k, x, y))
+                    if verbose:
+                        print('Setting %sTrack(%s)-Marker at %s, %s' % (new, k, x, y))
                     if set_text:
                         text = 'Filter %s, Prob %.2f' % (k, prob)
                     markerset.append(dict(image=image, type=self.track_marker_type, track=db_track, x=y, y=x,
@@ -1049,8 +1050,8 @@ class DataFileExtended(clickpoints.DataFile):
                             x=[m["x"] for m in measurement_markerset],
                             y=[m["y"] for m in measurement_markerset],
                             text=[m["text"] for m in measurement_markerset])
-
-        print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
+        if verbose:
+            print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
 
 
     def write_to_DB_cam(self, *args, **kwargs):
