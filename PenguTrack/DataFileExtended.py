@@ -918,7 +918,7 @@ class DataFileExtended(clickpoints.DataFile):
                                             state_distribution=db_dist_s.id))
 
                 # Case 1: we tracked something in this filter
-                if i in Tracker.Filters[k].Measurements.keys() and (debug_mode&0b001):
+                if i in Tracker.Filters[k].Measurements.keys():
                     state = Tracker.Filters[k].X[i]
                     try:
                         state_err = Tracker.Model.measure(Tracker.Filters[k].X_error[i])
@@ -932,24 +932,25 @@ class DataFileExtended(clickpoints.DataFile):
                         x = Tracker.Model.measure(state_image)[i_x]
                         y = Tracker.Model.measure(state_image)[i_y]
                         error_image = image_transform(np.diag(state_err))
-                        state_err = (error_image[i_x]**2+error_image[i_y]**2)**0.5
+                        state_err = (error_image[i_x]+error_image[i_y])*0.5
                     else:
                         x = Tracker.Model.measure(state)[i_x]
                         y = Tracker.Model.measure(state)[i_y]
-                        state_err = (state_err[i_x, i_x]**2+state_err[i_y,i_y]**2)**0.5
+                        state_err = (state_err[i_x, i_x]+state_err[i_y,i_y])*0.5
 
                     print('Setting %sTrack(%s)-Marker at %s, %s' % (new, k, x, y))
                     if set_text:
                         text = 'Filter %s, Prob %.2f' % (k, prob)
                     markerset.append(dict(image=image, type=self.track_marker_type, track=db_track, x=y, y=x,
                                                 text=text,
-                                                style='{"scale":%.2f}'%(2*state_err)))
-                    stateset.append(dict(log_prob=prob,
-                                         filter=k,
-                                         image=image,
-                                         type=self.TYPE_BELIEVE,
-                                         state_vector=Tracker.Filters[k].X[i],
-                                         state_error=Tracker.Filters[k].X_error.get(i, None)))
+                                                style='{"scale":%.2f}'%(state_err)))
+                    if (debug_mode & 0b001)
+                        stateset.append(dict(log_prob=prob,
+                                             filter=k,
+                                             image=image,
+                                             type=self.TYPE_BELIEVE,
+                                             state_vector=Tracker.Filters[k].X[i],
+                                             state_error=Tracker.Filters[k].X_error.get(i, None)))
 
                 # Case 2: we want to see the prediction markers
                 if i in Tracker.Filters[k].Predicted_X.keys() and (debug_mode&0b010):
@@ -973,16 +974,16 @@ class DataFileExtended(clickpoints.DataFile):
                             pred_x = Tracker.Model.measure(prediction_image)[i_x]
                             pred_y = Tracker.Model.measure(prediction_image)[i_y]
                             error_image = image_transform(np.diag(prediction_err))
-                            pred_err = (error_image[i_x]**2+error_image[i_y]**2)**0.5
+                            pred_err = (error_image[i_x]+error_image[i_y])*0.5
                         else:
                             pred_x = Tracker.Model.measure(prediction)[i_x]
                             pred_y = Tracker.Model.measure(prediction)[i_y]
-                            pred_err = (prediction_err[i_x, i_x]**2+prediction_err[i_y, i_y]**2)**0.5
+                            pred_err = (prediction_err[i_x, i_x]+prediction_err[i_y, i_y])*0.5
 
                         prediction_markerset.append(dict(image=image, x=pred_y, y=pred_x,
                                                          text="Filter %s" % k,
                                                          type=self.prediction_marker_type,
-                                                         style='{"scale":%.2f}'%(2*pred_err)))
+                                                         style='{"scale":%.2f}'%(pred_err)))
 
                 # Case 3: we want to see the measurement markers
                 if i in Tracker.Filters[k].Measurements.keys() and (debug_mode&0b100):
@@ -1012,12 +1013,13 @@ class DataFileExtended(clickpoints.DataFile):
         except KeyError:
             pass
 
-        self.setFilters(id=[f["id"] for f in filter_list],
-                        track=[f["track"] for f in filter_list],
-                        tracker=[f["tracker"] for f in filter_list],
-                        measurement_distribution=[f["measurement_distribution"] for f in filter_list],
-                        state_distribution=[f["state_distribution"] for f in filter_list],
-                        model=[f["model"] for f in filter_list])
+        if len(filter_list)>0:
+            self.setFilters(id=[f["id"] for f in filter_list],
+                            track=[f["track"] for f in filter_list],
+                            tracker=[f["tracker"] for f in filter_list],
+                            measurement_distribution=[f["measurement_distribution"] for f in filter_list],
+                            state_distribution=[f["state_distribution"] for f in filter_list],
+                            model=[f["model"] for f in filter_list])
 
         if (debug_mode&0b001):
             self.setMarkers(image=[m["image"] for m in markerset],

@@ -42,85 +42,68 @@ path1.addRect(-w, r2, w * 2, -b)
 path1.addEllipse(-r2, -r2, r2 * 2, r2 * 2)
 path1.addEllipse(-r2, -r2, r2 * 2, r2 * 2)
 
-class MyPointItem(QtWidgets.QGraphicsPathItem):
+class StateMarker(QtWidgets.QGraphicsPathItem):
 
-    def __init__(self, parent, x, e):
+    def __init__(self, parent, x, e, type="state"):
         # init and store parent
         QtWidgets.QGraphicsPathItem.__init__(self, parent)
         self.parent = parent
+        self.type = type
+        self.x = x
+        self.e = e
 
         # set path
         self.setBrushes()
-        self.setPath(self.sized_cross(e[0], e[1], np.linalg.norm(e)*0.01))
+        if self.type == "state":
+            self.setPath(self.sized_cross(e[0], e[1], np.linalg.norm(e)*0.1))
+            self.setZValue(0.9)
+        elif self.type == "prediction":
+            self.setPath(self.sized_circ(e[0], e[1], 0))
+            self.setZValue(0.1)
         self.setPos(x[0], x[1])
-        self.setScale(np.linalg.norm(e) * 2.)
-        self.Cross = None#QtWidgets.QGraphicsPathItem(self)
-        # self.Cross.setPath(self.sized_cross(e[0], e[1], np.linalg.norm(e)*0.01))
-        # self.Cross.setPen(self.pen())
-        # self.Cross.setBrush(QtGui.QBrush(QtGui.QColor("black")))
-        # self.Cross.setScale(0.1/(np.linalg.norm(e) * 2.))
 
     def sized_cross(self, w, b, r):
         # a cross path
         path = QtGui.QPainterPath()
-        path.addRect(-r, -w, b, w * 2)
-        path.addRect(r, -w, -b, w * 2)
-        path.addRect(-w, -r, w * 2, b)
-        path.addRect(-w, r, w * 2, -b)
-        path.addEllipse(-r, -r, r * 2, r * 2)
-        # path.addEllipse(-r, -r, r * 2, r * 2)
+        path.addRect(-r/2., -w/2., r, w)
+        path.addRect(-b/2., -r/2., b, r)
         return path
 
     def sized_circ(self, w, b, r):
         path_circle = QtGui.QPainterPath()
-        path_circle.addEllipse(r, r, w, b)
+        path_circle.addEllipse(-w/2., -b/2., w, b)
+        return path_circle
 
-        # self.lines=[]
+    def traingel_and_circ(self, w, b, w2,b2):
+        path_circle = QtGui.QPainterPath()
+        path_circle.addEllipse(-w/2., -b/2., w, b)
+        path_circle.moveTo(w2/2.,0.)
+        path_circle.lineTo()
+        return path_circle
 
     def setBrushes(self):
         # set the bush to a gray color
-        self.setBrush(QtGui.QBrush(QtGui.QColor("gray")))
+        base_color = "808080"
+        if self.type == "state":
+            base_color = "00ff00"
+        elif self.type == "prediction":
+            base_color = "0000ff"
+        color = "#" + hex(np.uint8(max(255, 255./np.linalg.norm(self.e))))[2:] + base_color
+        self.setBrush(QtGui.QBrush(QtGui.QColor(color)))
 
         # set the pen to white with a border of 1
         pen = self.pen()
-        pen.setColor(QtGui.QColor("white"))
+        # pen.setColor(QtGui.QColor("white"))
         pen.setCosmetic(True)
-        pen.setWidthF(1)
+        # pen.setWidthF(1)
         self.setPen(pen)
-
-    # def addLine(self, x):
-    #     line = QtWidgets.QGraphicsPathItem(self)
-    #     path = QtGui.QPainterPath()
-    #     path.moveTo(0, 0)
-    #     path.lineTo(x[0]-self.pos().x(), x[1]-self.pos().y())
-    #     line.setPath(path)
-    #     line.setPen(self.pen())
-    #     line.setScale(1.)
-    #     self.lines.append(line)
 
     def setColor(self, color):
         self.setBrush(QtGui.QBrush(QtGui.QColor(color)))
 
     def delete(self):
-        self.scene().removeItem(self.Cross)
-        # for line in self.lines:
-        #     self.scene().removeItem(line)
         self.scene().removeItem(self)
 
-
-
-class MyPointItem2(MyPointItem):
-    def __init__(self, parent, x, e):
-        # init and store parent
-        QtWidgets.QGraphicsPathItem.__init__(self, parent)
-        self.parent = parent
-
-        # set path
-        self.setBrushes()
-        self.setPath(self.sized_circ(e[0], e[1], np.linalg.norm(e)*0.01))
-        self.setPos(x[0], x[1])
-        self.setScale(np.linalg.norm(e) * 2.)
-        self.Cross = None
 
 class Addon(clickpoints.Addon):
     def __init__(self, *args, **kwargs):
@@ -167,8 +150,9 @@ class Addon(clickpoints.Addon):
                     p_err = [P_err[i_x, i_x], P_err[i_y, i_y]]
                 else:
                     p_err = [0., 0.]
-                point_p = MyPointItem2(self.cp.window.view.origin, p, p_err)
-                point_p.setColor(QtGui.QColor(0, 0, 255))
+                point_p = StateMarker(self.cp.window.view.origin, p, p_err, type="prediction")
+                # point_p.setColor(QtGui.QColor(0, 0, 255))
+                # point_p.setColor(QtGui.QBrush(QtGui.QColor("#88FF8800")))
                 self.points.append(point_p)
 
             # if i in filter.Measurements:
@@ -187,9 +171,8 @@ class Addon(clickpoints.Addon):
                     err = [X_err[i_x, i_x], X_err[i_y, i_y]]
                 else:
                     err = [0., 0.]
-                # print(err)
-                point_x = MyPointItem(self.cp.window.view.origin, x, err)
-                point_x.setColor(QtGui.QColor(0, 255, 0))
+                point_x = StateMarker(self.cp.window.view.origin, x, err, type="state")
+                # point_x.setColor(QtGui.QColor(0, 255, 0))
                 self.points.append(point_x)
 
 

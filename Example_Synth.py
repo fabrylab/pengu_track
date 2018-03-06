@@ -105,7 +105,7 @@ if __name__ == '__main__':
 
     from PenguTrack.Trackers import VariableSpeedTracker
 
-    MultiKal = VariableSpeedTracker(r=0.1, no_dist=False, prob_update=False)
+    MultiKal = VariableSpeedTracker(q=1., no_dist=False, prob_update=False)
     # MultiKal.LogProbabilityThreshold = -3.
     # Physical Model (used for predictions)
     from PenguTrack.Models import VariableSpeed

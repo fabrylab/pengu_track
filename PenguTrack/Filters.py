@@ -1745,11 +1745,12 @@ def ThreadedUpdate(arg):
 
 def cost_from_logprob(logprob):
     cost_matrix = np.copy(logprob)
-    # optimize range of values after exponential function
-    cost_matrix -= cost_matrix.min()
-    cost_matrix *= 745. / (cost_matrix.max() - cost_matrix.min())
-    # cost_matrix *= 1454
-    cost_matrix -= 745
+    if cost_matrix.std() > 0.:
+        # optimize range of values after exponential function
+        cost_matrix -= cost_matrix.min()
+        cost_matrix *= 745. / (cost_matrix.max() - cost_matrix.min())
+        # cost_matrix *= 1454
+        cost_matrix -= 745
     cost_matrix = -1 * np.exp(cost_matrix)
     return cost_matrix
 
