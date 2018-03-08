@@ -170,8 +170,9 @@ class Addon(clickpoints.Addon):
 
             if i in filter.Measurements:
                 M = filter.Measurements[i]
-                m = [M[i_x], M[i_y]]
-                m_err = [1., 1.]
+                m = [M.PositionY, M.PositionX]
+                # m = [M[i_x], M[i_y]]
+                m_err = np.diag(M.Covariance)
                 point_m = StateMarker(self.cp.window.view.origin, m, m_err, type="measurement")
                 # point_m.setColor(QtGui.QColor(255, 0, 0))
                 self.points.append(point_m)
