@@ -193,11 +193,12 @@ class Filter(object):
         #     except(ValueError, AttributeError):
         #         self.X.update({i: np.asarray([z.PositionX])})
         #
-        if len(self.Model.Extensions) > 0:
-            z = np.array(np.vstack([np.array([measurement[v] for v in self.Model.Measured_Variables]),
-                            np.array([[measurement.Data[var][0]] for var in self.Model.Extensions])]))
-        else:
-            z = np.array([measurement[v] for v in self.Model.Measured_Variables])
+        z = np.array(self.Model.vec_from_meas(measurement))
+        # if len(self.Model.Extensions) > 0:
+        #     z = np.array(np.hstack([np.array([measurement[v] for v in self.Model.Measured_Variables]),
+        #                     np.array([measurement.Data[var] for var in self.Model.Extensions])]))
+        # else:
+        #     z = np.array([measurement[v] for v in self.Model.Measured_Variables])
 
         self.X.update({i: z})
 
@@ -684,11 +685,12 @@ class KalmanFilter(Filter):
         #         z = np.asarray([z.PositionX, z.PositionY])
         #     except ValueError:
         #         z = np.asarray([z.PositionX])
-        if len(self.Model.Extensions) > 0:
-            z = np.array(np.vstack([np.array([measurement[v] for v in self.Model.Measured_Variables]),
-                            np.array([[measurement.Data[var][0]] for var in self.Model.Extensions])]))
-        else:
-            z = np.array([measurement[v] for v in self.Model.Measured_Variables])
+        z = np.array(self.Model.vec_from_meas(measurement))
+        # if len(self.Model.Extensions) > 0:
+        #     z = np.array(np.hstack([np.array([measurement[v] for v in self.Model.Measured_Variables]),
+        #                     np.array([measurement.Data[var] for var in self.Model.Extensions])]))
+        # else:
+        #     z = np.array([measurement[v] for v in self.Model.Measured_Variables])
 
 
         # if len(self.Model.Extensions) > 0:
@@ -1146,28 +1148,29 @@ class MultiFilter(Filter):
         if len(z)<1:
             raise ValueError("No Measurements found!")
         measurements = list(z)
-        try:
-            if len(self.Model.Extensions) > 0:
-                z = np.array(
-                    [np.vstack((np.array([m.PositionX, m.PositionY, m.PositionZ]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
-                              for m in measurements], ndmin=2)
-            else:
-                z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
-        except (ValueError, AttributeError):
-            try:
-                if len(self.Model.Extensions) > 0:
-                    z = np.array(
-                        [np.vstack((np.array([m.PositionX, m.PositionY]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
-                         for m in measurements], ndmin=2)
-                else:
-                    z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
-            except (ValueError, AttributeError):
-                if len(self.Model.Extensions) > 0:
-                    z = np.array(
-                        [np.vstack((np.array([m.PositionX]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
-                         for m in measurements], ndmin=2)
-                else:
-                    z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
+        z = np.array([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
+        # try:
+        #     if len(self.Model.Extensions) > 0:
+        #         z = np.array(
+        #             [np.hstack((np.array([m.PositionX, m.PositionY, m.PositionZ]), np.array([m.Data[var] for var in self.Model.Extensions])))
+        #                       for m in measurements], ndmin=2)
+        #     else:
+        #         z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
+        # except (ValueError, AttributeError):
+        #     try:
+        #         if len(self.Model.Extensions) > 0:
+        #             z = np.array(
+        #                 [np.hstack((np.array([m.PositionX, m.PositionY]), np.array([m.Data[var] for var in self.Model.Extensions])))
+        #                  for m in measurements], ndmin=2)
+        #         else:
+        #             z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
+        #     except (ValueError, AttributeError):
+        #         if len(self.Model.Extensions) > 0:
+        #             z = np.array(
+        #                 [np.hstack((np.array([m.PositionX]), np.array([m.Data[var] for var in self.Model.Extensions])))
+        #                  for m in measurements], ndmin=2)
+        #         else:
+        #             z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
 
         M = z.shape[0]
 
@@ -1216,28 +1219,29 @@ class MultiFilter(Filter):
         #         z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
         #     except (ValueError, AttributeError):
         #         z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
-        try:
-            if len(self.Model.Extensions) > 0:
-                z = np.array(
-                    [np.vstack((np.array([m.PositionX, m.PositionY, m.PositionZ]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
-                              for m in measurements], ndmin=2)
-            else:
-                z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
-        except (ValueError, AttributeError):
-            try:
-                if len(self.Model.Extensions) > 0:
-                    z = np.array(
-                        [np.vstack((np.array([m.PositionX, m.PositionY]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
-                         for m in measurements], ndmin=2)
-                else:
-                    z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
-            except (ValueError, AttributeError):
-                if len(self.Model.Extensions) > 0:
-                    z = np.array(
-                        [np.vstack((np.array([m.PositionX]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])[None, :]))
-                         for m in measurements], ndmin=2)
-                else:
-                    z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
+        z = np.array([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
+        # try:
+        #     if len(self.Model.Extensions) > 0:
+        #         z = np.array(
+        #             [np.vstack((np.array([m.PositionX, m.PositionY, m.PositionZ]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
+        #                       for m in measurements], ndmin=2)
+        #     else:
+        #         z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
+        # except (ValueError, AttributeError):
+        #     try:
+        #         if len(self.Model.Extensions) > 0:
+        #             z = np.array(
+        #                 [np.vstack((np.array([m.PositionX, m.PositionY]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
+        #                  for m in measurements], ndmin=2)
+        #         else:
+        #             z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
+        #     except (ValueError, AttributeError):
+        #         if len(self.Model.Extensions) > 0:
+        #             z = np.array(
+        #                 [np.vstack((np.array([m.PositionX]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])[None, :]))
+        #                  for m in measurements], ndmin=2)
+        #         else:
+        #             z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
 
         mask = ~np.isneginf(meas_logp)
         if not np.all(~mask):
@@ -1445,13 +1449,14 @@ class HungarianTracker(MultiFilter):
         print("Initial Filter Update")
 
         measurements = list(z)
-        if len(self.Model.Extensions) > 0:
-            z = np.array(
-                [np.vstack((np.array([m[v] for v in self.Model.Measured_Variables]),
-                            np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
-                 for m in z], ndmin=2)
-        else:
-            z = np.array([[m[v] for v in self.Model.Measured_Variables] for m in z], ndmin=2)
+        z = np.array([self.Model.vec_from_meas(m) for m in measurements])
+        # if len(self.Model.Extensions) > 0:
+        #     z = np.array(
+        #         [np.vstack((np.array([m[v] for v in self.Model.Measured_Variables]),
+        #                     np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
+        #          for m in z], ndmin=2)
+        # else:
+        #     z = np.array([[m[v] for v in self.Model.Measured_Variables] for m in z], ndmin=2)
 
         M = z.shape[0]
 
@@ -1494,13 +1499,14 @@ class HungarianTracker(MultiFilter):
 
         meas_logp = np.array([m.Log_Probability for m in z])
 
-        if len(self.Model.Extensions) > 0:
-            z = np.array(
-                [np.vstack((np.array([m[v] for v in self.Model.Measured_Variables]),
-                            np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
-                 for m in measurements], ndmin=2)
-        else:
-            z = np.array([[m[v] for v in self.Model.Measured_Variables] for m in measurements], ndmin=2)
+        z = np.array([self.Model.vec_from_meas(m) for m in measurements])
+        # if len(self.Model.Extensions) > 0:
+        #     z = np.array(
+        #         [np.vstack((np.array([m[v] for v in self.Model.Measured_Variables]),
+        #                     np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
+        #          for m in measurements], ndmin=2)
+        # else:
+        #     z = np.array([[m[v] for v in self.Model.Measured_Variables] for m in measurements], ndmin=2)
 
         mask = ~np.isneginf(meas_logp)
         if not np.all(~mask):

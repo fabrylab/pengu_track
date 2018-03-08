@@ -848,14 +848,12 @@ class DataFileExtended(clickpoints.DataFile):
         :param debug_mode:
         :return:
         """
-        if image_transform is None:
-            image_transform = lambda x: x
         if db_tracker is None or db_model is None:
             if len(self.getTrackers())>0:
                 db_tracker = self.getTrackers()[0]
                 db_model = db_tracker.model
             else:
-                db_tracker, db_model = self.init_tracker(Tracker.Filters[0].Model, Tracker)
+                db_model, db_tracker = self.init_tracker(Tracker.Filters[0].Model, Tracker)
 
         if text is None:
             set_text = True
@@ -864,6 +862,18 @@ class DataFileExtended(clickpoints.DataFile):
 
         if i is None:
             i = image.sort_index
+
+        if image_transform is not None and cam_values:
+            cam_states = image_transform([Tracker.Filters[k].X[i] for k in Tracker.Filters if i in Tracker.Filters[k].X])
+            cam_states = dict(zip([k for k in Tracker.Filters if i in Tracker.Filters[k].X], cam_states))
+            cam_errors = image_transform([np.diag(Tracker.Filters[k].X_error[i]) for k in Tracker.Filters if i in Tracker.Filters[k].X_error])
+            cam_errors = dict(zip([k for k in Tracker.Filters if i in Tracker.Filters[k].X_error], [np.diag(c) for c in cam_errors]))
+
+            if debug_mode & 0b1010:
+                cam_pred = image_transform([Tracker.Filters[k].Predicted_X[i] for k in Tracker.Filters if i in Tracker.Filters[k].Predicted_X])
+                cam_pred = dict(zip([k for k in Tracker.Filters if i in Tracker.Filters[k].Predicted_X], cam_pred))
+                cam_pred_err = image_transform([np.diag(Tracker.Filters[k].Predicted_X_error[i]) for k in Tracker.Filters if i in Tracker.Filters[k].Predicted_X_error])
+                cam_pred_err = dict(zip([k for k in Tracker.Filters if i in Tracker.Filters[k].Predicted_X_error], [np.diag(c) for c in cam_pred_err]))
 
         with self.db.atomic() as transaction:
             markerset = []
@@ -918,7 +928,7 @@ class DataFileExtended(clickpoints.DataFile):
                                             state_distribution=db_dist_s.id))
 
                 # Case 1: we tracked something in this filter
-                if i in Tracker.Filters[k].Measurements.keys():
+                if i in Tracker.Filters[k].X.keys():
                     state = Tracker.Filters[k].X[i]
                     try:
                         state_err = Tracker.Model.measure(Tracker.Filters[k].X_error[i])
@@ -927,11 +937,12 @@ class DataFileExtended(clickpoints.DataFile):
                     i_x = Tracker.Model.Measured_Variables.index("PositionX")
                     i_y = Tracker.Model.Measured_Variables.index("PositionY")
 
-                    if cam_values:
-                        state_image = image_transform(state)
-                        x = Tracker.Model.measure(state_image)[i_x]
-                        y = Tracker.Model.measure(state_image)[i_y]
-                        error_image = image_transform(np.diag(state_err))
+                    if cam_values and image_transform is not None:
+                        # state_image = image_transform(state)
+                        x = Tracker.Model.measure(cam_states[k])[i_x]
+                        y = Tracker.Model.measure(cam_states[k])[i_y]
+                        error_image = cam_errors.get(k, np.diag(np.zeros((len(state), len(state)))))
+                        # error_image = image_transform(np.diag(state_err))
                         state_err = (error_image[i_x]+error_image[i_y])*0.5
                     else:
                         x = Tracker.Model.measure(state)[i_x]
@@ -971,11 +982,14 @@ class DataFileExtended(clickpoints.DataFile):
                         i_x = Tracker.Model.Measured_Variables.index("PositionX")
                         i_y = Tracker.Model.Measured_Variables.index("PositionY")
 
-                        if cam_values:
-                            prediction_image = image_transform(prediction)
-                            pred_x = Tracker.Model.measure(prediction_image)[i_x]
-                            pred_y = Tracker.Model.measure(prediction_image)[i_y]
-                            error_image = image_transform(np.diag(prediction_err))
+                        if cam_values and image_transform is not None:
+                            # prediction_image = image_transform(prediction)
+                            # pred_x = Tracker.Model.measure(prediction_image)[i_x]
+                            # pred_y = Tracker.Model.measure(prediction_image)[i_y]
+                            pred_x = Tracker.Model.measure(cam_pred[k])[i_x]
+                            pred_y = Tracker.Model.measure(cam_pred[k])[i_y]
+                            # error_image = image_transform(np.diag(prediction_err))
+                            error_image = cam_pred_err.get(k, np.diag(np.zeros((len(state), len(state)))))
                             pred_err = (error_image[i_x]+error_image[i_y])*0.5
                         else:
                             pred_x = Tracker.Model.measure(prediction)[i_x]

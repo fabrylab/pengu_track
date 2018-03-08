@@ -262,7 +262,13 @@ class Model(object):
         return p_opt, p_cov
 
     def vec_from_meas(self, measurement):
-        return np.array([measurement[v] for v in self.Measured_Variables])
+        # return np.array([measurement[v] for v in self.Measured_Variables])
+        m = measurement
+        if len(self.Extensions) > 0:
+            return np.vstack((np.array([measurement[v] for v in self.Measured_Variables]),
+                            np.array([m.Data[var] for var in self.Extensions])))
+        else:
+            return np.array([measurement[v] for v in self.Measured_Variables])
 
 
     def optimize(self, states, params = None):
