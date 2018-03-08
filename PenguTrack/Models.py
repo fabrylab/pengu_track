@@ -67,6 +67,8 @@ class Model(object):
         The matrix, which shows the influence of statistical fluctuations to the state.
     Measured_Variables: list
         List of variables, that are measured within the model.
+    State_Variables: list
+        List of variables, that are tracked within the model.
     Extensions: list
         List of measured parameters not included in standard model.
     """
@@ -111,7 +113,8 @@ class Model(object):
         self.Extensions = []
 
         self.Measured_Variables = []
-        
+        self.State_Variables = []
+
     def predict(self, state_vector, control_vector):
         """
         Function to predict next state from current state and external control.
@@ -356,6 +359,8 @@ class RandomWalk(Model):
         The matrix, which shows the influence of statistical fluctuations to the state.
     Measured_Variables: list
         List of variables, that are measured within the model.
+    State_Variables: list
+        List of variables, that are tracked within the model.
     Extensions: list
         List of measured parameters not included in standard model.
     """
@@ -382,13 +387,15 @@ class RandomWalk(Model):
         self.Opt_Params_Borders = {}
 
         self.Measured_Variables = []
+        self.State_Variables = []
         for i in range(dim):
+            self.Measured_Variables.append("Position%s"%DIM_NAMES[i])
             self.Measured_Variables.append("Position%s"%DIM_NAMES[i])
 
 
 class Ballistic(Model):
     """
-    This Class describes an easy ballistic model.
+    This Class describes an simple ballistic model.
 
     Attributes
     ----------
@@ -426,6 +433,8 @@ class Ballistic(Model):
         The matrix, which shows the influence of statistical fluctuations to the state.
     Measured_Variables: list
         List of variables, that are measured within the model.
+    State_Variables: list
+        List of variables, that are tracked within the model.
     Extensions: list
         List of measured parameters not included in standard model.
     """
@@ -481,8 +490,13 @@ class Ballistic(Model):
         self.Evolution_Matrix = evo
 
         self.Measured_Variables = []
+        self.State_Variables = []
         for i in range(dim):
             self.Measured_Variables.append("Position%s"%DIM_NAMES[i])
+            self.State_Variables.append("Position%s"%DIM_NAMES[i])
+            self.State_Variables.append("Velocity%s"%DIM_NAMES[i])
+            self.State_Variables.append("Force%s"%DIM_NAMES[i])
+
 
 
 class VariableSpeed(Model):
@@ -523,6 +537,8 @@ class VariableSpeed(Model):
         The matrix, which shows the influence of statistical fluctuations to the state.
     Measured_Variables: list
         List of variables, that are measured within the model.
+    State_Variables: list
+        List of variables, that are tracked within the model.
     Extensions: list
         List of measured parameters not included in standard model.
     """
@@ -577,8 +593,11 @@ class VariableSpeed(Model):
         self.Evolution_Matrix = evo
 
         self.Measured_Variables = []
+        self.State_Variables = []
         for i in range(dim):
             self.Measured_Variables.append("Position%s"%DIM_NAMES[i])
+            self.State_Variables.append("Position%s"%DIM_NAMES[i])
+            self.State_Variables.append("Velocity%s"%DIM_NAMES[i])
 
 
 class BallisticWSpeed(VariableSpeed):
@@ -619,6 +638,8 @@ class BallisticWSpeed(VariableSpeed):
         The matrix, which shows the influence of statistical fluctuations to the state.
     Measured_Variables: list
         List of variables, that are measured within the model.
+    State_Variables: list
+        List of variables, that are tracked within the model.
     Extensions: list
         List of measured parameters not included in standard model.
     """
@@ -644,9 +665,12 @@ class BallisticWSpeed(VariableSpeed):
         self.Measurement_Matrix = np.diag(np.ones(self.State_dim))
 
         self.Measured_Variables = []
+        self.State_Variables = []
         for i in range(dim):
             self.Measured_Variables.append("Position%s"%DIM_NAMES[i])
             self.Measured_Variables.append("Velocity%s"%DIM_NAMES[i])
+            self.State_Variables.append("Position%s"%DIM_NAMES[i])
+            self.State_Variables.append("Velocity%s"%DIM_NAMES[i])
 
 
 
@@ -690,6 +714,8 @@ class AR(Model):
         The matrix, which shows the influence of statistical fluctuations to the state.
     Measured_Variables: list
         List of variables, that are measured within the model.
+    State_Variables: list
+        List of variables, that are tracked within the model.
     Extensions: list
         List of measured parameters not included in standard model.
     """
@@ -744,8 +770,11 @@ class AR(Model):
         self.Evolution_Matrix = evo
 
         self.Measured_Variables = []
+        self.State_Variables = []
         for i in range(dim):
             self.Measured_Variables.append("Position%s"%DIM_NAMES[i])
+            for j in range(order):
+                self.State_Variables.append("%s_Order_Parameter%s"%(j, DIM_NAMES[i]))
 
  
 class MA(Model):
@@ -786,6 +815,8 @@ class MA(Model):
         The matrix, which shows the influence of statistical fluctuations to the state.
     Measured_Variables: list
         List of variables, that are measured within the model.
+    State_Variables: list
+        List of variables, that are tracked within the model.
     Extensions: list
         List of measured parameters not included in standard model.
     """
@@ -846,5 +877,9 @@ class MA(Model):
         self.Evolution_Matrix = evo
 
         self.Measured_Variables = []
+        self.State_Variables = []
         for i in range(dim):
             self.Measured_Variables.append("Position%s"%DIM_NAMES[i])
+            self.State_Variables.append("Position%s"%DIM_NAMES[i])
+            for j in range(order):
+                self.State_Variables.append("%s_History_%s"%(j,DIM_NAMES[i]))
