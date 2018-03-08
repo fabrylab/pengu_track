@@ -91,7 +91,7 @@ class Measurement(dotdict):
     """
     Base Class for detection results.
     """
-    def __init__(self, log_probability, position, data=None, frame=None, track_id=None):
+    def __init__(self, log_probability, position, cov=None, data=None, frame=None, track_id=None):
         """
         Base Class for detection results.
 
@@ -99,8 +99,10 @@ class Measurement(dotdict):
             Estimated logarithmic probability of measurement.
         position: array_like
             Position of measurement
-        data: array_like
-            Additional data of the measurement, i.e. measurement errors
+        cov: array_like
+            Covariance matrix of the position or measurement errors
+        data: dict or array_like
+            Additional data of the measurement
         frame: int, optional
             Number of Frame, on which the measurement took place.
         track_id: int, optional
@@ -121,6 +123,17 @@ class Measurement(dotdict):
             self.Track_Id = int(track_id)
         else:
             self.Track_Id = None
+
+        if cov is not None:
+            cov = np.array(cov)
+            if len(cov.shape)<1:
+                self.Covariance = np.ones(len(position))*float(cov)
+            elif len(cov.shape)<2:
+                self.Covariance = np.diag(cov[:len(position)])
+            else:
+                self.Covariance = cov
+        else:
+            self.Covariance = np.ones(len(position))
 
         if frame is not None:
             self.Frame = int(frame)
