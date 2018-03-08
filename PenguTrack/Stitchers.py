@@ -61,10 +61,15 @@ class Stitcher(object):
     def load_tracks_from_clickpoints(self, path, type):
         self.db = clickpoints.DataFile(path)
         if "DataFileExtendedVersion" in [item.key for item in self.db.table_meta.select()]:
-            self.db.db.close()
+            while not self.db.db.is_closed():
+                print("trying to close...")
+                self.db.db.close()
+            # import time
+            # time.sleep(30)
+            # print("closed")
+            print("closed")
             self.db = DataFileExtended(path)
-            db=self.db
-            self.stiched_type = db.setMarkerType(name=self.name, color="F0F0FF")
+            self.stiched_type = self.db.setMarkerType(name=self.name, color="F0F0FF")
             self.Tracks = self.db.tracker_from_db()[0].Filters
             self.track_dict = dict(zip(range(len(self.Tracks)), self.Tracks.keys()))
             self.db_track_dict = dict(self.db.db.execute_sql('select id, track_id from filter').fetchall())
@@ -207,9 +212,9 @@ class Stitcher(object):
             m = self.Tracks[idx].X[iii]
             if isinstance(self.Tracks[idx], all_filters):
                 m = self.Tracks[idx].Model.measure(m)
-                m = [m[self.Tracks[idx].Model.Measured_Variables.index("PositionX")],
-                     self.Tracks[idx].Model.Measured_Variables.index("PositionY")]
-            self.db.setMarker(x=m[0], y=m[1], type=self.stiched_type, image=self.db.getImages(frame=iii)[0])
+                i_x = self.Tracks[idx].Model.Measured_Variables.index("PositionX")
+                i_y = self.Tracks[idx].Model.Measured_Variables.index("PositionY")
+            self.db.setMarker(x=m[i_y], y=m[i_x], type=self.stiched_type, image=self.db.getImages(frame=iii)[0])
         print("stitch!", i, j)
         self.Tracks.pop(n_idx)
 
