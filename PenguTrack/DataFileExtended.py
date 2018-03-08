@@ -296,7 +296,7 @@ class NumDictField(peewee.BlobField):
 
 class DataFileExtended(clickpoints.DataFile):
     """
-    Extended DataBase Class to save PenguTrack objects generically and rebuilt them from databases.
+    Extended DataBase Class to save PenguTrack objects generic and rebuilt them from databases.
     """
     TYPE_BELIEVE = 0
     TYPE_PREDICTION = 1
@@ -316,7 +316,7 @@ class DataFileExtended(clickpoints.DataFile):
         db = self
 
         # Version Handling
-        self._current_ext_version = 1
+        self._current_ext_version = 2
         ext_version = self._CheckExtVersion()
 
         """Dist Entry"""
@@ -430,7 +430,7 @@ class DataFileExtended(clickpoints.DataFile):
         self.table_filter = Filter
 
         """State Entry"""
-        class State(db.base_model):
+        class PT_State(db.base_model):
             """ Table storing all kinds of states: Measurements, Predictions, Believes.
              Including their covariance matrices and log_probability."""
             # The filter this state belongs to
@@ -447,9 +447,9 @@ class DataFileExtended(clickpoints.DataFile):
             state_vector = MatrixField()
             state_error = MatrixField(null=True)
         # built table
-        if "state" not in db.db.get_tables():
-            State.create_table()
-        self.table_state = State
+        if "pt_state" not in db.db.get_tables():
+            PT_State.create_table()
+        self.table_state = PT_State
 
         """Probability Gain Entry"""
         class Probability_Gain(db.base_model):
@@ -944,7 +944,8 @@ class DataFileExtended(clickpoints.DataFile):
                         text = 'Filter %s, Prob %.2f' % (k, prob)
                     markerset.append(dict(image=image, type=self.track_marker_type, track=db_track, x=y, y=x,
                                                 text=text,
-                                                style='{"scale":%.2f}'%(state_err)))
+                                                style = '{}'))
+                                                # style='{"scale":%.2f}'%(state_err)))
                     if (debug_mode & 0b001):
                         stateset.append(dict(log_prob=prob,
                                              filter=k,
@@ -991,12 +992,15 @@ class DataFileExtended(clickpoints.DataFile):
                     meas = Tracker.Filters[k].Measurements[i]
                     meas_x = meas.PositionX
                     meas_y = meas.PositionY
+
+                    meas_err = meas.Covariance
+
                     stateset.append(dict(filter=k,
                                          log_prob=prob,
                                          image=image,
                                          type=self.TYPE_MEASUREMENT,
                                          state_vector=np.array([meas_x, meas_y]),
-                                         state_error=None))
+                                         state_error=meas_err))
                     if debug_mode&0b1100:
                         measurement_markerset.append(dict(image=image, x=meas_y, y=meas_x,
                                                           text="Track %s" % (db_track.id),
@@ -1105,6 +1109,16 @@ class DataFileExtended(clickpoints.DataFile):
                 pass
             self._SetExtVersion(1)
 
+        if nr_version < 2:
+            print("\tto 2")
+            with self.db.transaction():
+                try:
+                    self.db.execute_sql('ALTER TABLE state RENAME TO pt_state')
+                except peewee.OperationalError:
+                    raise
+                pass
+            self._SetExtVersion(2)
+
 
         self.db.get_conn().row_factory = None
 
@@ -1182,22 +1196,25 @@ class DataFileExtended(clickpoints.DataFile):
             filter = PenguTrack.Filters.Filter(model, meas_dist=meas_dist, state_dist=state_dist)
         else:
             filter = filter_class(model, *filter_args, **filter_kwargs)
+        X_raw = self.db.execute_sql('select sort_index, state_vector from (select * from pt_state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
+                                    params=[db_filter.id, self.TYPE_BELIEVE]).fetchall()
+        Pred_raw = self.db.execute_sql('select sort_index, state_vector from (select * from pt_state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
+                                       params=[db_filter.id, self.TYPE_PREDICTION]).fetchall()
+        Meas_raw = self.db.execute_sql('select sort_index, state_vector, state_error from (select * from pt_state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
+                                       params=[db_filter.id, self.TYPE_MEASUREMENT]).fetchall()
 
-        X_raw = self.db.execute_sql('select sort_index, state_vector from (select * from state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
-                                    [db_filter.id, self.TYPE_BELIEVE])
-        Pred_raw = self.db.execute_sql('select sort_index, state_vector from (select * from state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
-                                    [db_filter.id, self.TYPE_PREDICTION])
-        Meas_raw = self.db.execute_sql('select sort_index, state_vector from (select * from state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
-                                    [db_filter.id, self.TYPE_MEASUREMENT])
-
-        X_err_raw = self.db.execute_sql('select sort_index, state_error from (select * from state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
-                                    [db_filter.id, self.TYPE_BELIEVE])
-        Pred_err_raw = self.db.execute_sql('select sort_index, state_error from (select * from state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
-                                    [db_filter.id, self.TYPE_PREDICTION])
+        X_err_raw = self.db.execute_sql('select sort_index, state_error from (select * from pt_state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
+                                        params=[db_filter.id, self.TYPE_BELIEVE]).fetchall()
+        Pred_err_raw = self.db.execute_sql('select sort_index, state_error from (select * from pt_state where filter_id = ? and type=?) s inner join image i on s.image_id == i.id',
+                                           params=[db_filter.id, self.TYPE_PREDICTION]).fetchall()
 
         filter.X.update(dict([[v[0], MatrixField.decode(v[1])] for v in X_raw]))
         filter.Predicted_X.update(dict([[v[0], MatrixField.decode(v[1])] for v in Pred_raw]))
-        filter.Measurements.update(dict([[v[0], MatrixField.decode(v[1])] for v in Meas_raw]))
+        filter.Measurements.update(dict([[v[0], PT_Measurement(0.,
+                                                               MatrixField.decode(v[1]),
+                                                               cov=MatrixField.decode(v[2]))] for v in Meas_raw]))
+
+
 
         filter.X_error.update(dict([[v[0], MatrixField.decode(v[1])] for v in X_err_raw]))
         filter.Predicted_X_error.update(dict([[v[0], MatrixField.decode(v[1])] for v in Pred_err_raw]))
@@ -1239,7 +1256,7 @@ class DataFileExtended(clickpoints.DataFile):
                                     measurement_distribution=old_filter.measurement_distribution,
                                     state_distribution=old_filter.state_distribution,
                                     model=old_filter.model)
-        self.db.execute_sql('update state set filter_id=? where filter_id==? and image_id>?',
+        self.db.execute_sql('update pt_state set filter_id=? where filter_id==? and image_id>?',
                             [new_filter.id, old_filter.id, marker.image_id])
         # pgains = self.db.execute_sql('',
         #                     [new_filter.id, old_filter.id, marker.image_id])
