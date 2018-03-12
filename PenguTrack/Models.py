@@ -176,10 +176,13 @@ class Model(object):
         return np.dot(self.Control_Matrix, control_vector)
 
     def __measurement_function__(self, state_vector):
-        if np.prod(state_vector.shape)==self.State_dim**2:
+        shape = state_vector.shape
+        if shape == (self.State_dim,1):
+            return np.dot(self.Measurement_Matrix, state_vector)
+        elif shape == (self.State_dim, self.State_dim):
             return np.dot(self.Measurement_Matrix, np.dot(state_vector, self.Measurement_Matrix.T))
-        return np.dot(self.Measurement_Matrix, state_vector)
-
+        else:
+            raise ValueError("State Vector is not in correct shape! State_Dim is %s"%self.State_dim)
     def __evolution_function__(self, random_vector):
         return np.dot(self.Evolution_Matrix, random_vector)
 

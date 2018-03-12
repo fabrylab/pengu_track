@@ -29,6 +29,7 @@ import scipy.stats as ss
 import sys
 import copy
 from PenguTrack.Detectors import Measurement
+from .Assignment import *
 import scipy.integrate as integrate
 #  import scipy.optimize as opt
 
@@ -75,6 +76,18 @@ class Filter(object):
         state_dist: scipy.stats.distributions object
             The distribution which describes state vector fluctuations.
         """
+
+        self._meas_cov_ = None
+        self._meas_mu_ = None
+        self._meas_sig_1 = None
+        self._meas_norm_ = None
+        self._meas_is_gaussian_ = False
+        self._state_cov_ = None
+        self._state_mu_ = None
+        self._state_sig_1 = None
+        self._state_norm_ = None
+        self._state_is_gaussian_ = False
+
         self.Model = model
         self.Measurement_Distribution = meas_dist
         self.State_Distribution = state_dist
@@ -87,7 +100,7 @@ class Filter(object):
         self.Measurements = {}
         self.Controls = {}
 
-        self.NoDist = no_dist
+        self.NoDist = bool(no_dist)
         self.ProbUpdate = bool(prob_update)
 
     def predict(self, u=None, i=None):
@@ -183,7 +196,7 @@ class Filter(object):
                         len(z),self.Model.Meas_dim)
                 z = Measurement(1.0, position=z)
             self.Measurements.update({i: z})
-        measurement = copy.copy(z)
+        measurement = copy(z)
         # simplest possible update
         # try:
         #     self.X.update({i: np.asarray([z.PositionX, z.PositionY, z.PositionZ])})
@@ -230,119 +243,8 @@ class Filter(object):
         self.predict(u=u, i=i)
         x = self.update(z=z, i=i)
         return x
-    
-    # def log_prob(self, keys=None, measurements=None, compare_bel=True):
-    #     """
-    #     Function to calculate the probability measure by predictions, measurements and corresponding distributions.
-    #
-    #     Parameters
-    #     ----------
-    #     keys: list of int, optional
-    #         Time-steps for which probability should be calculated.
-    #     measurements: dict, optional
-    #         List of PenguTrack.Measurement objects for which probability should be calculated.
-    #     compare_bel: bool, optional
-    #         If True, it will be tried to compare the believed state with the measurement. If False or
-    #         there is no believe-value, the prediction will be taken.
-    #
-    #     Returns
-    #     ----------
-    #     probs : float
-    #         Probability of measurements at the given time-keys.
-    #     """
-    #     probs = 0
-    #     if keys is None:
-    #         keys = self.Measurements.keys()
-    #
-    #     if measurements is None:
-    #         for i in keys:
-    #             # Generate Value for comparison with measurement
-    #             try:
-    #                 if compare_bel:
-    #                     comparison = self.X[i]
-    #                 else:
-    #                     raise KeyError
-    #             except KeyError:
-    #                 try:
-    #                     comparison = self.Predicted_X[i]
-    #                 except KeyError:
-    #                     self.predict(i=i)
-    #                     comparison = self.Predicted_X[i]
-    #             try:
-    #                 position = np.asarray([self.Measurements[i].PositionX,
-    #                                        self.Measurements[i].PositionY,
-    #                                        self.Measurements[i].PositionZ])
-    #             except (ValueError, AttributeError):
-    #                 try:
-    #                     position = np.asarray([self.Measurements[i].PositionX,
-    #                                            self.Measurements[i].PositionY])
-    #                 except (ValueError, AttributeError):
-    #                     position = np.asarray([self.Measurements[i].PositionX])
-    #
-    #             # def integrand(*args):
-    #             #     x = np.array(args)
-    #             #     return self.State_Distribution.pdf(x-comparison)*self.Measurement_Distribution.pdf(self.Model.measure(x)-position)
-    #             #
-    #             # integral = integrate.nquad(integrand,
-    #             #                            np.array([-1*np.ones_like(self.Model.State_dim)*100,
-    #             #                                      np.ones(self.Model.State_dim)*100]).T)
-    #             # print(integral)
-    #
-    #             try:
-    #                 # probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
-    #                 #                                                              - self.Model.measure(comparison))))
-    #                 probs += self.Measurement_Distribution.logpdf(position - self.Model.measure(comparison))
-    #
-    #                 # print("----------")
-    #                 # print(self.Measurement_Distribution.logpdf(position - self.Model.measure(comparison)))
-    #                 # print(np.log(self.Measurement_Distribution.pdf(position - self.Model.measure(comparison))))
-    #                 # print("----------")
-    #                 probs += self.Measurements[i].Log_Probability
-    #             except ValueError:
-    #                 print(position.shape, position)
-    #                 print(comparison.shape, comparison)
-    #                 print(self.Model.measure(comparison).shape, self.Model.measure(comparison))
-    #                 raise
-    #     else:
-    #         for i in keys:
-    #             # Generate Value for comparison with measurement
-    #             try:
-    #                 if compare_bel:
-    #                     comparison = self.X[i]
-    #                 else:
-    #                     raise KeyError
-    #             except KeyError:
-    #                 try:
-    #                     comparison = self.Predicted_X[i]
-    #                 except KeyError:
-    #                     self.predict(i=i)
-    #                     comparison = self.Predicted_X[i]
-    #             try:
-    #                 position = np.asarray([measurements[i].PositionX,
-    #                                        measurements[i].PositionY,
-    #                                        measurements[i].PositionZ])
-    #             except (ValueError, AttributeError):
-    #                 try:
-    #                     position = np.asarray([measurements[i].PositionX,
-    #                                            measurements[i].PositionY])
-    #                 except (ValueError, AttributeError):
-    #                     position = np.asarray([measurements[i].PositionX])
-    #             # try:
-    #                 # probs += np.log(np.linalg.norm(self.Measurement_Distribution.pdf(position
-    #                 #                                                              - self.Model.measure(comparison))))
-    #             probs += self.Measurement_Distribution.logpdf(position - self.Model.measure(comparison))
-    #             # print("----------")
-    #             # print(self.Measurement_Distribution.logpdf(position - self.Model.measure(comparison)))
-    #             # print(np.log(self.Measurement_Distribution.pdf(position - self.Model.measure(comparison))))
-    #             # print("----------")
-    #             probs += measurements[i].Log_Probability
-    #             # except RuntimeWarning:
-    #             #     probs = -np.inf
-    #     return probs
 
-
-
-    def log_prob(self, keys=None, measurements=None, update=True):
+    def log_prob(self, keys=None, measurements=None, update=False):
         if keys is None:
             keys = self.X.keys()
         if measurements is None:
@@ -355,14 +257,17 @@ class Filter(object):
         pending_downpredicts =[]
         for k in keys:
             if k in self.X and k in self.Predicted_X:
-            # if self.X.has_key(k) and self.Predicted_X.has_key(k):
-                prob += self._log_prob_(k)
+                if update:
+                    prob += self._log_prob_(k)
+                else:
+                    prob += self._meas_log_prob(k, measurements[k])
             elif k in self.X:
-            # elif self.X.has_key(k):
                 self.predict(i=k)
-                prob += self._log_prob_(k)
+                if update:
+                    prob += self._log_prob_(k)
+                else:
+                    prob += self._meas_log_prob(k,measurements[k])
             elif k in self.Predicted_X and k in measurements:
-            # elif self.Predicted_X.has_key(k) and measurements.has_key(k):
                 if update:
                     self.update(z=measurements[k],i=k)
                     pending_downdates.append(k)
@@ -370,7 +275,6 @@ class Filter(object):
                 else:
                     prob += self._meas_log_prob(k, measurements[k])
             elif k in self.Predicted_X and k in self.Measurements:
-            # elif self.Predicted_X.has_key(k) and self.Measurements.has_key(k):
                 if update:
                     self.update(z=self.Measurements[k],i=k)
                     pending_downdates.append(k)
@@ -378,7 +282,6 @@ class Filter(object):
                 else:
                     prob += self._meas_log_prob(k)
             elif k in measurements:
-            # elif measurements.has_key(k):
                 self.predict(i=k)
                 pending_downpredicts.append(k)
                 if update:
@@ -388,7 +291,6 @@ class Filter(object):
                 else:
                     prob += self._meas_log_prob(k, measurements[k])
             elif k in self.Measurements:
-            # elif self.Measurements.has_key(k):
                 self.predict(i=k)
                 pending_downpredicts.append(k)
                 if update:
@@ -398,7 +300,7 @@ class Filter(object):
                 else:
                     prob += self._meas_log_prob(k)
             else:
-                raise ValueError("Probability for key %s could not be computed!"%k)
+                raise ValueError("Probability for key %s could not be calculated! (missing states)"%k)
 
         for k in pending_downdates:
             self.downdate(k)
@@ -412,6 +314,9 @@ class Filter(object):
     def _state_log_prob_(self, key):
         if self.NoDist:
             return -np.linalg.norm(self.X[key]-self.Predicted_X[key])
+        if self._state_is_gaussian_:
+            x = self.X[key]-self.Predicted_X[key] - self._state_mu_[:,None]
+            return float(self._state_norm_ - 0.5 * np.dot(x.T, np.dot(self._state_sig_1, x)))
         return self.State_Distribution.logpdf((self.X[key]-self.Predicted_X[key]).T)
 
     def _meas_log_prob(self, key, measurement=None):
@@ -419,7 +324,28 @@ class Filter(object):
             measurement=self.Measurements[key]
         if self.NoDist:
             return -np.linalg.norm(self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]))
+        if self._meas_is_gaussian_:
+            x = self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]) - self._meas_mu_[:,None]
+            return float(self._meas_norm_ -0.5*np.dot(x.T, np.dot(self._meas_sig_1, x)))
         return self.Measurement_Distribution.logpdf((self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key])).T)
+
+    def __setattr__(self, key, value):
+        if key == "Measurement_Distribution":
+            if isinstance(value, ss._multivariate.multivariate_normal_frozen):
+                self._meas_cov_ = value.cov
+                self._meas_mu_ = value.mean
+                self._meas_sig_1 = np.linalg.inv(value.cov)
+                self._meas_norm_ = -0.5*np.log(((2*np.pi)**max(value.cov.shape)*np.linalg.det(self._meas_cov_)))
+                self._meas_is_gaussian_ = True
+        if key == "State_Distribution":
+            if isinstance(value, ss._multivariate.multivariate_normal_frozen):
+                self._state_cov_ = value.cov
+                self._state_mu_ = value.mean
+                self._state_sig_1 = np.linalg.inv(value.cov)
+                self._state_norm_ = -0.5*np.log((2*np.pi)**max(value.cov.shape)*np.linalg.det(self._state_cov_))
+                self._state_is_gaussian_ = True
+        super(Filter, self).__setattr__(key, value)
+
     # def _log_prob_(self, key):
     #     measurement = self.Measurements[key]
     #     try:
@@ -677,7 +603,7 @@ class KalmanFilter(Filter):
             Recent/corresponding time-stamp.
         """
         z, i = super(KalmanFilter, self).update(z=z, i=i)
-        measurement = copy.copy(z)
+        measurement = copy(z)
         # try:
         #     z = np.asarray([z.PositionX, z.PositionY, z.PositionZ])
         # except (ValueError, AttributeError):
@@ -1749,29 +1675,7 @@ def ThreadedUpdate(arg):
     return j, m, filter.log_prob(keys=[i], measurements={i: measurement})
 
 
-def cost_from_logprob(logprob):
-    cost_matrix = np.copy(logprob)
-    if cost_matrix.std() > 0.:
-        # optimize range of values after exponential function
-        cost_matrix -= cost_matrix.min()
-        cost_matrix *= 745. / (cost_matrix.max() - cost_matrix.min())
-        # cost_matrix *= 1454
-        cost_matrix -= 745
-    cost_matrix = -1 * np.exp(cost_matrix)
-    return cost_matrix
 
-
-def greedy_assignment(cost):
-    r_out=[]
-    c_out=[]
-    rows, cols = np.unravel_index(np.argsort(cost,kind="heapsort", axis=None), cost.shape)
-    while len(rows)>0:
-        r_out.append(rows[0])
-        c_out.append(cols[0])
-        mask = (rows!=rows[0])&(cols!=cols[0])
-        rows = rows[mask]
-        cols = cols[mask]
-    return r_out, c_out
 
 # class AdvancedMultiFilter(MultiFilter):
 #     def __init__(self, *args, **kwargs):
