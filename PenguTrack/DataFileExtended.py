@@ -1129,8 +1129,10 @@ class DataFileExtended(clickpoints.DataFile):
                 try:
                     self.db.execute_sql('ALTER TABLE state RENAME TO pt_state')
                 except peewee.OperationalError:
-                    raise
-                pass
+                    if "pt_state" not in self.db.get_tables():
+                        pass
+                    else:
+                        raise
             self._SetExtVersion(2)
 
 
