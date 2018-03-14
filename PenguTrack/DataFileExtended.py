@@ -316,7 +316,7 @@ class DataFileExtended(clickpoints.DataFile):
         db = self
 
         # Version Handling
-        self._current_ext_version = 2
+        self._current_ext_version = 3
         ext_version = self._CheckExtVersion()
 
         """Dist Entry"""
@@ -404,6 +404,8 @@ class DataFileExtended(clickpoints.DataFile):
         class Filter(db.base_model):
             """ Table to store (Kalman-)Filter Objects. Mostly holds junctions between other database entries."""
             # clickpoints track (unique)
+            filter_id = peewee.IntegerField(null=False)
+
             track = peewee.ForeignKeyField(db.table_track,
                                            unique=True,
                                            related_name='track_filter', on_delete='CASCADE')
@@ -693,7 +695,7 @@ class DataFileExtended(clickpoints.DataFile):
         query = addFilter(query, name, self.table_model.name)
         return query.execute()
 
-    def setFilter(self, id=None, track=None, tracker=None,
+    def setFilter(self, id=None, filter_id=None, track=None, tracker=None,
                   measurement_distribution=None,
                   state_distribution=None,
                   model=None):
@@ -706,6 +708,7 @@ class DataFileExtended(clickpoints.DataFile):
             #     model = self.table_model()
 
         dictionary.update(dict(tracker=tracker,
+                               filter_id=filter_id,
                                measurement_distribution=measurement_distribution,
                                state_distribution=state_distribution,
                                model=model))
@@ -713,33 +716,38 @@ class DataFileExtended(clickpoints.DataFile):
         item.save()
         return item
 
-    def setFilters(self, id=None, track=None, tracker=None, measurement_distribution=None,
+    def setFilters(self, id=None, filter_id=None, track=None, tracker=None, measurement_distribution=None,
                   state_distribution=None, model=None):
-        data = packToDictList(self.table_filter, id=id, track=track, tracker=tracker,
+        data = packToDictList(self.table_filter, id=id, filter_id=filter_id, track=track, tracker=tracker,
                               measurement_distribution=measurement_distribution,
                               state_distribution=state_distribution,
                               model=model)
         return self.saveUpsertMany(self.table_filter, data)
 
-    def getFilter(self, id=None, track_id=None):
+    def getFilter(self, id=None, track_id=None, filter_id=None, tracker=None):
         query = self.table_filter.select()
         query = addFilter(query, track_id, self.table_filter.track_id)
         query = addFilter(query, id, self.table_filter.id)
+        query = addFilter(query, filter_id, self.table_filter.filter_id)
+        query = addFilter(query, tracker, self.table_filter.tracker_id)
         if len(query) > 0:
             return query[0]
         else:
             return None
 
-    def getFilters(self, id=None, track_id=None):
+    def getFilters(self, id=None, track_id=None, filter_id=None, tracker=None):
         query = self.table_filter.select()
         query = addFilter(query, track_id, self.table_filter.track_id)
         query = addFilter(query, id, self.table_filter.id)
+        query = addFilter(query, filter_id, self.table_filter.filter_id)
+        query = addFilter(query, tracker, self.table_filter.tracker_id)
         return query
 
-    def deleteFilters(self, id=None, track_id=None, tracker_id=None, measurement_distribution_id=None,
+    def deleteFilters(self, id=None, filter_id=None, track_id=None, tracker_id=None, measurement_distribution_id=None,
                       state_distribution_id=None, model_id=None):
         query = self.table_filter.delete()
         query = addFilter(query, id, self.table_filter.id)
+        query = addFilter(query, filter_id, self.table_filter.filter_id)
         query = addFilter(query, track_id, self.table_filter.track_id)
         query = addFilter(query, tracker_id, self.table_filter.tracker_id)
         query = addFilter(query, measurement_distribution_id, self.table_filter.measurement_distribution_id)
@@ -832,6 +840,7 @@ class DataFileExtended(clickpoints.DataFile):
                         measurement_probability_threshold=tracker.MeasurementProbabilityThreshold,
                         filter_args=tracker.filter_args,
                         filter_kwargs=tracker.filter_kwargs)
+        tracker_item.db_track_dict ={}
         return model_item, tracker_item
 
     def write_to_DB(self, Tracker, image, i=None, text=None, cam_values=False, db_tracker=None, db_model=None,
@@ -881,7 +890,7 @@ class DataFileExtended(clickpoints.DataFile):
             prediction_markerset = []
             measurement_markerset = []
             filter_list = []
-            db_filters = dict([[f.id, f] for f in self.getFilters()])
+            db_filters = dict([[f.filter_id, f] for f in self.getFilters(tracker=db_tracker)])
             # Get Tracks from Filters
             for k in Tracker.Filters.keys():
                 x = y = np.nan
@@ -920,12 +929,17 @@ class DataFileExtended(clickpoints.DataFile):
                                                     initial_kwargs=db_model.initial_kwargs,
                                                     extensions=db_model.extensions,
                                                     measured_variables=db_model.measured_variables)
+                    db_filter = self.setFilter(filter_id=k,
+                                                model=db_filter_model.id, tracker=db_tracker.id,
+                                                track=db_track.id,
+                                                measurement_distribution=db_dist_m.id,
+                                                state_distribution=db_dist_s.id)
 
-                    filter_list.append(dict(id=k,
-                                            model=db_filter_model.id, tracker=db_tracker.id,
-                                            track=db_track.id,
-                                            measurement_distribution=db_dist_m.id,
-                                            state_distribution=db_dist_s.id))
+                    # filter_list.append(dict(filter_id=k,
+                    #                         model=db_filter_model.id, tracker=db_tracker.id,
+                    #                         track=db_track.id,
+                    #                         measurement_distribution=db_dist_m.id,
+                    #                         state_distribution=db_dist_s.id))
 
                 # Case 1: we tracked something in this filter
                 if i in Tracker.Filters[k].X.keys():
@@ -959,7 +973,7 @@ class DataFileExtended(clickpoints.DataFile):
                                                 # style='{"scale":%.2f}'%(state_err)))
                     if (debug_mode & 0b001):
                         stateset.append(dict(log_prob=prob,
-                                             filter=k,
+                                             filter=db_filter,
                                              image=image,
                                              type=self.TYPE_BELIEVE,
                                              state_vector=Tracker.Filters[k].X[i],
@@ -968,7 +982,7 @@ class DataFileExtended(clickpoints.DataFile):
                 # Case 2: we want to see the prediction markers
                 if i in Tracker.Filters[k].Predicted_X.keys() and (debug_mode&0b010):
                     stateset.append(dict(log_prob=prob,
-                                         filter=k,
+                                         filter=db_filter,
                                          image=image,
                                          type=self.TYPE_PREDICTION,
                                          state_vector=Tracker.Filters[k].Predicted_X[i],
@@ -1009,7 +1023,7 @@ class DataFileExtended(clickpoints.DataFile):
 
                     meas_err = meas.Covariance
 
-                    stateset.append(dict(filter=k,
+                    stateset.append(dict(filter=db_filter,
                                          log_prob=prob,
                                          image=image,
                                          type=self.TYPE_MEASUREMENT,
@@ -1032,13 +1046,13 @@ class DataFileExtended(clickpoints.DataFile):
         except KeyError:
             pass
 
-        if len(filter_list)>0:
-            self.setFilters(id=[f["id"] for f in filter_list],
-                            track=[f["track"] for f in filter_list],
-                            tracker=[f["tracker"] for f in filter_list],
-                            measurement_distribution=[f["measurement_distribution"] for f in filter_list],
-                            state_distribution=[f["state_distribution"] for f in filter_list],
-                            model=[f["model"] for f in filter_list])
+        # if len(filter_list)>0:
+        #     self.setFilters(filter_id=[f["filter_id"] for f in filter_list],
+        #                     track=[f["track"] for f in filter_list],
+        #                     tracker=[f["tracker"] for f in filter_list],
+        #                     measurement_distribution=[f["measurement_distribution"] for f in filter_list],
+        #                     state_distribution=[f["state_distribution"] for f in filter_list],
+        #                     model=[f["model"] for f in filter_list])
 
         if (debug_mode&0b001):
             self.setMarkers(image=[m["image"] for m in markerset],
@@ -1134,6 +1148,26 @@ class DataFileExtended(clickpoints.DataFile):
                     else:
                         raise
             self._SetExtVersion(2)
+
+        if nr_version < 3:
+            print("\tto 3")
+            with self.db.transaction():
+                self.db.execute_sql(
+                    'CREATE TABLE `filter_tmp` ("id" INTEGER NOT NULL PRIMARY KEY, "filter_id" INTEGER NOT NULL, "track_id" INTEGER NOT NULL, "tracker_id" INTEGER NOT NULL, "measurement_distribution_id" INTEGER NOT NULL, "state_distribution_id" INTEGER NOT NULL, "model_id" INTEGER NOT NULL, FOREIGN KEY ("track_id") REFERENCES "track" ("id") ON DELETE CASCADE, FOREIGN KEY ("tracker_id") REFERENCES "tracker" ("id") ON DELETE CASCADE, FOREIGN KEY ("measurement_distribution_id") REFERENCES "distribution" ("id") ON DELETE CASCADE, FOREIGN KEY ("state_distribution_id") REFERENCES "distribution" ("id") ON DELETE CASCADE, FOREIGN KEY ("model_id") REFERENCES "model" ("id") ON DELETE CASCADE)')
+                try:
+                    filters = self.db.execute_sql('select * from filter').fetchall()
+                except peewee.OperationalError:
+                    filters = []
+                for f in filters:
+                    self.db.execute_sql(
+                        'INSERT INTO filter_tmp ("id", "filter_id", "track_id", "tracker_id", "measurement_distribution_id","state_distribution_id", "model_id") VALUES(?, ?, ?, ?, ?, ?, ?)',
+                        [f["id"], f["id"], f["track_id"], f["tracker_id"], f["measurement_distribution_id"], f["state_distribution_id"], f["model_id"]])
+                try:
+                    self.db.execute_sql('DROP TABLE filter')
+                except peewee.OperationalError:
+                    pass
+                self.db.execute_sql('ALTER TABLE filter_tmp RENAME TO filter')
+            self._SetExtVersion(3)
 
 
         self.db.get_conn().row_factory = None

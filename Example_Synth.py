@@ -60,21 +60,28 @@ class SyntheticDataGenerator(object):
 
 if __name__ == '__main__':
 
-    def track(filter, gen):
+    def track(filters, gen):
         # Extended Clickpoints Database for usage with pengutack
         from PenguTrack.DataFileExtended import DataFileExtended
         # Open ClickPoints Database
         db = DataFileExtended("./synth_data.cdb", "w")
 
         gt_type = db.setMarkerType(name="Ground_Truth", mode=db.TYPE_Track, color="#FFFFFF")
-        db_model, db_tracker = db.init_tracker(filter.Model, filter)
+        db_models = {}
+        db_trackers = {}
+        db_track_marker_types = {}
+        for filter in filters:
+            db_model, db_tracker = db.init_tracker(filter.Model, filter)
+            db_models[filter.name()] = db_model
+            db_trackers[filter.name()] = db_tracker
+            db_track_marker_types[filter.name()] = db.setMarkerType("%s_Track_Marker"%filter.name(),
+                                                                    color="#00FF00",
+                                                                    mode=db.TYPE_Track)
 
         # Start Iteration over Images
         print('Starting Iteration')
         for i in range(11):
             image = db.setImage(filename="%s.png"%i, frame=i)
-            # Prediction step, without applied control(vector of zeros)
-            filter.predict(i=i)
 
             # Detection step
             Positions = gen.step()
@@ -92,20 +99,27 @@ if __name__ == '__main__':
             print("Found %s Objects!"%len(Positions))
 
             if len(Positions)>0:
-                # Update Filter with new Detections
-                filter.update(z=Positions, i=i, verbose=False)
-                # Write everything to a DataBase
-                db.write_to_DB(filter, image, i=i, db_tracker=db_tracker, db_model=db_model)
+                for filter in filters:
+                    # Prediction step, without applied control(vector of zeros)
+                    filter.predict(i=i)
+                    # Update Filter with new Detections
+                    filter.update(z=Positions, i=i, verbose=False)
+                    # Write everything to a DataBase
+                    db.track_marker_type = db_track_marker_types[filter.name()]
+                    db.write_to_DB(filter, image, i=i,# debug_mode=0b0000,
+                                   db_tracker=db_trackers[filter.name()],
+                                   db_model=db_models[filter.name()])
 
 
         print('done with Tracking')
-        return filter
+        return filters
 
     all_params = []
 
-    from PenguTrack.Trackers import VariableSpeedTracker
+    from PenguTrack.Trackers import VariableSpeedTracker, GreedyVariableSpeedTracker
 
     MultiKal = VariableSpeedTracker(q=1., no_dist=False, prob_update=False)
+    MultiKal2 = GreedyVariableSpeedTracker(q=1., no_dist=False, prob_update=False)
     # MultiKal.LogProbabilityThreshold = -3.
     # Physical Model (used for predictions)
     from PenguTrack.Models import VariableSpeed
@@ -113,8 +127,7 @@ if __name__ == '__main__':
 
     Generator = SyntheticDataGenerator(114, 100., 1., VariableSpeed(dim=2, timeconst=0.5, damping=1.), loose=True)
 
-    MultiKal = track(MultiKal, Generator)
-    MultiKal.LogProbabilityThreshold = -5.
+    MultiKal, MultiKal2 = track([MultiKal, MultiKal2], Generator)
 
 
     # db = DataFileExtended("./synth_data.cdb", "r")

@@ -94,7 +94,7 @@ if __name__ == "__main__":
     plt.ion()
     from time import time
     import pandas
-    db = DataFileExtended("../synth_data.cdb")
+    db = DataFileExtended("../synth_data_big.cdb")
     costs = [p.probability_gain for p in db.table_probability_gain.select()]
 
     def get(mat, set):
@@ -112,7 +112,7 @@ if __name__ == "__main__":
         else:
             r0=c0=None
 
-        for t in np.arange(0.,1.,0.1):
+        for t in np.arange(0.1,1.,0.1):
             a = time()
             r,c = splitted_solver(mat, dom_threshold=t)
             a = time()-a
