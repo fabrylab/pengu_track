@@ -11,6 +11,7 @@ from PenguTrack import Filters
 from PenguTrack.DataFileExtended import DataFileExtended
 
 import inspect
+import pandas
 
 all_filters = tuple([v for v in dict(inspect.getmembers(Filters)).values() if type(v)==type])
 
@@ -23,21 +24,25 @@ class Evaluator(object):
         self.gt_track_dict = {}
         self.system_track_dict = {}
 
-    def add_PT_Tracks(self, tracks, tracks_object):
+    def add_PT_Tracks(self, tracks):
+        tracks_object = {}
         for track in tracks:
             if len(tracks_object) == 0:
                 i = 0
             else:
                 i = max(tracks_object.keys()) + 1
                 tracks_object.update({i: track})
+        return tracks_object
 
-    def add_PT_Tracks_from_Tracker(self, tracks, tracks_object):
+    def add_PT_Tracks_from_Tracker(self, tracks):
+        tracks_object = {}
         for j,i in enumerate(tracks):
             self.track_dict.update({j:i})
             tracks_object.update({i: tracks[i]})
+        return tracks_object
 
-    def load_tracks_from_clickpoints(self, path, type, db_object, tracks_object):
-        db_object = self.__getattribute__(db_object)
+    def load_tracks_from_clickpoints(self, path, type):
+        tracks_object = {}
         db_object = clickpoints.DataFile(path)
         if "DataFileExtendedVersion" in [item.key for item in db_object.table_meta.select()]:
             while not db_object.db.is_closed():
@@ -62,13 +67,15 @@ class Evaluator(object):
             db_object.track_dict = dict(zip(tracks_object.keys(), tracks_object.keys()))
 
         print("Tracks loaded!")
+        return db_object, tracks_object
 
 
     def load_measurements_from_clickpoints(self, path, type,
-                                           db_object, tracks_object,
+                                           # db_object, tracks_object,
                                            measured_variables=["PositionX", "PositionY"]):
         db_object = DataFileExtended(path)
         db=db_object
+        tracks_object = {}
         tracks = db.getTracks(type=type)
         all_markers = db.db.execute_sql('SELECT track_id, (SELECT sort_index FROM image WHERE image.id = image_id) as sort_index, measurement.x, measurement.y, z FROM marker JOIN measurement ON marker.id = measurement.marker_id WHERE type_id = ?', str(db.getMarkerType(name=type).id)).fetchall()
         all_markers = np.array(all_markers)
@@ -89,24 +96,25 @@ class Evaluator(object):
                 except:
                     pass
                 tracks_object[track].update(i=i, z=Measurement(1., X[i]))
+        return db_object, tracks_object
 
     def add_PT_Tracks_to_GT(self, tracks):
-        return self.add_PT_Tracks(tracks, self.GT_Tracks)
+        self.GT_Tracks = self.add_PT_Tracks(tracks)
 
     def add_PT_Tracks_to_System(self, tracks):
-        return self.add_PT_Tracks(tracks, self.System_Tracks)
+        self.System_Tracks = self.add_PT_Tracks(tracks)
 
     def add_PT_Tracks_from_Tracker_to_GT(self, tracks):
-        return self.add_PT_Tracks_from_Tracker(tracks, self.GT_Tracks)
+        self.GT_Tracks = self.add_PT_Tracks_from_Tracker(tracks)
 
     def add_PT_Tracks_from_Tracker_to_System(self, tracks):
-        return self.add_PT_Tracks_from_Tracker(tracks, self.System_Tracks)
+        self.System_Tracks = self.add_PT_Tracks_from_Tracker(tracks)
 
     def load_GT_tracks_from_clickpoints(self, path, type):
-        return self.load_tracks_from_clickpoints(path, type, self.gt_db, self.GT_Tracks)
+        self.gt_db, self.GT_Tracks = self.load_tracks_from_clickpoints(path, type)
 
     def load_System_tracks_from_clickpoints(self, path, type):
-        return self.load_tracks_from_clickpoints(path, type, self.system_db, self.System_Tracks)
+        self.system_db, self.System_Tracks =  self.load_tracks_from_clickpoints(path, type)
 
 
 class Yin_Evaluator(Evaluator):
@@ -120,18 +128,34 @@ class Yin_Evaluator(Evaluator):
     def temporal_overlap(self, trackA, trackB):
         trackA = self._handle_Track_(trackA)
         trackB = self._handle_Track_(trackB)
-        intersect = set(trackA.X.keys()).intersection(trackB.X.keys())
+        setA = set(trackA.X.keys())
+        setB = set(trackB.X.keys())
+        print("calculated delta T!")
+        return float(len(setA.intersection(setB)))/len(setA.union(setB))
+        # intersect = set(trackA.X.keys()).intersection(trackB.X.keys())
         # return max(len(intersect)/len(trackA.X.keys()), len(intersect)/len(trackB.X.keys()))
-        return len(set(trackA.X.keys()).intersection(trackB.X.keys()))/len(set(trackA.X.keys()).union(set(trackB.X.keys())))
+        # return len(set(trackA.X.keys()).intersection(trackB.X.keys()))/len(set(trackA.X.keys()).union(set(trackB.X.keys())))
         # return min(max(trackA.X.keys()),max(trackB.X.keys()))-max(min(trackA.X.keys()),min(trackB.X.keys()))
 
     def spatial_overlap(self, trackA, trackB):
+        id_A = trackA
+        id_B = trackB
         trackA = self._handle_Track_(trackA)
         trackB = self._handle_Track_(trackB)
-        frames = set(trackA.X.keys()).intersection(set(trackB.X.keys()))
-        pointsA = [trackA.X[f] for f in frames]
-        pointsB = [trackB.X[f] for f in frames]
-        return dict(zip(frames,[self._intersect_(p1,p2)/self._union_(p1,p2) for p1,p2 in zip(pointsA,pointsB)]))
+        frames = set(self.System_DF[self.System_DF["Track"] == id_A].Frame).intersection(
+            set(self.GT_DF[self.GT_DF["Track"] == id_B].Frame))
+        # frames = set(trackA.X.keys()).intersection(set(trackB.X.keys()))
+        if len(frames) == 0:
+            return {}
+        A = self.System_DF[self.System_DF.Track==id_A& self.System_DF.Frame.isin(frames)]
+        B = self.GT_DF[self.GT_DF.Track==id_B& self.GT_DF.Frame.isin(frames)]
+        I = self._intersect_many_(A.X, A.Y, B.X, B.Y)
+        X = np.array([[trackA.X[f][0], trackA.X[f][1], trackB.X[f][0], trackB.X[f][1]] for f in frames], ndmin=3)
+        # I = self._intersect_many_(*X.T[0])
+        return dict(zip(frames, I/(2*self.Object_Size**2-I)))
+        # pointsA = [trackA.X[f] for f in frames]
+        # pointsB = [trackB.X[f] for f in frames]
+        # return dict(zip(frames,[self._intersect_(p1,p2)/self._union_(p1,p2) for p1,p2 in zip(pointsA,pointsB)]))
 
     def _intersect_(self, p1, p2):
         o = self.Object_Size/2.
@@ -140,6 +164,21 @@ class Yin_Evaluator(Evaluator):
         t = min(p1[1]+o, p2[1]+o)
         b = max(p1[1]-o, p2[1]-o)
         return (t-b)*(r-l) if ((r-l)>0 and (t-b)>0) else 0
+
+    def _intersect_many_(self, x0, y0, x1, y1):
+        o = self.Object_Size/2.
+        r,l = np.sort([x0,x1], axis=0)
+        t,b = np.sort([y0,y1], axis=0)
+        r += o
+        l -= o
+        t += o
+        b -=o
+        w = r-l
+        h = t-b
+        return w*h*(w > 0)*(h > 0)
+
+    def _union_many_(self, x0, y0, x1, y1):
+        return 2*self.Object_Size**2-self._intersect_many_(x0, y0, x1, y1)
 
     def _union_(self, p1, p2):
         return 2*self.Object_Size**2-self._intersect_(p1,p2)
@@ -150,19 +189,55 @@ class Yin_Evaluator(Evaluator):
                 A = int(track)
             except TypeError:
                 raise ValueError("%s is not a track!"%track)
-            if self.GT_Tracks.has_key(A) and (tracks is None or tracks==self.GT_Tracks):
+            if A in self.GT_Tracks and (tracks is None or tracks==self.GT_Tracks):
                  return self.GT_Tracks[A]
-            elif self.System_Tracks.has_key(A) and (tracks is None or tracks==self.System_Tracks):
+            elif A in self.System_Tracks and (tracks is None or tracks==self.System_Tracks):
                 return  self.System_Tracks[A]
             else:
                 raise ValueError("%s is not a track!" % track)
         else:
             return track
 
+    def pandas_spatial_overlap(self, st, gt):
+        frames = set(self.DF[(self.DF["Track"] == st) & (self.DF.Type == "System")].Frame).intersection(
+            set(self.DF[(self.DF["Track"] == gt) & (self.DF.Type == "GT")].Frame))
+        positions = self.DF[
+            (((self.DF.Track == st) & (self.DF.Type == "System")) | ((self.DF.Track == gt) & (self.DF.Type == "GT")))
+            & self.DF.Frame.isin(frames)]
+        grouped = positions.groupby("Frame")
+        o = self.Object_Size / 2.
+        r = grouped.X.min() + o
+        l = grouped.X.max() - o
+        t = grouped.Y.min() + o
+        b = grouped.Y.max() - o
+        w = r - l
+        h = t - b
+        A = w * h * (w > 0) * (h > 0)
+        return A/(2*self.Object_Size**2-A)
+
     def match(self):
+        super_list = [[i, j, *self.System_Tracks[i].X[j].T[0], "System"]
+                                                     for i in self.System_Tracks.keys()
+                                                     for j in self.System_Tracks[i].X.keys()]
+        super_list.extend([[i, j, *self.GT_Tracks[i].X[j].T[0], "GT"]
+                                                     for i in self.GT_Tracks.keys()
+                                                     for j in self.GT_Tracks[i].X.keys()])
+        self.DF = pandas.DataFrame(super_list,columns=["Track","Frame","X","Y", "Type"])
         for gt in self.GT_Tracks:
-            self.Matches.update({gt: [st for st in self.System_Tracks if (np.mean(self.spatial_overlap(st,gt).values())>self.SpaceThreshold and
-                                                self.temporal_overlap(st,gt)>self.TempThreshold)]})
+            m = []
+            for st in self.System_Tracks:
+                print("calculating!", st, gt)
+                if self.pandas_spatial_overlap(st, gt).mean()>self.SpaceThreshold and self.temporal_overlap(st,gt)>self.TempThreshold:
+                    m.append(st)
+            self.Matches.update({gt: m})
+                # B = self.DF[self.DF.Track == gt & self.DF.Frame.isin(frames) & self.DF.Type=="GT"]
+                # I = self._intersect_many_(A.X, A.Y, B.X, B.Y)
+
+
+        # spatial_overlap =
+        # for gt in self.GT_Tracks:
+        #     self.Matches.update({gt: [st for st in self.System_Tracks if (np.mean(list(self.spatial_overlap(st,gt).values()))>self.SpaceThreshold and
+        #                                         self.temporal_overlap(st,gt)>self.TempThreshold)]})
 
     def FAT(self, trackA, trackB):
         pass
@@ -318,17 +393,16 @@ class Yin_Evaluator(Evaluator):
         id = None
         for f in frames:
             if id is None:
-                id=[k for k in self.Matches[key] if self.System_Tracks[k].X.has_key(f)]
+                id=[k for k in self.Matches[key] if f in self.System_Tracks[k].X]
                 if len(id)>0:
                     id=id[0]
                 else:
                     id = None
                     continue
-                # id=[k for k in self.Matches[key] if self.System_Tracks[k].X.has_key(f)][0]
-            if not self.System_Tracks[id].X.has_key(f):
+            if not f in self.System_Tracks[id].X:
                 IDC_j +=1
-                ids=[k for k in self.Matches[key] if self.System_Tracks[k].X.has_key(f)]
-                func = lambda i : len([fr for fr in frames if f<fr and fr<[fr for fr in frames if fr>f and not self.System_Tracks[id].X.has_key(f)][0]])
+                ids=[k for k in self.Matches[key] if f not in self.System_Tracks[k].X]
+                func = lambda i : len([fr for fr in frames if f<fr and fr<[fr for fr in frames if fr>f and not f in self.System_Tracks[id].X][0]])
                 try:
                     id = max(ids, key=func)
                 except ValueError:
@@ -455,11 +529,11 @@ class Alex_Evaluator(Yin_Evaluator):
 
 if __name__ == "__main__":
     evaluation = Yin_Evaluator(25.)
-    evaluation.load_GT_tracks_from_clickpoints(path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData_GroundTruth_interpolated.cdb",
-                                               type="interpolated")
     evaluation.load_System_tracks_from_clickpoints(
         path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3.cdb",
         type="Track_Marker")
+    evaluation.load_GT_tracks_from_clickpoints(path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData_GroundTruth_interpolated.cdb",
+                                               type="interpolated")
 
     evaluation.match()
     print(evaluation.Matches)
