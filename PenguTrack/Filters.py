@@ -675,6 +675,7 @@ class KalmanFilter(Filter):
         self.State_Distribution.cov = current_cov
         return value
 
+
 class AdvancedKalmanFilter(KalmanFilter):
     """
     This Class describes a advanced, self tuning version of the kalman-filter in the pengu-track package.
@@ -1075,28 +1076,6 @@ class MultiFilter(Filter):
             raise ValueError("No Measurements found!")
         measurements = list(z)
         z = np.array([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
-        # try:
-        #     if len(self.Model.Extensions) > 0:
-        #         z = np.array(
-        #             [np.hstack((np.array([m.PositionX, m.PositionY, m.PositionZ]), np.array([m.Data[var] for var in self.Model.Extensions])))
-        #                       for m in measurements], ndmin=2)
-        #     else:
-        #         z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
-        # except (ValueError, AttributeError):
-        #     try:
-        #         if len(self.Model.Extensions) > 0:
-        #             z = np.array(
-        #                 [np.hstack((np.array([m.PositionX, m.PositionY]), np.array([m.Data[var] for var in self.Model.Extensions])))
-        #                  for m in measurements], ndmin=2)
-        #         else:
-        #             z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
-        #     except (ValueError, AttributeError):
-        #         if len(self.Model.Extensions) > 0:
-        #             z = np.array(
-        #                 [np.hstack((np.array([m.PositionX]), np.array([m.Data[var] for var in self.Model.Extensions])))
-        #                  for m in measurements], ndmin=2)
-        #         else:
-        #             z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
 
         M = z.shape[0]
 
@@ -1138,36 +1117,8 @@ class MultiFilter(Filter):
         self.Measurements.update({i:z})
 
         meas_logp = np.array([m.Log_Probability for m in z])
-        # try:
-        #     z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
-        # except (ValueError, AttributeError):
-        #     try:
-        #         z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
-        #     except (ValueError, AttributeError):
-        #         z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
+
         z = np.array([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
-        # try:
-        #     if len(self.Model.Extensions) > 0:
-        #         z = np.array(
-        #             [np.vstack((np.array([m.PositionX, m.PositionY, m.PositionZ]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
-        #                       for m in measurements], ndmin=2)
-        #     else:
-        #         z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
-        # except (ValueError, AttributeError):
-        #     try:
-        #         if len(self.Model.Extensions) > 0:
-        #             z = np.array(
-        #                 [np.vstack((np.array([m.PositionX, m.PositionY]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
-        #                  for m in measurements], ndmin=2)
-        #         else:
-        #             z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
-        #     except (ValueError, AttributeError):
-        #         if len(self.Model.Extensions) > 0:
-        #             z = np.array(
-        #                 [np.vstack((np.array([m.PositionX]), np.array([[m.Data[var][0]] for var in self.Model.Extensions])[None, :]))
-        #                  for m in measurements], ndmin=2)
-        #         else:
-        #             z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
 
         mask = ~np.isneginf(meas_logp)
         if not np.all(~mask):
@@ -1217,8 +1168,7 @@ class MultiFilter(Filter):
         from scipy.optimize import linear_sum_assignment
 
         cost_matrix=self.cost_from_logprob(probability_gain)
-
-        rows, cols = linear_sum_assignment(cost_matrix)
+        rows, cols = self.assign(cost_matrix)
 
         if verbose:
             for t in range(N):
@@ -1347,195 +1297,86 @@ class MultiFilter(Filter):
             prob += self.Filters[j].log_prob(**kwargs)
         return prob
 
+    def assign(self, cost_matrix):
+        return greedy_assignment(cost_matrix)
 
-class HungarianTracker(MultiFilter):
+    def name(self):
+        return str(self.__class__).split("'")[1].split(".")[-1]
 
-    # def __init__(self, _filter, model, *args, **kwargs):
-    #     super(HungarianTracker, self).__init__(_filter, model, *args, **kwargs)
-    def initial_update(self, z, i):
+class Tracker(MultiFilter):
+    pass
+
+
+class HungarianTracker(Tracker):
+
+    def assign(self, cost_matrix):
+        return linear_sum_assignment(cost_matrix)
+
+
+class HybridSolver(Tracker):
+    """
+    This Class describes a filter, which is capable of assigning measurements to tracks, which again are represented by
+    sub-filters. The type of these can be specified, as well as a physical model for predictions. With these objects it
+    is possible to assign possibilities to combinations of measurement and prediction.
+
+    Attributes
+    ----------
+    Model: PenguTrack.model object
+        A physical model to gain predictions from data.
+    Filter_Class: PenguTrack.Filter object
+        A Type of Filter from which all subfilters should be built.
+    Filters: dict
+        Dictionary containing all sub-filters as PenguTrack.Filter objects.
+    Active_Filters: dict
+        Dictionary containing all sub-filters, which are currently updated.
+    FilterThreshold: int
+        Number of time steps, before a filter is set inactive.
+    LogProbabilityThreshold: float
+        Threshold, under which log-probabilities are concerned negligible.
+    filter_args: list
+        Filter-Type specific arguments from the Multi-Filter initialisation can be stored here.
+    filter_kwargs: dict
+        Filter-Type specific keyword-arguments from the Multi-Filter initialisation can be stored here.
+    Measurement_Distribution: scipy.stats.distributions object
+        The distribution which describes measurement uncertainty.
+    State_Distribution: scipy.stats.distributions object
+        The distribution which describes state vector fluctuations.
+    X: dict
+        The time series of believes calculated for this filter. The keys equal the time stamp.
+    X_error: dict
+        The time series of errors on the corresponding believes. The keys equal the time stamp.
+    Predicted_X: dict
+        The time series of predictions made from the associated data. The keys equal the time stamp.
+    Predicted_X_error: dict
+        The time series of estimated prediction errors. The keys equal the time stamp.
+    Measurements: dict
+        The time series of measurements assigned to this filter. The keys equal the time stamp.
+    Controls: dict
+        The time series of control-vectors assigned to this filter. The keys equal the time stamp.
+
+    """
+    def __init__(self, *args, **kwargs):
+
         """
-        Function to get updates to the corresponding model in the first time step.
-        Handles time-stamps and measurement-vectors.
-        This function also handles the assignment of all incoming measurements to the active sub-filters.
+        This Class describes a filter, which is capable of assigning measurements to tracks, which again are represented by
+        sub-filters. The type of these can be specified, as well as a physical model for predictions. With these objects it
+        is possible to assign possibilities to combinations of measurement and prediction.
+
+        Sub-filter specific arguments are handles by *args and **kwargs.
 
         Parameters
         ----------
-        z: list of PenguTrack.Measurement objects
-            Recent measurements.
-        i: int
-            Recent/corresponding time-stamp.
-
-        Returns
-        ----------
-        z: list of PenguTrack.Measurement objects
-            Recent measurements.
-        i: int
-            Recent/corresponding time-stamp.
+        model: PenguTrack.model object
+            A physical model to gain predictions from data.
+        meas_dist: scipy.stats.distributions object
+            The distribution which describes measurement uncertainty.
+        state_dist: scipy.stats.distributions object
+            The distribution which describes state vector fluctuations.
+        dominance_threshold: float, optioinal
+            Threshold between 0 and 1. definining which part of the assignments will be done by hungarian and greedy solver.
         """
-        print("Initial Filter Update")
-
-        measurements = list(z)
-        z = np.array([self.Model.vec_from_meas(m) for m in measurements])
-        # if len(self.Model.Extensions) > 0:
-        #     z = np.array(
-        #         [np.vstack((np.array([m[v] for v in self.Model.Measured_Variables]),
-        #                     np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
-        #          for m in z], ndmin=2)
-        # else:
-        #     z = np.array([[m[v] for v in self.Model.Measured_Variables] for m in z], ndmin=2)
-
-        M = z.shape[0]
-
-        for j in range(M):
-            _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
-            inferred_state = _filter.Model.infer_state(z[j])
-            _filter.Predicted_X.update({i: inferred_state})
-            _filter.X.update({i: inferred_state})
-            _filter.Measurements.update({i: measurements[j]})
-
-            try:
-                J = max(self.Filters.keys()) + 1
-            except ValueError:
-                J = 0
-            self.ActiveFilters.update({J: _filter})
-            self.Filters.update({J: _filter})
-
-    def update(self, z=None, i=None, big_jumps=False, verbose=True):
-        """
-            Function to get updates to the corresponding model. Handles time-stamps and measurement-vectors.
-            This function also handles the assignment of all incoming measurements to the active sub-filters.
-
-            Parameters
-            ----------
-            z: list of PenguTrack.Measurement objects
-                Recent measurements.
-            i: int
-                Recent/corresponding time-stamp.
-
-            Returns
-            ----------
-            z: list of PenguTrack.Measurement objects
-                Recent measurements.
-            i: int
-                Recent/corresponding time-stamp.
-        """
-        assert not (z is None and i is None), "One of measurement vector or time stamp must be specified"
-        measurements = list(z)
-        self.Measurements.update({i: z})
-
-        meas_logp = np.array([m.Log_Probability for m in z])
-
-        z = np.array([self.Model.vec_from_meas(m) for m in measurements])
-        # if len(self.Model.Extensions) > 0:
-        #     z = np.array(
-        #         [np.vstack((np.array([m[v] for v in self.Model.Measured_Variables]),
-        #                     np.array([[m.Data[var][0]] for var in self.Model.Extensions])))
-        #          for m in measurements], ndmin=2)
-        # else:
-        #     z = np.array([[m[v] for v in self.Model.Measured_Variables] for m in measurements], ndmin=2)
-
-        mask = ~np.isneginf(meas_logp)
-        if not np.all(~mask):
-            meas_logp[~mask] = np.nanmin(meas_logp[mask])
-            mask &= (meas_logp - np.nanmin(meas_logp) >=
-                     (self.MeasurementProbabilityThreshold * (np.nanmax(meas_logp) - np.nanmin(meas_logp)))).astype(
-                bool)
-            z = z[mask]
-            measurements = list(np.asarray(measurements)[mask])
-        else:
-            self.Measurements.pop(i, None)
-            return measurements, i
-
-        M = z.shape[0]
-        N = len(dict(self.ActiveFilters))
-
-        if N == 0 and M > 0:
-            self.initial_update(measurements, i)
-            return measurements, i
-
-        gain_dict = []
-        probability_gain = np.ones((max(M, N), M)) * -np.inf
-
-        filter_keys = list(self.ActiveFilters.keys())
-        for j, k in enumerate(filter_keys):
-            gain_dict.append([j, k])
-            for m, meas in enumerate(measurements):
-                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas},
-                                                                        update=self.ProbUpdate)
-        gain_dict = dict(gain_dict)
-
-        probability_gain[np.isinf(probability_gain)] = np.nan
-        if np.all(np.isnan(probability_gain)):
-            probability_gain[:] = -np.inf
-        else:
-            probability_gain[np.isnan(probability_gain)] = np.nanmin(probability_gain)
-        if self.LogProbabilityThreshold == -np.inf:
-            LogProbabilityThreshold = np.nanmin(probability_gain)
-        else:
-            LogProbabilityThreshold = self.LogProbabilityThreshold
-
-        self.Probability_Gain.update({i: np.array(probability_gain)})
-
-        x = {}
-        x_err = {}
-        from scipy.optimize import linear_sum_assignment
-
-        cost_matrix = self.cost_from_logprob(probability_gain)
-
-        rows, cols = linear_sum_assignment(cost_matrix)
-
-        for t in range(N):
-            if t not in rows:
-                if verbose:
-                    print("No update for track %s with best prob %s in frame %s" % (
-                gain_dict[t], np.amax(probability_gain[t]), i))
-
-        for j, k in enumerate(rows):
-            k = rows[j]
-            m = cols[j]
-
-            if N > M and m >= M:
-                continue
-
-            if k in gain_dict and (
-                            probability_gain[k, m] > LogProbabilityThreshold or
-                        (len(self.ActiveFilters[gain_dict[k]].X) < 2 and
-                                 min([i - o for o in self.ActiveFilters[gain_dict[k]].X.keys() if
-                                      i > o]) < 2 and big_jumps)):
-                self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
-                x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
-                x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
-                if verbose:
-                    print("Updated track %s with prob %s in frame %s" % (gain_dict[k], probability_gain[k, m], i))
-
-            else:
-                if verbose:
-                    if k in gain_dict:
-                        print("DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (gain_dict[k], probability_gain[k, m], i))
-                    else:
-                        print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
-                try:
-                    n = len(self.ActiveFilters[gain_dict[k]].X.keys())
-                except KeyError:
-                    n = np.inf
-
-                l = max(self.Filters.keys()) + 1
-                _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
-                _filter.Predicted_X.update({i: self.Model.infer_state(z[m])})
-                _filter.X.update({i: self.Model.infer_state(z[m])})
-                _filter.Measurements.update({i: measurements[m]})
-
-                self.ActiveFilters.update({l: _filter})
-                self.Filters.update({l: _filter})
-
-                gain_dict.update({k:l})
-
-            probability_gain[k, :] = np.nan
-            probability_gain[:, m] = np.nan
-
-        self.Probability_Gain_Dicts.update({i: gain_dict})
-        self.Probability_Assignment_Dicts.update({i: dict([[gain_dict[r], c] for r,c in zip(rows, cols)])})
-        return measurements, i
+        super(HybridSolver, self).__init__(*args, **kwargs)
+        self.DominanceThreshold = kwargs.get("dominance_threshold")
 
 
 # import multiprocessing
