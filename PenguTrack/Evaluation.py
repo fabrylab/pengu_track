@@ -645,75 +645,96 @@ if __name__ == "__main__":
     import json
     evaluation = Yin_Evaluator(50., temporal_threshold=0., spacial_threshold=np.nextafter(0.,1.), point_threshold=50)#np.nextafter(0.,1.))
     evaluation.load_System_tracks_from_clickpoints(
-        path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3.cdb",
+        path=r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData2.cdb",
+        # path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3.cdb",
         # path=r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData2.cdb",
         type="Track_Marker")
-    evaluation.load_GT_tracks_from_clickpoints(path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData_GroundTruth_interpolated.cdb",
-    # evaluation.load_GT_tracks_from_clickpoints(path=r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData_GroundTruth.cdb",
+    # evaluation.load_GT_tracks_from_clickpoints(path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData_GroundTruth_interpolated.cdb",
+    evaluation.load_GT_tracks_from_clickpoints(path=r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData_GroundTruth.cdb",
                                                type="GroundTruth")
-    # evaluation.built_DataFrame()
-    evaluation.match()
-    with open("/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3_matches.json", "w") as fp:
-        json.dump(evaluation.Matches, fp, indent=4, sort_keys=True)
+
+    #####TEST#####
+    for k in list(evaluation.GT_Tracks.keys()):
+        if k not in [118, 89]:
+            evaluation.GT_Tracks.pop(k, None)
+    evaluation.built_DataFrame()
+
+    # evaluation.match()
+    # with open("/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData2_matches.json", "w") as fp:
+    # with open(r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData2_matches.json", "w") as fp:
+    #     json.dump(evaluation.Matches, fp, indent=4, sort_keys=True)
 
 
-    with open("/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3_matches.json", "r") as fp:
-        evaluation.Matches = json.load(fp, parse_int=int)
-        # evaluation.Matches = dict([[int(l), loaded[l]] for l in loaded])
+    # with open("/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3_matches.json", "r") as fp:
+    with open(r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData2_matches.json", "r") as fp:
+        loaded = json.load(fp, parse_int=int)
+        evaluation.Matches = dict([[int(l), loaded[l]] for l in loaded])
     print(evaluation.Matches)
-    tmemt = []
-    tmemtd = []
-    tc = []
-    r2 = []
-    r3 = []
-    ctm = []
-    ctd = []
-    lt = []
-    idc = []
-    a = []
-    mix = []
-    text_file = "/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3.txt"
-    with open(text_file, "w") as myfile:
-        myfile.write("Tracking evaluation\n")
 
+    from PenguTrack.Tools.TrackMatchPlotter import TrackPlotter
+    plotter = TrackPlotter(evaluation.GT_Tracks, evaluation.System_Tracks, evaluation.Matches)
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots()
+    plotter.plot_gt(118, fig, ax)
+    plt.savefig(r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData2_matches.png")
+    plt.show()
 
-    def print_save(*args):
-        try:
-            string = "\t".join([str(l) for l in args])
-        except TypeError:
-            string = str(args)
-        with open(text_file, "a") as my_file:
-            my_file.write(string)
-            my_file.write("\n")
-        print(string)
-    for m in evaluation.Matches:
-        print_save("------------")
-        print_save(m)
-        tmemt.append(evaluation.TMEMT(m))
-        # print("Debug1")
-        # tmemtd.append(evaluation.TMEMTD(m))
-        print("Debug2")
-        tc.append(evaluation.TC(m))
-        print("Debug3")
-        # r2.append(evaluation.R2(m))
-        # r3.append(evaluation.R3(m))
-        # ctm.append(evaluation.CTM(m))
-        # ctd.append(evaluation.CTD(m))
-        # lt.append(evaluation.LT(m))
-        mix.append(evaluation.mixture(m))
-        print("Debug4")
-        idc.append(evaluation.IDC(m))
-        print("Debug5")
-        # a.append(evaluation.activity(m))
-        # print_save("TMEMT", tmemt[-1], tmemtd[-1])
-        # print_save("TMEMT coeff", tmemtd[-1] / tmemt[-1])
-        print_save("TC", tc[-1])
-        # print_save("corrected TC", tc[-1] / a[-1])
-        # print_save("R2", r2[-1])
-        # print_save("R3", r3[-1])
-        # print_save("CTM", ctm[-1])
-        # print_save("CTD", ctd[-1])
-        # print_save("LT", lt[-1])
-        print_save("IDC", idc[-1])
-        print_save("MIX", mix[-1])
-
+    # tmemt = []
+    # tmemtd = []
+    # tc = []
+    # r2 = []
+    # r3 = []
+    # ctm = []
+    # ctd = []
+    # lt = []
+    # idc = []
+    # a = []
+    # mix = []
+    # # text_file = "/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData2.txt"
+    # # text_file = "/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3.txt"
+    # # text_file = r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData2.txt"
+    # text_file = r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3.txt"
+    # with open(text_file, "w") as myfile:
+    #     myfile.write("Tracking evaluation\n")
+    #
+    #
+    # def print_save(*args):
+    #     try:
+    #         string = "\t".join([str(l) for l in args])
+    #     except TypeError:
+    #         string = str(args)
+    #     with open(text_file, "a") as my_file:
+    #         my_file.write(string)
+    #         my_file.write("\n")
+    #     print(string)
+    # for m in evaluation.Matches:
+    #     print_save("------------")
+    #     print_save(m)
+    #     tmemt.append(evaluation.TMEMT(m))
+    #     # print("Debug1")
+    #     # tmemtd.append(evaluation.TMEMTD(m))
+    #     print("Debug2")
+    #     tc.append(evaluation.TC(m))
+    #     print("Debug3")
+    #     # r2.append(evaluation.R2(m))
+    #     # r3.append(evaluation.R3(m))
+    #     # ctm.append(evaluation.CTM(m))
+    #     # ctd.append(evaluation.CTD(m))
+    #     # lt.append(evaluation.LT(m))
+    #     mix.append(evaluation.mixture(m))
+    #     print("Debug4")
+    #     idc.append(evaluation.IDC(m))
+    #     print("Debug5")
+    #     # a.append(evaluation.activity(m))
+    #     # print_save("TMEMT", tmemt[-1], tmemtd[-1])
+    #     # print_save("TMEMT coeff", tmemtd[-1] / tmemt[-1])
+    #     print_save("TC", tc[-1])
+    #     # print_save("corrected TC", tc[-1] / a[-1])
+    #     # print_save("R2", r2[-1])
+    #     # print_save("R3", r3[-1])
+    #     # print_save("CTM", ctm[-1])
+    #     # print_save("CTD", ctd[-1])
+    #     # print_save("LT", lt[-1])
+    #     print_save("IDC", idc[-1])
+    #     print_save("MIX", mix[-1])
+    #
