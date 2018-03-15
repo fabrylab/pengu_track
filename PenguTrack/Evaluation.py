@@ -215,6 +215,28 @@ class Yin_Evaluator(Evaluator):
         A = w * h * (w > 0) * (h > 0)
         return A/(2*self.Object_Size**2-A)
 
+
+    def corse_spatial_overlap(self, st, gt):
+        positions_st = self.DF[((self.DF.Track == st) & (self.DF.Type == "System"))]
+        positions_gt = self.DF[((self.DF.Track == gt) & (self.DF.Type == "GT"))]
+        o = self.Object_Size/2.
+        l1 = positions_gt.X.min()
+        l2 = positions_st.X.min()
+        r1 = positions_gt.X.max()
+        r2 = positions_st.X.max()
+        b1 = positions_gt.Y.min()
+        b2 = positions_st.Y.min()
+        t1 = positions_gt.Y.max()
+        t2 = positions_st.Y.max()
+        r = min(r1, r2) + o
+        l = max(l1, l2) - o
+        t = min(t1, t2) + o
+        b = max(b1, b2) - o
+
+        w = r - l
+        h = t - b
+        return (w * h * (w > 0) * (h > 0))>0
+
     def match(self):
         super_list = [[i, j, *self.System_Tracks[i].X[j].T[0], "System"]
                                                      for i in self.System_Tracks.keys()
@@ -223,10 +245,44 @@ class Yin_Evaluator(Evaluator):
                                                      for i in self.GT_Tracks.keys()
                                                      for j in self.GT_Tracks[i].X.keys()])
         self.DF = pandas.DataFrame(super_list,columns=["Track","Frame","X","Y", "Type"])
+
+        pos_sys = self.DF[self.DF.Type == "System"].groupby("Track")
+        r1 = pos_sys.X.max()
+        l1 = pos_sys.X.min()
+        t1 = pos_sys.Y.max()
+        b1 = pos_sys.Y.min()
+
+        pos_gt = self.DF[self.DF.Type == "GT"].groupby("Track")
+        r2 = pos_gt.X.max()
+        l2 = pos_gt.X.min()
+        t2 = pos_gt.Y.max()
+        b2 = pos_gt.Y.min()
+        o = self.Object_Size/2.
+
+        r = r1.values[None,:] < r2.values[:,None]
+        r = r1.values[None,:]*r+r2.values[:,None]*(~r)+o
+
+        l = l1.values[None,:] > l2.values[:,None]
+        l = l1.values[None,:]*l+l2.values[:,None]*(~l)-o
+
+        t = t1.values[None,:] < t2.values[:,None]
+        t = t1.values[None,:]*t+t2.values[:,None]*(~t)+o
+
+        b = b1.values[None,:] > b2.values[:,None]
+        b = b1.values[None,:]*b+b2.values[:,None]*(~b)-o
+
+        w = r - l
+        h = t - b
+        lookup = (w * h * (w > 0) * (h > 0))>0
+
+        st_dict = dict(zip(l1.keys(), range(len(l1.keys()))))
+        gt_dict = dict(zip(l2.keys(), range(len(l2.keys()))))
         for gt in self.GT_Tracks:
             m = []
             for st in self.System_Tracks:
                 print("calculating!", st, gt)
+                if not lookup[gt_dict[gt], st_dict[st]] == True:
+                    continue
                 if self.pandas_spatial_overlap(st, gt).mean()>self.SpaceThreshold and self.temporal_overlap(st,gt)>self.TempThreshold:
                     m.append(st)
             self.Matches.update({gt: m})
@@ -530,10 +586,12 @@ class Alex_Evaluator(Yin_Evaluator):
 if __name__ == "__main__":
     evaluation = Yin_Evaluator(25.)
     evaluation.load_System_tracks_from_clickpoints(
-        path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3.cdb",
+        # path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3.cdb",
+        path=r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData2.cdb",
         type="Track_Marker")
-    evaluation.load_GT_tracks_from_clickpoints(path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData_GroundTruth_interpolated.cdb",
-                                               type="interpolated")
+    # evaluation.load_GT_tracks_from_clickpoints(path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData_GroundTruth_interpolated.cdb",
+    evaluation.load_GT_tracks_from_clickpoints(path=r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData_GroundTruth.cdb",
+                                               type="GroundTruth")
 
     evaluation.match()
     print(evaluation.Matches)
