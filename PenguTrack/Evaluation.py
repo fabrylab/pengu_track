@@ -23,6 +23,17 @@ class Evaluator(object):
         self.system_db = None
         self.gt_track_dict = {}
         self.system_track_dict = {}
+        self.DF = None
+
+    def built_DataFrame(self):
+
+        super_list = [[i, j, *self.System_Tracks[i].X[j].T[0], "System"]
+                                                     for i in self.System_Tracks.keys()
+                                                     for j in self.System_Tracks[i].X.keys()]
+        super_list.extend([[i, j, *self.GT_Tracks[i].X[j].T[0], "GT"]
+                                                     for i in self.GT_Tracks.keys()
+                                                     for j in self.GT_Tracks[i].X.keys()])
+        self.DF = pandas.DataFrame(super_list,columns=["Track","Frame","X","Y", "Type"])
 
     def add_PT_Tracks(self, tracks):
         tracks_object = {}
@@ -121,6 +132,7 @@ class Yin_Evaluator(Evaluator):
     def __init__(self, object_size, *args, **kwargs):
         self.TempThreshold = kwargs.pop("temporal_threshold", 0.1)
         self.SpaceThreshold = kwargs.pop("spacial_threshold", 0.1)
+        self.PointThreshold = kwargs.pop("point_threshold", -1)
         self.Object_Size = object_size
         self.Matches = {}
         super(Yin_Evaluator, self).__init__(*args, **kwargs)
@@ -138,20 +150,20 @@ class Yin_Evaluator(Evaluator):
         # return min(max(trackA.X.keys()),max(trackB.X.keys()))-max(min(trackA.X.keys()),min(trackB.X.keys()))
 
     def spatial_overlap(self, trackA, trackB):
-        id_A = trackA
-        id_B = trackB
+        # id_A = trackA
+        # id_B = trackB
         trackA = self._handle_Track_(trackA)
         trackB = self._handle_Track_(trackB)
-        frames = set(self.System_DF[self.System_DF["Track"] == id_A].Frame).intersection(
-            set(self.GT_DF[self.GT_DF["Track"] == id_B].Frame))
-        # frames = set(trackA.X.keys()).intersection(set(trackB.X.keys()))
+        # frames = set(self.System_DF[self.System_DF["Track"] == id_A].Frame).intersection(
+        #     set(self.GT_DF[self.GT_DF["Track"] == id_B].Frame))
+        frames = set(trackA.X.keys()).intersection(set(trackB.X.keys()))
         if len(frames) == 0:
             return {}
-        A = self.System_DF[self.System_DF.Track==id_A& self.System_DF.Frame.isin(frames)]
-        B = self.GT_DF[self.GT_DF.Track==id_B& self.GT_DF.Frame.isin(frames)]
-        I = self._intersect_many_(A.X, A.Y, B.X, B.Y)
+        # A = self.System_DF[self.System_DF.Track==id_A& self.System_DF.Frame.isin(frames)]
+        # B = self.GT_DF[self.GT_DF.Track==id_B& self.GT_DF.Frame.isin(frames)]
+        # I = self._intersect_many_(A.X, A.Y, B.X, B.Y)
         X = np.array([[trackA.X[f][0], trackA.X[f][1], trackB.X[f][0], trackB.X[f][1]] for f in frames], ndmin=3)
-        # I = self._intersect_many_(*X.T[0])
+        I = self._intersect_many_(*X.T[0])
         return dict(zip(frames, I/(2*self.Object_Size**2-I)))
         # pointsA = [trackA.X[f] for f in frames]
         # pointsB = [trackB.X[f] for f in frames]
@@ -192,18 +204,26 @@ class Yin_Evaluator(Evaluator):
             if A in self.GT_Tracks and (tracks is None or tracks==self.GT_Tracks):
                  return self.GT_Tracks[A]
             elif A in self.System_Tracks and (tracks is None or tracks==self.System_Tracks):
-                return  self.System_Tracks[A]
+                return self.System_Tracks[A]
             else:
                 raise ValueError("%s is not a track!" % track)
         else:
             return track
 
+    def _handle_Track_id_(self, track, tracks=None):
+        if isinstance(track, Filter):
+            if track in self.GT_Tracks.values() and (tracks is None or tracks==self.GT_Tracks):
+                 return [k for k in self.GT_Tracks if self.GT_Tracks[k]==track][0]
+            elif track in self.System_Tracks.values() and (tracks is None or tracks==self.System_Tracks):
+                return [k for k in self.System_Tracks if self.System_Tracks[k]==track][0]
+            else:
+                raise ValueError("%s is not a track!" % track)
+        else:
+            return int(track)
+
     def pandas_spatial_overlap(self, st, gt):
-        frames = set(self.DF[(self.DF["Track"] == st) & (self.DF.Type == "System")].Frame).intersection(
-            set(self.DF[(self.DF["Track"] == gt) & (self.DF.Type == "GT")].Frame))
-        positions = self.DF[
-            (((self.DF.Track == st) & (self.DF.Type == "System")) | ((self.DF.Track == gt) & (self.DF.Type == "GT")))
-            & self.DF.Frame.isin(frames)]
+        frames = self.pandas_frames(st, gt)
+        positions = self.pandas_positions(st, gt)
         grouped = positions.groupby("Frame")
         o = self.Object_Size / 2.
         r = grouped.X.min() + o
@@ -214,6 +234,16 @@ class Yin_Evaluator(Evaluator):
         h = t - b
         A = w * h * (w > 0) * (h > 0)
         return A/(2*self.Object_Size**2-A)
+
+    def pandas_frames(self, st, gt):
+         return set(self.DF[(self.DF["Track"] == st) & (self.DF.Type == "System")].Frame).intersection(
+            set(self.DF[(self.DF["Track"] == gt) & (self.DF.Type == "GT")].Frame))
+
+    def pandas_positions(self, st, gt):
+        frames = self.pandas_frames(st, gt)
+        return self.DF[
+            (((self.DF.Track == st) & (self.DF.Type == "System")) | ((self.DF.Track == gt) & (self.DF.Type == "GT")))
+            & self.DF.Frame.isin(frames)]
 
 
     def corse_spatial_overlap(self, st, gt):
@@ -238,13 +268,11 @@ class Yin_Evaluator(Evaluator):
         return (w * h * (w > 0) * (h > 0))>0
 
     def match(self):
-        super_list = [[i, j, *self.System_Tracks[i].X[j].T[0], "System"]
-                                                     for i in self.System_Tracks.keys()
-                                                     for j in self.System_Tracks[i].X.keys()]
-        super_list.extend([[i, j, *self.GT_Tracks[i].X[j].T[0], "GT"]
-                                                     for i in self.GT_Tracks.keys()
-                                                     for j in self.GT_Tracks[i].X.keys()])
-        self.DF = pandas.DataFrame(super_list,columns=["Track","Frame","X","Y", "Type"])
+        if self.DF is None:
+            try:
+                self.built_DataFrame()
+            except:
+                self._old_match_()
 
         pos_sys = self.DF[self.DF.Type == "System"].groupby("Track")
         r1 = pos_sys.X.max()
@@ -283,17 +311,26 @@ class Yin_Evaluator(Evaluator):
                 print("calculating!", st, gt)
                 if not lookup[gt_dict[gt], st_dict[st]] == True:
                     continue
-                if self.pandas_spatial_overlap(st, gt).mean()>self.SpaceThreshold and self.temporal_overlap(st,gt)>self.TempThreshold:
-                    m.append(st)
+                spatial = self.pandas_spatial_overlap(st, gt)
+                if self.PointThreshold > 0:
+                    if self.temporal_overlap(st,gt)>self.TempThreshold and \
+                        spatial.mean() > self.SpaceThreshold and \
+                        (spatial>self.SpaceThreshold).sum()>self.PointThreshold:
+                        m.append(st)
+                else:
+                    if spatial.mean()>self.SpaceThreshold and self.temporal_overlap(st,gt)>self.TempThreshold:
+                        m.append(st)
             self.Matches.update({gt: m})
                 # B = self.DF[self.DF.Track == gt & self.DF.Frame.isin(frames) & self.DF.Type=="GT"]
                 # I = self._intersect_many_(A.X, A.Y, B.X, B.Y)
 
 
         # spatial_overlap =
-        # for gt in self.GT_Tracks:
-        #     self.Matches.update({gt: [st for st in self.System_Tracks if (np.mean(list(self.spatial_overlap(st,gt).values()))>self.SpaceThreshold and
-        #                                         self.temporal_overlap(st,gt)>self.TempThreshold)]})
+
+    def _old_match_(self):
+        for gt in self.GT_Tracks:
+            self.Matches.update({gt: [st for st in self.System_Tracks if (np.nanmean(list(self.spatial_overlap(st,gt).values()))>self.SpaceThreshold and
+                                                self.temporal_overlap(st,gt)>self.TempThreshold)]})
 
     def FAT(self, trackA, trackB):
         pass
@@ -302,13 +339,21 @@ class Yin_Evaluator(Evaluator):
         pass
 
     def TE(self, trackA, trackB):
-        trackA = self._handle_Track_(trackA)
-        trackB = self._handle_Track_(trackB)
-        frames = set(trackA.X.keys()).intersection(set(trackB.X.keys()))
-        return dict([[f,np.linalg.norm(trackA.X[f]-trackB.X[f])] for f in frames])
+        if self.DF is not None:
+            id_A = self._handle_Track_id_(trackA)
+            id_B = self._handle_Track_id_(trackB)
+            positions = self.pandas_positions(id_A, id_B)
+            A = positions[positions.Type == "System"].set_index("Frame")
+            B = positions[positions.Type == "GT"].set_index("Frame")
+            return dict(((A.X-B.X)**2+(A.Y-B.Y)**2)**0.5)
+        else:
+            trackA = self._handle_Track_(trackA)
+            trackB = self._handle_Track_(trackB)
+            frames = set(trackA.X.keys()).intersection(set(trackB.X.keys()))
+            return dict([[f,np.linalg.norm(trackA.X[f]-trackB.X[f])] for f in frames])
 
     def TME(self, trackA, trackB):
-        return np.mean(self.TE(trackA, trackB))
+        return np.nanmean(self.TE(trackA, trackB))
 
     def TMED(self, trackA, trackB):
         return np.std(self.TE(trackA, trackB))
@@ -323,10 +368,10 @@ class Yin_Evaluator(Evaluator):
         l=[]
         for m in self.Matches[key]:
             trackB = self._handle_Track_(m)
-            te = self.TE(trackA, trackB).values()
-            tmemt.append(np.mean(te)*len(te))
+            te = list(self.TE(trackA, trackB).values())
+            tmemt.append(np.nanmean(te)*len(te))
             l.append(len(te))
-        return np.sum(tmemt)/np.sum(l)
+        return np.nansum(tmemt)/np.nansum(l)
 
     def TMEMTD(self, trackA):
         trackA = self._handle_Track_(trackA)
@@ -338,10 +383,10 @@ class Yin_Evaluator(Evaluator):
         l = []
         for m in self.Matches[key]:
             trackB = self._handle_Track_(m)
-            te = self.TE(trackA, trackB).values()
+            te = list(self.TE(trackA, trackB).values())
             tmemt.append(np.std(te)*len(te))
             l.append(len(te))
-        return np.sum(tmemt) / np.sum(l)
+        return np.nansum(tmemt) / np.nansum(l)
 
     def TC(self, trackA):
         trackA = self._handle_Track_(trackA, tracks=self.GT_Tracks)
@@ -401,10 +446,10 @@ class Yin_Evaluator(Evaluator):
         l = []
         for m in self.Matches[key]:
             trackB = self._handle_Track_(m)
-            o=self.spatial_overlap(trackA, trackB).values()
+            o = list(self.spatial_overlap(trackA, trackB).values())
             ct.extend(o)
             l.append(len(o))
-        return np.sum(ct)/np.sum(l)
+        return np.nansum(ct)/np.nansum(l)
 
     def CTD(self, trackA):
         trackA = self._handle_Track_(trackA)
@@ -416,10 +461,10 @@ class Yin_Evaluator(Evaluator):
         l = []
         for m in self.Matches[key]:
             trackB = self._handle_Track_(m)
-            o=self.spatial_overlap(trackA, trackB).values()
+            o=list(self.spatial_overlap(trackA, trackB).values())
             ct.append(len(o)*np.std(o))
             l.append(len(o))
-        return np.sum(ct)/np.sum(l)
+        return np.nansum(ct)/np.nansum(l)
 
     def LT(self, trackA):
         trackA = self._handle_Track_(trackA)
@@ -439,32 +484,37 @@ class Yin_Evaluator(Evaluator):
             key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
         else:
             raise KeyError("Track is not a Ground Truth Track")
-        ct = []
-        l = []
-        frames = set()
-        for m in self.Matches[key]:
-            trackB = self._handle_Track_(m)
-            frames.symmetric_difference_update(trackB.X.keys())
-        IDC_j = 1
-        id = None
-        for f in frames:
-            if id is None:
-                id=[k for k in self.Matches[key] if f in self.System_Tracks[k].X]
-                if len(id)>0:
-                    id=id[0]
-                else:
-                    id = None
-                    continue
-            if not f in self.System_Tracks[id].X:
-                IDC_j +=1
-                ids=[k for k in self.Matches[key] if f not in self.System_Tracks[k].X]
-                func = lambda i : len([fr for fr in frames if f<fr and fr<[fr for fr in frames if fr>f and not f in self.System_Tracks[id].X][0]])
-                try:
-                    id = max(ids, key=func)
-                except ValueError:
-                    id = None
-                    continue
-        return IDC_j
+
+        if self.DF is not None:
+            # self.DF[]
+            return len(self.Matches[key])
+        else:
+            ct = []
+            l = []
+            frames = set()
+            for m in self.Matches[key]:
+                trackB = self._handle_Track_(m)
+                frames.symmetric_difference_update(trackB.X.keys())
+            IDC_j = 1
+            id = None
+            for f in frames:
+                if id is None:
+                    id=[k for k in self.Matches[key] if f in self.System_Tracks[k].X]
+                    if len(id)>0:
+                        id=id[0]
+                    else:
+                        id = None
+                        continue
+                if not f in self.System_Tracks[id].X:
+                    IDC_j +=1
+                    ids=[k for k in self.Matches[key] if f not in self.System_Tracks[k].X]
+                    func = lambda i : len([fr for fr in frames if f<fr and fr<[fr for fr in frames if fr>f and not f in self.System_Tracks[id].X][0]])
+                    try:
+                        id = max(ids, key=func)
+                    except ValueError:
+                        id = None
+                        continue
+            return IDC_j
 
     def velocity(self, trackA):
         trackA = self._handle_Track_(trackA)
@@ -476,13 +526,21 @@ class Yin_Evaluator(Evaluator):
         t = np.array(sorted(trackA.X.keys()))
         x = np.array([trackA.X[f] for f in t], dtype=float)
         delta_x = x[1:]-x[:-1]
-        delta_t = np.array([delta.seconds for delta in t[1:]-t[:-1]], dtype=float)
+        try:
+            delta_t = np.array([delta.seconds for delta in t[1:]-t[:-1]], dtype=float)
+        except AttributeError:
+            delta_t = np.array([delta for delta in t[1:]-t[:-1]], dtype=float)
         return delta_x.T/delta_t
 
     def activity(self, trackA):
         v=self.velocity(trackA)
         v_n = np.linalg.norm(v, axis=0)
-        return np.sum(v_n>self.Object_Size/2.)/float(len(v_n))
+        return np.nansum(v_n>self.Object_Size/2.)/float(len(v_n))
+
+    def mixture(self, trackA):
+        trackA = self._handle_Track_(trackA)
+        a = self._handle_Track_id_(trackA)
+        return np.sum([np.sum([k in self.Matches[b] for b in self.Matches if b!=a]) for k in self.Matches[a]])
 
 class Alex_Evaluator(Yin_Evaluator):
     def __init__(self, object_size, camera_height, camera_tilt, image_height, sensor_height, focal_length, tolerance =1., **kwargs):
@@ -532,7 +590,7 @@ class Alex_Evaluator(Yin_Evaluator):
     def activity(self, trackA, thresh=.25):
         v=self.relative_velocity(trackA)
         v_n = np.linalg.norm(v, axis=0)
-        return np.sum(v_n>thresh)/float(len(v_n))
+        return np.nansum(v_n>thresh)/float(len(v_n))
 
     def activities(self, trackA, thresh=.25):
         v=self.relative_velocity(trackA)
@@ -547,10 +605,10 @@ class Alex_Evaluator(Yin_Evaluator):
         return dict([[f, np.linalg.norm(trackA.X[f] - trackB.X[f])/self.size((trackA.X[f][1]+trackB.X[f][1])/2.)] for f in frames])
 
     def rTME(self, trackA, trackB):
-        return np.mean(self.rTE(trackA,trackB).values())
+        return np.nanmean(list(self.rTE(trackA,trackB).values()))
 
     def rTMED(self, trackA, trackB):
-        return np.std(self.rTE(trackA,trackB).values())
+        return np.std(list(self.rTE(trackA,trackB).values()))
 
     def rTMEMT(self, trackA):
         trackA = self._handle_Track_(trackA)
@@ -563,9 +621,9 @@ class Alex_Evaluator(Yin_Evaluator):
         for m in self.Matches[key]:
             trackB = self._handle_Track_(m)
             te = self.rTE(trackA, trackB)
-            tmemt.append(np.mean(te.values()) * len(te))
+            tmemt.append(np.nanmean(list(te.values())) * len(te))
             l.append(len(te))
-        return np.sum(tmemt) / np.sum(l)
+        return np.nansum(tmemt) / np.nansum(l)
 
     def rTMEMTD(self, trackA):
         trackA = self._handle_Track_(trackA)
@@ -578,21 +636,84 @@ class Alex_Evaluator(Yin_Evaluator):
         for m in self.Matches[key]:
             trackB = self._handle_Track_(m)
             te = self.rTE(trackA, trackB)
-            tmemt.append(np.std(te.values()) * len(te))
+            tmemt.append(np.std(list(te.values())) * len(te))
             l.append(len(te))
-        return np.sum(tmemt) / np.sum(l)
+        return np.nansum(tmemt) / np.nansum(l)
 
 
 if __name__ == "__main__":
-    evaluation = Yin_Evaluator(25.)
+    import json
+    evaluation = Yin_Evaluator(50., temporal_threshold=0., spacial_threshold=np.nextafter(0.,1.), point_threshold=50)#np.nextafter(0.,1.))
     evaluation.load_System_tracks_from_clickpoints(
-        # path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3.cdb",
-        path=r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData2.cdb",
+        path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3.cdb",
+        # path=r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData2.cdb",
         type="Track_Marker")
-    # evaluation.load_GT_tracks_from_clickpoints(path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData_GroundTruth_interpolated.cdb",
-    evaluation.load_GT_tracks_from_clickpoints(path=r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData_GroundTruth.cdb",
+    evaluation.load_GT_tracks_from_clickpoints(path="/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData_GroundTruth_interpolated.cdb",
+    # evaluation.load_GT_tracks_from_clickpoints(path=r"C:\Users\Alex\Documents/Promotion/AdeliesAntavia/AdelieTrack/AdelieData_GroundTruth.cdb",
                                                type="GroundTruth")
-
+    # evaluation.built_DataFrame()
     evaluation.match()
+    with open("/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3_matches.json", "w") as fp:
+        json.dump(evaluation.Matches, fp, indent=4, sort_keys=True)
+
+
+    with open("/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3_matches.json", "r") as fp:
+        evaluation.Matches = json.load(fp, parse_int=int)
+        # evaluation.Matches = dict([[int(l), loaded[l]] for l in loaded])
     print(evaluation.Matches)
+    tmemt = []
+    tmemtd = []
+    tc = []
+    r2 = []
+    r3 = []
+    ctm = []
+    ctd = []
+    lt = []
+    idc = []
+    a = []
+    mix = []
+    text_file = "/home/alex/Promotion/AdeliesAntavia/AdelieTrack/AdelieData3.txt"
+    with open(text_file, "w") as myfile:
+        myfile.write("Tracking evaluation\n")
+
+
+    def print_save(*args):
+        try:
+            string = "\t".join([str(l) for l in args])
+        except TypeError:
+            string = str(args)
+        with open(text_file, "a") as my_file:
+            my_file.write(string)
+            my_file.write("\n")
+        print(string)
+    for m in evaluation.Matches:
+        print_save("------------")
+        print_save(m)
+        tmemt.append(evaluation.TMEMT(m))
+        # print("Debug1")
+        # tmemtd.append(evaluation.TMEMTD(m))
+        print("Debug2")
+        tc.append(evaluation.TC(m))
+        print("Debug3")
+        # r2.append(evaluation.R2(m))
+        # r3.append(evaluation.R3(m))
+        # ctm.append(evaluation.CTM(m))
+        # ctd.append(evaluation.CTD(m))
+        # lt.append(evaluation.LT(m))
+        mix.append(evaluation.mixture(m))
+        print("Debug4")
+        idc.append(evaluation.IDC(m))
+        print("Debug5")
+        # a.append(evaluation.activity(m))
+        # print_save("TMEMT", tmemt[-1], tmemtd[-1])
+        # print_save("TMEMT coeff", tmemtd[-1] / tmemt[-1])
+        print_save("TC", tc[-1])
+        # print_save("corrected TC", tc[-1] / a[-1])
+        # print_save("R2", r2[-1])
+        # print_save("R3", r3[-1])
+        # print_save("CTM", ctm[-1])
+        # print_save("CTD", ctd[-1])
+        # print_save("LT", lt[-1])
+        print_save("IDC", idc[-1])
+        print_save("MIX", mix[-1])
 
