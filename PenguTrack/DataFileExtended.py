@@ -1375,10 +1375,10 @@ def add_PT_Tracks_from_Tracker(tracks):
         tracks_object.update({i: tracks[i]})
     return track_dict, tracks_object
 
-def load_tracks_from_clickpoints(path, type, tracker_name=None):
+def load_tracks_from_clickpoints(path, type, tracker_name=None, use_cp_tracks=False):
     tracks_object = {}
     db_object = clickpoints.DataFile(path)
-    if "DataFileExtendedVersion" in [item.key for item in db_object.table_meta.select()]:
+    if "DataFileExtendedVersion" in [item.key for item in db_object.table_meta.select()] and not use_cp_tracks:
         while not db_object.db.is_closed():
             print("trying to close...")
             db_object.db.close()

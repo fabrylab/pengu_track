@@ -43,8 +43,9 @@ class Evaluator(object):
         tracks_dict, tracks_object = add_PT_Tracks_from_Tracker(tracks)
         return tracks_object
 
-    def load_tracks_from_clickpoints(self, path, type):
-        db_object, tracks_object = load_tracks_from_clickpoints(path, type, tracker_name=None)
+    def load_tracks_from_clickpoints(self, path, type, use_cp_tracks=False):
+        db_object, tracks_object = load_tracks_from_clickpoints(path, type, tracker_name=None,
+                                                                use_cp_tracks=use_cp_tracks)
         print("Tracks loaded!")
         return db_object, tracks_object
 
@@ -70,8 +71,9 @@ class Evaluator(object):
         self.gt_db, self.GT_Tracks = self.load_tracks_from_clickpoints(path, type)
         self.gt_track_dict = self.gt_db.track_dict
 
-    def load_System_tracks_from_clickpoints(self, path, type):
-        self.system_db, self.System_Tracks =  self.load_tracks_from_clickpoints(path, type)
+    def load_System_tracks_from_clickpoints(self, path, type, use_cp_tracks=False):
+        self.system_db, self.System_Tracks =  self.load_tracks_from_clickpoints(path, type,
+                                                                                use_cp_tracks=use_cp_tracks)
         self.system_track_dict = self.system_db.track_dict
 
 
@@ -425,42 +427,44 @@ class Yin_Evaluator(Evaluator):
         return first_sys-min(trackA.X.keys())
 
     def IDC(self, trackA):
-        trackA = self._handle_Track_(trackA)
-        if trackA in self.GT_Tracks.values():
-            key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
-        else:
-            raise KeyError("Track is not a Ground Truth Track")
-
-        if self.DF is not None:
-            # self.DF[]
-            return len(self.Matches[key])
-        else:
-            ct = []
-            l = []
-            frames = set()
-            for m in self.Matches[key]:
-                trackB = self._handle_Track_(m)
-                frames.symmetric_difference_update(trackB.X.keys())
-            IDC_j = 1
-            id = None
-            for f in frames:
-                if id is None:
-                    id=[k for k in self.Matches[key] if f in self.System_Tracks[k].X]
-                    if len(id)>0:
-                        id=id[0]
-                    else:
-                        id = None
-                        continue
-                if not f in self.System_Tracks[id].X:
-                    IDC_j +=1
-                    ids=[k for k in self.Matches[key] if f not in self.System_Tracks[k].X]
-                    func = lambda i : len([fr for fr in frames if f<fr and fr<[fr for fr in frames if fr>f and not f in self.System_Tracks[id].X][0]])
-                    try:
-                        id = max(ids, key=func)
-                    except ValueError:
-                        id = None
-                        continue
-            return IDC_j
+        id_A = self._handle_Track_id_(trackA)
+        return len(self.Matches[id_A])
+        # trackA = self._handle_Track_(trackA)
+        # if trackA in self.GT_Tracks.values():
+        #     key = [k for k in self.GT_Tracks if self.GT_Tracks[k]==trackA][0]
+        # else:
+        #     raise KeyError("Track is not a Ground Truth Track")
+        #
+        # if self.DF is not None:
+        #     # self.DF[]
+        #     return len(self.Matches[key])
+        # else:
+        #     ct = []
+        #     l = []
+        #     frames = set()
+        #     for m in self.Matches[key]:
+        #         trackB = self._handle_Track_(m)
+        #         frames.symmetric_difference_update(trackB.X.keys())
+        #     IDC_j = 1
+        #     id = None
+        #     for f in frames:
+        #         if id is None:
+        #             id=[k for k in self.Matches[key] if f in self.System_Tracks[k].X]
+        #             if len(id)>0:
+        #                 id=id[0]
+        #             else:
+        #                 id = None
+        #                 continue
+        #         if not f in self.System_Tracks[id].X:
+        #             IDC_j +=1
+        #             ids=[k for k in self.Matches[key] if f not in self.System_Tracks[k].X]
+        #             func = lambda i : len([fr for fr in frames if f<fr and fr<[fr for fr in frames if fr>f and not f in self.System_Tracks[id].X][0]])
+        #             try:
+        #                 id = max(ids, key=func)
+        #             except ValueError:
+        #                 id = None
+        #                 continue
+        #     return IDC_j
 
     def velocity(self, trackA):
         trackA = self._handle_Track_(trackA)
