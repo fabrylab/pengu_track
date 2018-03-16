@@ -53,17 +53,23 @@ class TrackMatchPlotter(object):
         self.system_db, self.System_Tracks =  self.load_tracks_from_clickpoints(path, type)
         self.system_track_dict = self.system_db.track_dict
 
-    def plot_gt(self, gt, fig, ax, *args, **kwargs):
+    def plot_img(self, fig, ax, *args, **kwargs):
         img = self.gt_db.getImage(0).data
-        ax.imshow(img)
+        ax.imshow(img, *args, **kwargs)
+
+    def plot_gt(self, gt, fig, ax, *args, **kwargs):
         X, Y = np.array([self.GT_Tracks[gt].X[f] for f in sorted(self.GT_Tracks[gt].X)]).T[0]
-        ax.plot(Y, X, "-ko", label="Ground Truth (%s)"%gt)
+        ax.plot(Y, X, "-ko", *args, label="Ground Truth (%s)"%gt, **kwargs)
+
+    def plot_tracklets(self, gt, fig, ax, *args, **kwargs):
         N = len(self.Matches[gt])
         cpal = sns.color_palette("hls", N)
-
         for i,st in enumerate(self.Matches[gt]):
             X1, Y1 = np.array([self.System_Tracks[st].X[f] for f in sorted(self.System_Tracks[st].X)]).T[0]
-            ax.plot(Y1, X1, color=cpal[i], label=str(st))
+            ax.plot(Y1, X1, *args, color=cpal[i], label=str(st), **kwargs)
+
+        #     ...
+        # plt.savefig(bbox_inches = 'tight', pad_inches = 0, dpi = 300)
         # ax.legend()
         # plt.show()
 
