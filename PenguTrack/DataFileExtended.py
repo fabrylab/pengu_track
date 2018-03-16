@@ -28,7 +28,7 @@ import PenguTrack
 from PenguTrack.Filters import Filter as PT_Filter
 import PenguTrack.Filters
 from PenguTrack.Detectors import Measurement as PT_Measurement
-from PenguTrack.Models import VariableSpeed
+from PenguTrack.Models import Model, VariableSpeed
 import ast
 import scipy.stats
 import json
@@ -1273,7 +1273,7 @@ class DataFileExtended(clickpoints.DataFile):
 
 
     def tracker_from_db(self):
-        db_trackers = self.getTrackers()
+        db_trackers = self.getTrackers()[:1]
         out = []
         for db_tracker in db_trackers:
             tracker_class = dict(inspect.getmembers(PenguTrack.Filters))[db_tracker.tracker_class]
@@ -1298,6 +1298,31 @@ class DataFileExtended(clickpoints.DataFile):
             tracker.Probability_Gain_Dicts.update(dict([[v[0], MatrixField.decode(v[1])] for v in p_dict_raw]))
             out.append(tracker)
         return out
+
+
+    def named_tracker_from_db(self, name, id=None):
+        db_tracker = self.getTrackers(tracker_class=name, id=id)[:1]
+        tracker_class = dict(inspect.getmembers(PenguTrack.Filters))[db_tracker.tracker_class]
+        filter_class = dict(inspect.getmembers(PenguTrack.Filters))[db_tracker.filter_class]
+        model = self.model_from_db(db_tracker.model)
+        # print(db_tracker.filter_args)
+        # print(db_tracker.filter_kwargs)
+        tracker = tracker_class(filter_class, model, *db_tracker.filter_args, **db_tracker.filter_kwargs)
+        tracker.Filters.update(dict([self.filter_from_db(db_filter,
+                                                         filter_class=filter_class,
+                                                         filter_args=db_tracker.filter_args,
+                                                         filter_kwargs=db_tracker.filter_kwargs) for db_filter in db_tracker.tracker_filters]))
+        tracker.LogProbabilityThreshold = db_tracker.log_probability_threshold
+        tracker.FilterThreshold = db_tracker.filter_threshold
+        tracker.AssignmentProbabilityThreshold = db_tracker.assignment_probability_threshold
+        tracker.MeasurementProbabilityThreshold = db_tracker.measurement_probability_threshold
+        p_gain_raw = self.db.execute_sql('select sort_index, probability_gain from (select * from probability_gain where tracker_id == ?) p inner join image i on p.image_id == i.id',
+                                          [db_tracker.id])
+        tracker.Probability_Gain.update(dict([[v[0], MatrixField.decode(v[1])] for v in p_gain_raw]))
+        p_dict_raw = self.db.execute_sql('select sort_index, probability_gain_dict from (select * from probability_gain where tracker_id == ?) p inner join image i on p.image_id == i.id',
+                                          [db_tracker.id])
+        tracker.Probability_Gain_Dicts.update(dict([[v[0], MatrixField.decode(v[1])] for v in p_dict_raw]))
+        return tracker
 
     def split(self, marker):
         new_track = super(DataFileExtended, self).split(marker)
@@ -1332,3 +1357,77 @@ class DataFileExtended(clickpoints.DataFile):
         self.db.execute_sql()
 
 
+def add_PT_Tracks(tracks):
+    tracks_object = {}
+    for track in tracks:
+        if len(tracks_object) == 0:
+            i = 0
+        else:
+            i = max(tracks_object.keys()) + 1
+            tracks_object.update({i: track})
+    return tracks_object
+
+def add_PT_Tracks_from_Tracker(tracks):
+    tracks_object = {}
+    track_dict = {}
+    for j,i in enumerate(tracks):
+        track_dict.update({j:i})
+        tracks_object.update({i: tracks[i]})
+    return track_dict, tracks_object
+
+def load_tracks_from_clickpoints(path, type, tracker_name=None):
+    tracks_object = {}
+    db_object = clickpoints.DataFile(path)
+    if "DataFileExtendedVersion" in [item.key for item in db_object.table_meta.select()]:
+        while not db_object.db.is_closed():
+            print("trying to close...")
+            db_object.db.close()
+        print("closed")
+        db_object = DataFileExtended(path)
+        if tracker_name is None:
+            tracks_object = db_object.tracker_from_db()[0].Filters
+        else:
+            tracks_object = db_object.named_tracker_from_db(tracker_name).Filters
+        db_object.track_dict = dict(zip(range(len(tracks_object)), tracks_object.keys()))
+        db_object.db_track_dict = dict(db_object.db.execute_sql('select id, track_id from filter').fetchall())
+    else:
+        tracks = db_object.getTracks(type=type)
+        for track in tracks:
+            filter = PT_Filter(Model())
+            X_raw = db_object.db.execute_sql(
+                'select sort_index, y, x from marker m inner join image i on i.id ==m.image_id where m.track_id = ?',
+                [track.id])
+            filter.X.update(dict([[v[0], np.array([[v[1]],[v[2]]], dtype=float)] for v in X_raw]))
+            tracks_object.update({track.id:filter})
+        db_object.track_dict = dict(zip(range(len(tracks_object)),tracks_object.keys()))
+        db_object.db_track_dict = dict(zip(tracks_object.keys(), tracks_object.keys()))
+    return db_object, tracks_object
+
+
+def load_measurements_from_clickpoints(path, type, measured_variables=["PositionX", "PositionY"]):
+    db_object = DataFileExtended(path)
+    db=db_object
+    tracks_object = {}
+    tracks = db.getTracks(type=type)
+    all_markers = db.db.execute_sql('SELECT track_id, (SELECT sort_index FROM image WHERE image.id = image_id) as sort_index, measurement.x, measurement.y, z FROM marker JOIN measurement ON marker.id = measurement.marker_id WHERE type_id = ?', str(db.getMarkerType(name=type).id)).fetchall()
+    all_markers = np.array(all_markers)
+    track_dict = {}
+
+    for track in tracks:
+        track = track.id
+        n = len(track_dict)
+        track_dict.update({n: track})
+        tracks_object.update({track: PT_Filter(Model(state_dim=2, meas_dim=2),
+                                             no_dist=True,
+                                             prob_update=False)})
+        tracks_object[track].Model.Measured_Variables = measured_variables
+        track_markers = all_markers[all_markers[:,0] == track]
+        X = dict(zip(track_markers.T[1].astype(int), track_markers[:, 2:, None]))
+        for i in sorted(X):
+            try:
+                tracks_object[track].predict(i)
+            except:
+                pass
+            tracks_object[track].update(i=i, z=PT_Measurement(1., X[i]))
+    db_object.track_dict = track_dict
+    return db_object, tracks_object

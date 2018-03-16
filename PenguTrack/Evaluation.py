@@ -8,7 +8,8 @@ from PenguTrack.Detectors import Measurement
 from PenguTrack.Filters import Filter
 from PenguTrack.Models import Model
 from PenguTrack import Filters
-from PenguTrack.DataFileExtended import DataFileExtended
+from PenguTrack.DataFileExtended import DataFileExtended,\
+    add_PT_Tracks, add_PT_Tracks_from_Tracker, load_tracks_from_clickpoints, load_measurements_from_clickpoints
 
 import inspect
 import pandas
@@ -36,77 +37,21 @@ class Evaluator(object):
         self.DF = pandas.DataFrame(super_list,columns=["Track","Frame","X","Y", "Type"])
 
     def add_PT_Tracks(self, tracks):
-        tracks_object = {}
-        for track in tracks:
-            if len(tracks_object) == 0:
-                i = 0
-            else:
-                i = max(tracks_object.keys()) + 1
-                tracks_object.update({i: track})
-        return tracks_object
+        return add_PT_Tracks(tracks)
 
     def add_PT_Tracks_from_Tracker(self, tracks):
-        tracks_object = {}
-        for j,i in enumerate(tracks):
-            self.track_dict.update({j:i})
-            tracks_object.update({i: tracks[i]})
+        tracks_dict, tracks_object = add_PT_Tracks_from_Tracker(tracks)
         return tracks_object
 
     def load_tracks_from_clickpoints(self, path, type):
-        tracks_object = {}
-        db_object = clickpoints.DataFile(path)
-        if "DataFileExtendedVersion" in [item.key for item in db_object.table_meta.select()]:
-            while not db_object.db.is_closed():
-                print("trying to close...")
-                db_object.db.close()
-            print("closed")
-            db_object = DataFileExtended(path)
-            tracks_object = db_object.tracker_from_db()[0].Filters
-            self.track_dict = dict(zip(range(len(tracks_object)), tracks_object.keys()))
-            db_object.track_dict = dict(db_object.db.execute_sql('select id, track_id from filter').fetchall())
-        else:
-            tracks = db_object.getTracks(type=type)
-            for track in tracks:
-                filter = Filters.Filter(Model())
-                X_raw = db_object.db.execute_sql(
-                    'select sort_index, y, x from marker m inner join image i on i.id ==m.image_id where m.track_id = ?',
-                    [track.id])
-
-                filter.X.update(dict([[v[0], np.array([[v[1]],[v[2]]], dtype=float)] for v in X_raw]))
-                tracks_object.update({track.id:filter})
-            self.track_dict = dict(zip(range(len(tracks_object)), tracks_object.keys()))
-            db_object.track_dict = dict(zip(tracks_object.keys(), tracks_object.keys()))
-
+        db_object, tracks_object = load_tracks_from_clickpoints(path, type, tracker_name=None)
         print("Tracks loaded!")
         return db_object, tracks_object
 
 
-    def load_measurements_from_clickpoints(self, path, type,
-                                           # db_object, tracks_object,
-                                           measured_variables=["PositionX", "PositionY"]):
-        db_object = DataFileExtended(path)
-        db=db_object
-        tracks_object = {}
-        tracks = db.getTracks(type=type)
-        all_markers = db.db.execute_sql('SELECT track_id, (SELECT sort_index FROM image WHERE image.id = image_id) as sort_index, measurement.x, measurement.y, z FROM marker JOIN measurement ON marker.id = measurement.marker_id WHERE type_id = ?', str(db.getMarkerType(name=type).id)).fetchall()
-        all_markers = np.array(all_markers)
-
-        for track in tracks:
-            track = track.id
-            n = len(self.track_dict)
-            self.track_dict.update({n: track})
-            tracks_object.update({track: Filters.Filter(Model(state_dim=2, meas_dim=2),
-                                                 no_dist=True,
-                                                 prob_update=False)})
-            tracks_object[track].Model.Measured_Variables = measured_variables
-            track_markers = all_markers[all_markers[:,0]==track]
-            X = dict(zip(track_markers.T[1].astype(int), track_markers[:, 2:, None]))
-            for i in sorted(X):
-                try:
-                    tracks_object[track].predict(i)
-                except:
-                    pass
-                tracks_object[track].update(i=i, z=Measurement(1., X[i]))
+    def load_measurements_from_clickpoints(self, path, type, measured_variables=["PositionX", "PositionY"]):
+        db_object, tracks_object = load_measurements_from_clickpoints(path, type,
+                                                                      measured_variables=measured_variables)
         return db_object, tracks_object
 
     def add_PT_Tracks_to_GT(self, tracks):
@@ -123,9 +68,11 @@ class Evaluator(object):
 
     def load_GT_tracks_from_clickpoints(self, path, type):
         self.gt_db, self.GT_Tracks = self.load_tracks_from_clickpoints(path, type)
+        self.gt_track_dict = self.gt_db.track_dict
 
     def load_System_tracks_from_clickpoints(self, path, type):
         self.system_db, self.System_Tracks =  self.load_tracks_from_clickpoints(path, type)
+        self.system_track_dict = self.system_db.track_dict
 
 
 class Yin_Evaluator(Evaluator):

@@ -26,7 +26,8 @@ from .Detectors import Measurement
 from .Filters import Filter
 from PenguTrack import Filters
 from .Models import Model, VariableSpeed
-from .DataFileExtended import DataFileExtended
+from .DataFileExtended import DataFileExtended,\
+    add_PT_Tracks, add_PT_Tracks_from_Tracker, load_tracks_from_clickpoints, load_measurements_from_clickpoints
 from PenguTrack.Filters import greedy_assignment
 from scipy.optimize import linear_sum_assignment
 import time
@@ -46,73 +47,28 @@ class Stitcher(object):
         self.greedy = bool(greedy)
 
     def add_PT_Tracks(self, tracks):
-        for track in tracks:
-            if len(self.Tracks) == 0:
-                i = 0
-            else:
-                i = max(self.Tracks.keys()) + 1
-            self.Tracks.update({i: track})
+        self.Tracks.update(add_PT_Tracks(tracks))
 
     def add_PT_Tracks_from_Tracker(self, tracks):
-        for j,i in enumerate(tracks):
-            self.track_dict.update({j:i})
-            self.Tracks.update({i: tracks[i]})
+        track_dict, tracks_object = add_PT_Tracks_from_Tracker(tracks)
+        self.track_dict.update(tracks_object)
 
     def load_tracks_from_clickpoints(self, path, type):
-        self.db = clickpoints.DataFile(path)
-        if "DataFileExtendedVersion" in [item.key for item in self.db.table_meta.select()]:
-            while not self.db.db.is_closed():
-                print("trying to close...")
-                self.db.db.close()
-            # import time
-            # time.sleep(30)
-            # print("closed")
-            print("closed")
-            self.db = DataFileExtended(path)
-            self.stiched_type = self.db.setMarkerType(name=self.name, color="F0F0FF")
-            self.Tracks = self.db.tracker_from_db()[0].Filters
-            self.track_dict = dict(zip(range(len(self.Tracks)), self.Tracks.keys()))
-            self.db_track_dict = dict(self.db.db.execute_sql('select id, track_id from filter').fetchall())
-        else:
-            tracks = self.db.getTracks(type=type)
-            for track in tracks:
-                filter = Filters.Filter(Model())
-                X_raw = self.db.execute_sql(
-                    'select sort_index, y, x from marker m inner join image i on i.id ==m.image_id where m.track_id = ?',
-                    [track.id])
-
-                filter.X.update(dict([[v[0], np.array([[v[1]],[v[2]]], dtype=float)] for v in X_raw]))
-                self.Tracks({track.id:filter})
-            self.track_dict = dict(zip(range(len(self.Tracks)), self.Tracks.keys()))
-            self.db_track_dict = dict(zip(self.Tracks.keys(), self.Tracks.keys()))
-
+        db_object, tracks_object = load_tracks_from_clickpoints(path, type, tracker_name=None)
+        self.db = db_object
+        self.stiched_type = self.db.setMarkerType(name=self.name, color="F0F0FF")
+        self.Tracks = tracks_object
+        self.track_dict = db_object.track_dict
+        self.db_track_dict = db_object.db_track_dict
         print("Tracks loaded!")
 
-
     def load_measurements_from_clickpoints(self, path, type, measured_variables=["PositionX", "PositionY"]):
-        self.db = DataFileExtended(path)
-        db=self.db
-        self.stiched_type = db.setMarkerType(name="Stitched", color="F0F0FF")
-        tracks = db.getTracks(type=type)
-        all_markers = db.db.execute_sql('SELECT track_id, (SELECT sort_index FROM image WHERE image.id = image_id) as sort_index, measurement.x, measurement.y, z FROM marker JOIN measurement ON marker.id = measurement.marker_id WHERE type_id = ?', str(db.getMarkerType(name=type).id)).fetchall()
-        all_markers = np.array(all_markers)
-
-        for track in tracks:
-            track = track.id
-            n = len(self.track_dict)
-            self.track_dict.update({n: track})
-            self.Tracks.update({track: Filters.Filter(Model(state_dim=2, meas_dim=2),
-                                                 no_dist=True,
-                                                 prob_update=False)})
-            self.Tracks[track].Model.Measured_Variables = measured_variables
-            track_markers = all_markers[all_markers[:,0]==track]
-            X = dict(zip(track_markers.T[1].astype(int), track_markers[:, 2:, None]))
-            for i in sorted(X):
-                try:
-                    self.Tracks[track].predict(i)
-                except:
-                    pass
-                self.Tracks[track].update(i=i, z=Measurement(1., X[i]))
+        db_object, tracks_object = load_measurements_from_clickpoints(path, type, measured_variables=measured_variables)
+        self.db = db_object
+        self.stiched_type = self.db.setMarkerType(name="Stitched", color="F0F0FF")
+        self.Tracks = tracks_object
+        self.track_dict = db_object.track_dict
+        print("Tracks loaded!")
 
     def vel_delta(self, kernel=np.ones(1)):
         first_vel = np.zeros(
