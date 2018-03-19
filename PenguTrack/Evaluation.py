@@ -9,12 +9,204 @@ from PenguTrack.Filters import Filter
 from PenguTrack.Models import Model
 from PenguTrack import Filters
 from PenguTrack.DataFileExtended import DataFileExtended,\
-    add_PT_Tracks, add_PT_Tracks_from_Tracker, load_tracks_from_clickpoints, load_measurements_from_clickpoints
+    add_PT_Tracks, add_PT_Tracks_from_Tracker, load_tracks_from_clickpoints, load_measurements_from_clickpoints,\
+    reverse_dict
 
 import inspect
 import pandas
 
 all_filters = tuple([v for v in dict(inspect.getmembers(Filters)).values() if type(v)==type])
+
+class new_Evaluator(object):
+    def __init__(self):
+        self.System_Track_Dict = {}
+        self.GT_Track_Dict = {}
+        self.System_array = None
+        self.GT_array = None
+        self.system_db = None
+        self.gt_db = None
+
+    def load_tracks_from_clickpoints(self, path, type):
+        db = clickpoints.DataFile(path)
+        tracks = db.getTracks(type=type)
+        track_dict = dict(enumerate([t.id for t in tracks]))
+        array = np.array([db.db.execute_sql("select (SELECT x from marker as m WHERE m.image_id = i.id AND m.track_id=?) as x, (SELECT y from marker as m WHERE m.image_id = i.id AND m.track_id=?) as y from image as i order by sort_index",[track_dict[k],track_dict[k]]).fetchall() for k in sorted(track_dict.keys())], dtype=float)
+        print("Tracks loaded!")
+        return db, array, track_dict
+
+    def add_PT_Tracks_from_Tracker(self, tracks):
+        frames = set()
+        for track in tracks:
+            frames.update(track.X.keys())
+        array = np.ones((len(tracks), len(frames), 2))
+        track_dict = enumerate(tracks.keys())
+        for f in sorted(frames):
+            for t in track_dict:
+                if f in tracks[track_dict[t]].X:
+                    array[t, f, :] = tracks[track_dict[t]].X[f][:2,0]
+        return track_dict, array
+
+    def add_PT_Tracks_from_Tracker_to_GT(self, tracks):
+        self.GT_Track_Dict, self.GT_array = self.add_PT_Tracks_from_Tracker(tracks)
+
+    def add_PT_Tracks_from_Tracker_to_System(self, tracks):
+        self.System_Track_Dict, self.System_array = self.add_PT_Tracks_from_Tracker(tracks)
+
+    def load_GT_tracks_from_clickpoints(self, path, type):
+        self.gt_db, self.GT_array, self.GT_Track_Dict = self.load_tracks_from_clickpoints(path, type)
+
+    def load_System_tracks_from_clickpoints(self, path, type):
+        self.system_db, self.System_array, self.System_Track_Dict = self.load_tracks_from_clickpoints(path, type)
+
+    def match(self, method=None):
+        if method is None or method == "default" or method == "euclidic":
+            self.Matches = {}
+            for i, t in enumerate(self.GT_array):
+                matched = np.where(np.sum(np.linalg.norm(t-self.System_array, axis=-1)<(self.Object_Size/2.), axis=-1)>self.PointThreshold)[0]
+                self.Matches.update({self.GT_Track_Dict[i]: [self.System_Track_Dict[m] for m in matched]})
+                print("Matched ", self.GT_Track_Dict[i])
+        elif method == "bbox":
+            self.Matches = {}
+            o = self.Object_Size / 2.
+            for i, t in enumerate(self.GT_array):
+                r, l = np.sort([self.System_array[:, :, 0], np.tile(t[:, 0], (len(self.System_Track_Dict), 1))], axis=0)
+                l -= o
+                r += o
+                t, b = np.sort([self.System_array[:, :, 1], np.tile(t[:, 1], (len(self.System_Track_Dict), 1))], axis=0)
+                t += o
+                b -= o
+                I = (t - b) * (r - l) * (((r - l) > 0) & ((t - b) > 0))
+                O = I/(2*self.Object_Size**2-I)
+                matched = np.where(np.nansum(O>self.SpaceThreshold, axis=-1)>self.PointThreshold)[0]
+                self.Matches.update({self.GT_Track_Dict[i]: [self.System_Track_Dict[m] for m in matched]})
+                print("Matched ", self.GT_Track_Dict[i])
+        else:
+            raise ValueError("No matching method %s known!"%method)
+
+class new_Yin_Evaluator(new_Evaluator):
+    def __init__(self, object_size, *args, **kwargs):
+        self.TempThreshold = kwargs.pop("temporal_threshold", 0.1)
+        self.SpaceThreshold = kwargs.pop("spacial_threshold", 0.1)
+        self.PointThreshold = kwargs.pop("point_threshold", -1)
+        self.Object_Size = object_size
+        self.Matches = {}
+        super(new_Yin_Evaluator, self).__init__(*args, **kwargs)
+
+    def temporal_overlap(self, sys_track, gt_track):
+        sys_id = reverse_dict(self.System_Track_Dict)[sys_track]
+        gt_id = reverse_dict(self.GT_Track_Dict)[gt_track]
+        sys_frames = np.all(~np.isnan(self.System_array[sys_id]), axis=-1)
+        gt_frames = np.all(~np.isnan(self.GT_array[gt_id]), axis=-1)
+        return np.sum(sys_frames & gt_frames, dtype=float)/np.sum(sys_frames | gt_frames, dtype=float)
+
+    def spatial_intersect(self, sys_track, gt_track):
+        sys_id = reverse_dict(self.System_Track_Dict)[sys_track]
+        gt_id = reverse_dict(self.GT_Track_Dict)[gt_track]
+        o = self.Object_Size/2.
+        r, l = np.sort([self.System_array[sys_id,:,0],self.GT_array[gt_id,:,0]], axis=0)
+        l -= o
+        r += o
+        t, b = np.sort([self.System_array[sys_id,:,1],self.GT_array[gt_id,:,1]], axis=0)
+        t += o
+        b -=o
+        return (t - b) * (r - l) * (((r - l) > 0) & ((t - b) > 0))
+
+    def spatial_overlap(self, sys_track, gt_track):
+        I = self.spatial_intersect(sys_track, gt_track)
+        return I/(2*self.Object_Size**2-I)
+
+    def spatial_dist(self, sys_track, gt_track):
+        sys_id = reverse_dict(self.System_Track_Dict)[sys_track]
+        gt_id = reverse_dict(self.GT_Track_Dict)[gt_track]
+        return np.linalg.norm(self.GT_array[gt_id] - self.System_array[sys_id], axis=-1)
+
+    def TE(self, sys_track, gt_track):
+        return self.spatial_dist(sys_track, gt_track)
+
+    def TME(self, sys_track, gt_track):
+        return np.nanmean(self.TE(sys_track, gt_track))
+
+    def TMED(self, sys_track, gt_track):
+        return np.std(self.TE(sys_track, gt_track))
+
+    def TMEMT(self, gt_track):
+        gt_id = reverse_dict(self.GT_Track_Dict)[gt_track]
+        sys_ids = [reverse_dict(self.System_Track_Dict)[s] for s in self.Matches[gt_track]]
+        mask = np.zeros(len(self.System_Track_Dict), dtype=bool)
+        mask[sys_ids] = True
+        return (np.nansum(np.nanmean(np.linalg.norm(self.GT_array[gt_id]-self.System_array, axis=-1), axis=-1)[mask], axis=-1)/
+        np.nansum(np.sum(np.all(~np.isnan(self.System_array), axis=-1), axis=-1)[mask], axis=-1))
+
+    def TMEMTD(self, gt_track):
+        gt_id = reverse_dict(self.GT_Track_Dict)[gt_track]
+        sys_ids = [reverse_dict(self.System_Track_Dict)[s] for s in self.Matches[gt_track]]
+        mask = np.zeros(len(self.System_Track_Dict), dtype=bool)
+        mask[sys_ids] = True
+        return (np.nansum(np.nanstd(np.linalg.norm(self.GT_array[gt_id]-self.System_array, axis=-1), axis=-1)[mask], axis=-1)/
+        np.nansum(np.sum(np.all(~np.isnan(self.System_array), axis=-1), axis=-1)[mask], axis=-1))
+
+    def TC(self, gt_track):
+        gt_id = reverse_dict(self.GT_Track_Dict)[gt_track]
+        sys_ids = [reverse_dict(self.System_Track_Dict)[s] for s in self.Matches[gt_track]]
+        mask = np.zeros(len(self.System_Track_Dict), dtype=bool)
+        mask[sys_ids] = True
+
+        sys_frames = np.all(~np.isnan(self.System_array), axis=-1)
+        gt_frames = np.all(~np.isnan(self.GT_array[gt_id]), axis=-1)
+        return np.sum(np.any(sys_frames&mask[:, None]&gt_frames[None,:], axis=0), dtype=float)/np.sum(gt_frames, dtype=float)
+
+    def R2(self, gt_track):
+        gt_id = reverse_dict(self.GT_Track_Dict)[gt_track]
+        sys_ids = [reverse_dict(self.System_Track_Dict)[s] for s in self.Matches[gt_track]]
+        mask = np.zeros(len(self.System_Track_Dict), dtype=bool)
+        mask[sys_ids] = True
+
+        sys_frames = np.all(~np.isnan(self.System_array), axis=-1)
+        gt_frames = np.all(~np.isnan(self.GT_array[gt_id]), axis=-1)
+        return np.sum(np.sum(sys_frames&mask[:, None], axis=0)==2, dtype=float)/np.sum(gt_frames, dtype=float)
+
+    def R3(self, gt_track):
+        gt_id = reverse_dict(self.GT_Track_Dict)[gt_track]
+        sys_ids = [reverse_dict(self.System_Track_Dict)[s] for s in self.Matches[gt_track]]
+        mask = np.zeros(len(self.System_Track_Dict), dtype=bool)
+        mask[sys_ids] = True
+
+        sys_frames = np.all(~np.isnan(self.System_array), axis=-1)
+        gt_frames = np.all(~np.isnan(self.GT_array[gt_id]), axis=-1)
+        return np.sum(np.sum(sys_frames&mask[:, None], axis=0)==3, dtype=float)/np.sum(gt_frames, dtype=float)
+
+    def CTM(self, gt_track):
+        ct = []
+        l = []
+        for sys_track in self.Matches[gt_track]:
+            o = self.spatial_overlap(gt_track, sys_track)
+            mask = ~np.isnan(o)
+            ct.extend(o[mask])
+            l.append(np.sum(mask))
+        return np.nansum(ct)/np.nansum(l)
+
+    def CTD(self, gt_track):
+        ct = []
+        l = []
+        for sys_track in self.Matches[gt_track]:
+            o = self.spatial_overlap(gt_track, sys_track)
+            mask = ~np.isnan(o)
+            ct.extend(np.std(o[mask])*np.sum(mask))
+            l.append(np.sum(mask))
+        return np.nansum(ct)/np.nansum(l)
+
+    def LT(self, gt_track):
+        pass
+
+    def IDC(self, gt_track):
+        return len(self.Matches[gt_track])
+
+    def MIX(self, gt_track):
+        return np.sum([np.sum([k in self.Matches[b] for b in self.Matches if b!=gt_track]) for k in self.Matches[gt_track]])
+
+    def mixture(self, gt_track):
+        return self.MIX(gt_track)
+
 
 class Evaluator(object):
     def __init__(self):

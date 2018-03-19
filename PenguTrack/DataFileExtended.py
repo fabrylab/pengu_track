@@ -1364,7 +1364,7 @@ def add_PT_Tracks(tracks):
             i = 0
         else:
             i = max(tracks_object.keys()) + 1
-            tracks_object.update({i: track})
+        tracks_object.update({i: track})
     return tracks_object
 
 def add_PT_Tracks_from_Tracker(tracks):
@@ -1393,7 +1393,7 @@ def load_tracks_from_clickpoints(path, type, tracker_name=None, use_cp_tracks=Fa
     else:
         tracks = db_object.getTracks(type=type)
         for track in tracks:
-            filter = PT_Filter(Model())
+            filter = PT_Filter(Model(state_dim=2, meas_dim=2))
             X_raw = db_object.db.execute_sql(
                 'select sort_index, y, x from marker m inner join image i on i.id ==m.image_id where m.track_id = ?',
                 [track.id])
