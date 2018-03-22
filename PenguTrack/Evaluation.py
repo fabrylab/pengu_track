@@ -65,7 +65,20 @@ class new_Evaluator(object):
                 matched = np.where(np.sum(np.linalg.norm(t-self.System_array, axis=-1)<(self.Object_Size/2.), axis=-1)>self.PointThreshold)[0]
                 self.Matches.update({self.GT_Track_Dict[i]: [self.System_Track_Dict[m] for m in matched]})
                 print("Matched ", self.GT_Track_Dict[i])
-        elif method == "bbox":
+        else:
+            raise ValueError("No matching method %s known!"%method)
+
+class new_Yin_Evaluator(new_Evaluator):
+    def __init__(self, object_size, *args, **kwargs):
+        self.TempThreshold = kwargs.pop("temporal_threshold", 0.1)
+        self.SpaceThreshold = kwargs.pop("spacial_threshold", 0.1)
+        self.PointThreshold = kwargs.pop("point_threshold", -1)
+        self.Object_Size = object_size
+        self.Matches = {}
+        super(new_Yin_Evaluator, self).__init__(*args, **kwargs)
+        
+    def match(self, method=None):
+        if method == "bbox":
             self.Matches = {}
             o = self.Object_Size / 2.
             for i, t in enumerate(self.GT_array):
@@ -81,16 +94,7 @@ class new_Evaluator(object):
                 self.Matches.update({self.GT_Track_Dict[i]: [self.System_Track_Dict[m] for m in matched]})
                 print("Matched ", self.GT_Track_Dict[i])
         else:
-            raise ValueError("No matching method %s known!"%method)
-
-class new_Yin_Evaluator(new_Evaluator):
-    def __init__(self, object_size, *args, **kwargs):
-        self.TempThreshold = kwargs.pop("temporal_threshold", 0.1)
-        self.SpaceThreshold = kwargs.pop("spacial_threshold", 0.1)
-        self.PointThreshold = kwargs.pop("point_threshold", -1)
-        self.Object_Size = object_size
-        self.Matches = {}
-        super(new_Yin_Evaluator, self).__init__(*args, **kwargs)
+            super(new_Yin_Evaluator, self).match(method=method)
 
     def temporal_overlap(self, sys_track, gt_track):
         sys_id = reverse_dict(self.System_Track_Dict)[sys_track]
