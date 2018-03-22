@@ -27,7 +27,8 @@ from .Filters import Filter
 from PenguTrack import Filters
 from .Models import Model, VariableSpeed
 from .DataFileExtended import DataFileExtended,\
-    add_PT_Tracks, add_PT_Tracks_from_Tracker, load_tracks_from_clickpoints, load_measurements_from_clickpoints
+    add_PT_Tracks, add_PT_Tracks_from_Tracker, load_tracks_from_clickpoints, load_measurements_from_clickpoints, \
+    reverse_dict
 from PenguTrack.Filters import greedy_assignment
 from scipy.optimize import linear_sum_assignment
 import time
@@ -37,6 +38,308 @@ import inspect
 
 
 all_filters = tuple([v for v in dict(inspect.getmembers(Filters)).values() if type(v)==type])
+
+class new_Stitcher(object):
+    def __init__(self, greedy=False):
+        self.Track_Dict = {}
+        self.Track_array = None
+        self.db = None
+        self.greedy = bool(greedy)
+        self.name = "Stitcher"
+
+    def load_tracks_from_clickpoints(self, path, type):
+        db = clickpoints.DataFile(path)
+        tracks = db.getTracks(type=type)
+        track_dict = dict(enumerate([t.id for t in tracks]))
+        array = np.array([db.db.execute_sql("select (SELECT x from marker as m WHERE m.image_id = i.id AND m.track_id=?) as x, (SELECT y from marker as m WHERE m.image_id = i.id AND m.track_id=?) as y from image as i order by sort_index",[track_dict[k],track_dict[k]]).fetchall() for k in sorted(track_dict.keys())], dtype=float)
+        print("Tracks loaded!")
+        self.db, self.Track_array, self.Track_Dict = db, array, track_dict
+
+        self.stiched_type = self.db.setMarkerType(name=self.name, color="F0F0FF")
+
+    def add_PT_Tracks_from_Tracker(self, tracks):
+        frames = set()
+        for track in tracks:
+            frames.update(track.X.keys())
+        array = np.ones((len(tracks), len(frames), 2))
+        track_dict = enumerate(tracks.keys())
+        for f in sorted(frames):
+            for t in track_dict:
+                if f in tracks[track_dict[t]].X:
+                    array[t, f, :] = tracks[track_dict[t]].X[f][:2,0]
+        self.Track_Dict, self.Track_array =  track_dict, array
+
+    def pos_delta(self, kernel=None, ignore_nans=False, array=None):
+        if array is None:
+            array = self.Track_array
+        else:
+            if len(array.shape)<2:
+                raise ValueError("Wrong shape for array, allowed only %sx%sxN"%(self.Track_array.shape[0],
+                                                                              self.Track_array.shape[1]))
+            elif len(array.shape)==2:
+                array = array[:, :, None]
+        if kernel is None:
+            # look where tracks are defined
+            not_none = np.all(~np.isnan(self.Track_array), axis=-1)
+            # get positions where cumsum of not_none is 1 and track is defined (first occurence of track)
+            first_vals = array[(np.cumsum(not_none, axis=-1) == 1) & (not_none == True)]
+            # same as above but with flipped time axis to get last occurence. Reflip mask array in the end
+            last_vals = array[((np.cumsum(not_none[:, ::-1], axis=-1) == 1) & (not_none == True)[:,::-1])[:,::-1]]
+        else:
+            # look where tracks are defined
+            not_none = np.all(~np.isnan(self.Track_array), axis=-1)
+            if ignore_nans:
+                # savety margin for kernel computation. worst case-> always take last frames
+                not_none_f = np.array(not_none)
+                not_none_f[:, -len(kernel):] = True
+                # get cumsum of not_none (value is len of track at the specific timestep)
+                f_sum = np.cumsum(not_none_f, axis=-1)
+                # iterate over kernel. when index i of kernel value equals cumsum AND value is not none (i-th occurence)
+                first_vals = np.nansum([k * array[(f_sum == (i+1)) & (not_none == True)] for i, k in enumerate(kernel)],
+                          axis=0)
+                # same but with flipped axis
+                not_none_l = np.array(not_none)
+                not_none_l[:, :len(kernel)-1] = True
+                l_sum = np.cumsum(not_none_l[:, ::-1], axis=-1)[:, ::-1]
+                last_vals = np.nansum([k * array[(l_sum == (i+1)) & (not_none == True)] for i, k in enumerate(kernel)],
+                          axis=0)
+            else:
+                # get cumsum of not_none.
+                not_none_sum = np.cumsum(not_none, axis=-1).astype(bool)
+                # savety margin for kernel computation. worst case-> always take last frames
+                not_none_sum[:,-len(kernel):] = True
+                #then cumsum of cumsum>0 -> value is index from first track occurence
+                f_sum = np.cumsum(not_none_sum, axis=-1)
+                # iterate over kernel. when index i of kernel value equals cumsum (i-th occurence)
+                # don't take care of nan-values. These will be ommitted in nansum
+                first_vals = np.nansum([k*array[(f_sum == (i+1))] for i, k in enumerate(kernel)], axis=0)
+                # same with flipped axis
+                # get cumsum of not_none.
+                not_none_sum = np.cumsum(not_none[:, ::-1], axis=-1).astype(bool)
+                # savety margin for kernel computation. worst case-> always take first frames
+                not_none_sum[:,-len(kernel):] = True
+                l_sum = np.cumsum(not_none_sum, axis=-1)[:, ::-1]
+                last_vals = np.nansum([k * array[(l_sum == (i+1))] for i, k in enumerate(kernel)], axis=0)
+        return first_vals[None, :, :] - last_vals[:, None, :]
+
+    def vel_delta(self, kernel=None, ignore_nans=False):
+        Frames = np.cumsum(np.ones_like(self.Track_array[:,:,0]), axis=-1)
+        if kernel is None:
+            kernel = [1,-1]
+        else:
+            kernel = np.convolve(kernel, [1,-1])
+        return self.pos_delta(kernel=kernel, ignore_nans=ignore_nans)/self.pos_delta(kernel=kernel, ignore_nans=ignore_nans, array=Frames)
+
+    def spatial_diff(self, kernel=None, ignore_nans=False):
+        return np.linalg.norm(self.pos_delta(kernel=kernel, ignore_nans=ignore_nans), axis=-1)
+
+    def temporal_diff(self, kernel=None, ignore_nans=False):
+        Frames = np.cumsum(np.ones_like(self.Track_array[:,:,0]), axis=-1)
+        return self.pos_delta(kernel=kernel, ignore_nans=ignore_nans, array=Frames)
+
+    def _stitch_(self, cost, threshold=np.inf):
+        print(np.mean(cost>=threshold))
+        cost [cost==np.amax(cost)] == np.nextafter(np.inf, 0)/(max(cost.shape)**2)
+
+        if self.greedy:
+            rows, cols = greedy_assignment(cost)
+        else:
+            rows, cols = linear_sum_assignment(cost)
+        print("Assigned Tracks!")
+
+        Frames = np.cumsum(np.ones_like(self.Track_array[:,:,0]), axis=-1)
+        # look where tracks are defined
+        not_none = np.all(~np.isnan(self.Track_array), axis=-1)
+        # get positions where cumsum of not_none is 1 and track is defined (first occurence of track)
+        first_frame = Frames[(np.cumsum(not_none, axis=-1) == 1) & (not_none == True)]
+
+        dr = dict(np.array([rows, cols]).T)
+        dc = dict(np.array([cols, rows]).T)
+        Tracks = reverse_dict(self.Track_Dict)
+        for j, k in enumerate(rows):
+            if not cost[rows[j],cols[j]] >= threshold and not rows[j]==cols[j]:
+                print("preparing to stitch...")
+                a = rows[j]
+                b = cols[j]
+                while self.Track_Dict[a] not in Tracks:
+                    a = dc[a]
+                while self.Track_Dict[b] not in Tracks:
+                    b = dr[b]
+                appended_id, erased_id = np.array([a,b])[np.argsort([first_frame[a], first_frame[b]])]
+                print("stitching %s and %s"%(appended_id, erased_id))
+                self.__stitch__(self.Track_Dict[appended_id], self.Track_Dict[erased_id])
+                Tracks.pop(self.Track_Dict[erased_id])
+
+    def _stitch_from_rc(self, rows, cols):
+        Frames = np.cumsum(np.ones_like(self.Track_array[:,:,0]), axis=-1)
+        # look where tracks are defined
+        not_none = np.all(~np.isnan(self.Track_array), axis=-1)
+        # get positions where cumsum of not_none is 1 and track is defined (first occurence of track)
+        first_frame = Frames[(np.cumsum(not_none, axis=-1) == 1) & (not_none == True)]
+
+        dr = dict(np.array([rows, cols]).T)
+        dc = dict(np.array([cols, rows]).T)
+        Tracks = reverse_dict(self.Track_Dict)
+        for j, k in enumerate(rows):
+            if not rows[j]==cols[j]:
+                print("preparing to stitch...")
+                a = rows[j]
+                b = cols[j]
+                while self.Track_Dict[a] not in Tracks:
+                    a = dc[a]
+                while self.Track_Dict[b] not in Tracks:
+                    b = dr[b]
+                appended_id, erased_id = np.array([a,b])[np.argsort([first_frame[a], first_frame[b]])]
+                print("stitching %s and %s"%(appended_id, erased_id))
+                self.__stitch__(self.Track_Dict[appended_id], self.Track_Dict[erased_id])
+                Tracks.pop(self.Track_Dict[erased_id])
+
+    def __stitch__(self, appended_id, erased_id):
+        i = reverse_dict(self.Track_Dict)[appended_id]
+        j = reverse_dict(self.Track_Dict)[erased_id]
+        if self.db:
+            self.db.getTrack(appended_id).merge(erased_id, mode="average")
+            # look where tracks are defined
+            not_none = np.all(~np.isnan(self.Track_array[j]), axis=-1)
+            # get positions where cumsum of not_none is 1 and track is defined (first occurence of track)
+            frame = (np.cumsum(not_none, axis=-1) == 1) & (not_none == True)
+            x, y = self.Track_array[j][frame].T
+            self.db.setMarker(x=x, y=y, type=self.stiched_type, image=self.db.getImages(frame=np.where(frame)[0])[0])
+        print("stitch!", appended_id, erased_id)
+
+    def stitch(self):
+        pass
+
+class Richter_Stitcher(new_Stitcher):
+    def __init__(self, greedy=False,
+        inner_dist_threshold=25,
+        outer_dist_threshold=50,
+        inner_temporal_threshold=10,
+        outer_temporal_threshold=20):
+        super(Richter_Stitcher, self).__init__(greedy=greedy)
+
+        self.inner_dist_threshold = float(inner_dist_threshold)
+        self.outer_dist_threshold = float(outer_dist_threshold)
+        self.inner_temporal_threshold = int(inner_temporal_threshold)
+        self.outer_temporal_threshold = int(outer_temporal_threshold)
+
+    def stitch(self):
+        # array of temporal and spatial differences between all tracks
+        temp = self.temporal_diff()[:,:,0]
+        space = self.spatial_diff()
+        # dict to store results
+        row_col = {}
+        #Do for each track
+        for i in self.Track_Dict:
+            print("doing ", i)
+            # dict to store ids of matching candidates
+            all_ids = {i}
+            # ids of horizontal candidates (match track i)
+            ids = np.where((temp[i]>0)&(temp[i]<self.outer_temporal_threshold))[0]
+            all_ids.update(ids)
+            # ids of vertical candidates (match tracks in ids)
+            ids2 = np.where((temp[ids]>0)&(temp[ids]<self.outer_temporal_threshold))[1]
+            all_ids.update(ids2)
+            # dictionary to translate beetween sliced array and main arrays
+            inner_dict = dict(enumerate(sorted(all_ids)))
+
+            inner_time = temp[sorted(all_ids)][:, sorted(all_ids)]
+
+            inner_array = space[sorted(all_ids)][:, sorted(all_ids)]
+            inner_array[np.diag(np.ones(len(all_ids), dtype=bool))] = np.nextafter(np.inf, 0.)
+            inner_array[inner_array>self.outer_dist_threshold] = np.nextafter(np.inf, 0.)
+            inner_array[(inner_time>0)&(inner_time<self.outer_temporal_threshold)] = np.nextafter(np.inf, 0.)
+
+            if self.greedy:
+                r, c = greedy_assignment(inner_array)
+            else:
+                r, c = linear_sum_assignment(inner_array)
+
+            for R,C in zip(r,c):
+                # translate to entries in main arrays
+                R = inner_dict[R]
+                C = inner_dict[C]
+                if ((space[C, R] <= self.inner_dist_threshold) and
+                        (temp[C, R] <= self.inner_temporal_threshold) and
+                        (temp[C, R] >= 0)):
+                    if R not in row_col:
+                        row_col.update({R: C})
+                        print("Match!")
+                    elif space[row_col[R], R] > space[C,R]:
+                        row_col.update({R: C})
+                        print("Overwriting Match!")
+
+        rows, cols = np.array(list(row_col.items())).T
+        self._stitch_from_rc(rows, cols)
+        # for r in row_col:
+        #     self.__stitch__(self.Track_Dict[r], self.Track_Dict[row_col[r]])
+
+
+class new_DistanceStitcher(new_Stitcher):
+    def __init__(self,*args, max_velocity, max_frames=3, **kwargs):
+            super(new_DistanceStitcher, self).__init__(*args, **kwargs)
+            self.MaxV = float(max_velocity)
+            self.MaxF = int(max_frames)
+            self.name ="DistanceStitcher"
+
+    def stitch(self):
+        s = self.spatial_diff()
+        t = self.temporal_diff()[:,:,0]
+        cost = s/t
+        # velocity[np.abs(velocity)>=self.MaxV] = np.nan
+        cost[np.diag(np.ones(len(cost), dtype=bool))] = self.MaxV
+        cost[cost>self.MaxV]=self.MaxV
+        cost[cost<0]=self.MaxV
+        cost[np.abs(t)>self.MaxF]=self.MaxV
+        self._stitch_(cost, threshold=self.MaxV)
+
+class new_MotionStitcher(new_Stitcher):
+    def __init__(self, window_length, max_diff, *args, max_distance=np.inf, max_delay=np.inf, **kwargs):
+        self.kernel = np.ones(int(window_length))/float(window_length)
+        super(new_MotionStitcher, self).__init__(*args, **kwargs)
+        self.max_diff = float(max_diff)
+        self.MaxDist=float(max_distance)
+        self.MaxDelay=float(max_delay)
+        self.name = "MotionStitcher"
+
+    def stitch(self):
+        cost = np.linalg.norm(self.vel_delta(kernel=self.kernel), axis=-1)
+        s = self.pos_delta()
+        s_abs = np.linalg.norm(s, axis=-1)
+        t = self.temporal_diff()[:,:,0]
+        cost[cost>self.max_diff] = self.max_diff
+        cost[np.isnan(cost)] = self.max_diff
+        cost[s_abs>self.MaxDist] =  self.max_diff
+        # cost[np.abs(t)>self.MaxDelay] =  self.max_diff
+        cost[t>self.MaxDelay] =  self.max_diff
+        cost[t<=0] = self.max_diff
+        self._stitch_(cost, threshold=self.max_diff)
+
+class new_expDistanceStitcher(new_Stitcher):
+    def __init__(self, k, w, *args, max_distance=np.inf, max_delay=np.inf, dim=(1,), **kwargs):
+        super(new_expDistanceStitcher, self).__init__(*args, **kwargs)
+        k=np.array(k, ndmin=2)
+        if len(k)>1:
+            self.K = np.array(k, ndmin=2)
+        else:
+            self.K = k * np.ones(dim).T
+        self.W = float(w)
+        self.MaxDist=float(max_distance)
+        self.MaxDelay=float(max_delay)
+        self.Dim = dim
+        self.name ="expDistanceStitcher"
+
+    def stitch(self):
+        s = self.pos_delta()
+        s_abs = np.linalg.norm(s,axis=-1)
+        t = self.temporal_diff()[:,:,None]
+        cost = np.exp((np.dot(self.K, np.abs(s)) + self.W*np.abs(t)))[0].T[0].T
+        max_cost = np.exp((np.dot(self.K, np.abs(self.MaxDist)) + self.W * np.abs(self.MaxDelay)))[0,0]
+        cost[np.diag(np.ones(len(cost), dtype=bool))] = max_cost
+        cost[s_abs>self.MaxDist] = max_cost
+        cost[t.T[0].T>self.MaxDelay] = max_cost
+        cost[t.T[0].T<0] = max_cost
+        self._stitch_(cost, threshold=max_cost)
 
 class Stitcher(object):
     def __init__(self, greedy=False):
@@ -209,10 +512,10 @@ class Stitcher(object):
 
 class DistanceStitcher(Stitcher):
     def __init__(self, max_velocity, max_frames=3):
-            super(DistanceStitcher, self).__init__()
-            self.MaxV = float(max_velocity)
-            self.MaxF = int(max_frames)
-            self.name ="DistanceStitcher"
+        super(DistanceStitcher, self).__init__()
+        self.MaxV = float(max_velocity)
+        self.MaxF = int(max_frames)
+        self.name ="DistanceStitcher"
 
     def stitch(self):
         s = self.spatial_diff()
@@ -232,6 +535,7 @@ class MotionStitcher(Stitcher):
         self.max_diff = float(max_diff)
         self.MaxDist=float(max_distance)
         self.MaxDelay=float(max_delay)
+        self.name ="MotionStitcher"
 
     def stitch(self):
         cost = np.linalg.norm(self.vel_delta(kernel=self.kernel), axis=(2,3))
@@ -508,10 +812,63 @@ class Heublein_Stitcher(Stitcher):
         print("stitch time:", end_time - start_time)
         print ("-----------Done with stitching-----------")
 
+class new_Splitter(new_Stitcher):
+    def __init__(self):
+        super(new_Splitter, self).__init__()
+        self.name = "Splitter"
+
+    def v(self):
+        Frames = np.cumsum(np.ones_like(self.Track_array[:,:,0]), axis=-1)[:,:,None]
+        return np.diff(self.Track_array, axis=1)/np.diff(Frames, axis=1)
+
+    def pos(self):
+        return np.nancumsum(self.v(), axis=1)
+
+    def abs_v(self):
+        return np.linalg.norm(self.v(), axis=-1)
+
+    def abs_pos(self):
+        return np.linalg.norm(self.pos(), axis=-1)
+
+    def switch_mode(self):
+        return np.abs([np.convolve(x, [1, 2, 3, 0, -3, -6, -3, 0, 3, 2, 1], mode="same") for x in self.abs_pos()])
+
+    def _temp_local_max_(self, array, threshold):
+        mat = np.array(array)
+        mat[mat<threshold] = np.amin(mat)
+        b = np.zeros_like(mat, dtype=bool)
+        b[:, :-1] = mat[:, 1:] < mat[:, :-1]
+        b[:, 1:] &= mat[:, :-1] < mat[:, 1:]
+        return np.where(b)
+
+    def _split_(self, row, collumn):
+        Frames = np.cumsum(np.ones_like(self.Track_array[0,:,0]), axis=-1)
+        for r,c in zip(row,collumn):
+            track_id = self.Track_Dict[r]
+            time = c
+            new_Track = np.ones_like(self.Track_array[r])[None,:,:]*np.nan
+            new_Track[0, c:] = self.Track_array[r,c:]
+            self.Track_array = np.vstack((self.Track_array, new_Track))
+            self.Track_array[r, c:] = np.nan
+            if self.db is not None:
+                db_track = self.db.getTrack(track_id)
+                db_times = np.array([m.image.sort_index for m in db_track.markers])
+                # db_times = Frames[np.all(~np.isnan(self.Track_array[r]), axis=-1)]
+                if len(db_times)<1:
+                    pass
+                else:
+                    db_time = db_times[np.argmin((db_times-time)**2)]
+                    m = self.db.getMarkers(track=track_id, frame=int(db_time))[0]
+                    self.db.setMarker(x=m.x, y=m.y, frame=db_time, type=self.stiched_type)
+                    db_track.split(m)
+                self.Track_Dict.update({len(self.Track_array): db_track.id})
+            print("splitted ", track_id)
+
 class Splitter(Stitcher):
     def __init__(self):
         super(Splitter, self).__init__()
         self.name = "Splitter"
+
     def v(self):
         T = set()
         for track in self.Tracks.values():
@@ -572,7 +929,7 @@ class Splitter(Stitcher):
                     m = self.db.getMarkers(track=track_id, frame=db_time)[0]
                     self.db.setMarker(x=m.x, y=m.y, frame=db_time, type=self.stiched_type)
                     db_track.split(m)
-                print("split")
+                print("splitted ", track_id)
 
     # def temporal_delta(self):
     #     e = self.existence()
