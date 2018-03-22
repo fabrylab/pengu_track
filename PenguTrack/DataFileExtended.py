@@ -1012,6 +1012,7 @@ class DataFileExtended(clickpoints.DataFile):
 
                         prediction_markerset.append(dict(image=image, x=pred_y, y=pred_x,
                                                          text="Filter %s" % k,
+                                                         track=None,
                                                          type=self.prediction_marker_type,
                                                          style='{"scale":%.2f}'%(pred_err)))
 
@@ -1032,6 +1033,8 @@ class DataFileExtended(clickpoints.DataFile):
                     if debug_mode&0b1100:
                         measurement_markerset.append(dict(image=image, x=meas_y, y=meas_x,
                                                           text="Track %s" % (db_track.id),
+                                                          track=None,
+                                                          style=None,
                                                           type=self.detection_marker_type))
 
 
@@ -1054,34 +1057,41 @@ class DataFileExtended(clickpoints.DataFile):
         #                     state_distribution=[f["state_distribution"] for f in filter_list],
         #                     model=[f["model"] for f in filter_list])
 
-        if (debug_mode&0b001):
-            self.setMarkers(image=[m["image"] for m in markerset],
-                            type=[m["type"] for m in markerset],
-                            track=[m["track"] for m in markerset],
-                            x=[m["x"] for m in markerset],
-                            y=[m["y"] for m in markerset],
-                            text=[m["text"] for m in markerset],
-                            style=[m["style"] for m in markerset])
-        self.setStates(image=[m["image"] for m in stateset],
-                       filter=[m["filter"] for m in stateset],
-                       type=[m["type"] for m in stateset],
-                       log_prob=[m["log_prob"] for m in stateset],
-                       state_vector=[m["state_vector"] for m in stateset],
-                       state_error=[m["state_error"] for m in stateset])
 
         if (debug_mode&0b1010):
-            self.setMarkers(image=[m["image"] for m in prediction_markerset],
-                            type=[m["type"] for m in prediction_markerset],
-                            x=[m["x"] for m in prediction_markerset],
-                            y=[m["y"] for m in prediction_markerset],
-                            text=[m["text"] for m in prediction_markerset],
-                            style=[m["style"] for m in prediction_markerset])
+            markerset.extend(prediction_markerset)
         if (debug_mode&0b1100):
-            self.setMarkers(image=[m["image"] for m in measurement_markerset],
-                            type=[m["type"] for m in measurement_markerset],
-                            x=[m["x"] for m in measurement_markerset],
-                            y=[m["y"] for m in measurement_markerset],
-                            text=[m["text"] for m in measurement_markerset])
+            markerset.extend(measurement_markerset)
+
+        self.setMarkers(image=[m["image"] for m in markerset],
+                        type=[m["type"] for m in markerset],
+                        track=[m["track"] for m in markerset],
+                        x=[m["x"] for m in markerset],
+                        y=[m["y"] for m in markerset],
+                        text=[m["text"] for m in markerset],
+                        style=[m["style"] for m in markerset])
+
+        if (debug_mode&0b001):
+            self.setStates(image=[m["image"] for m in stateset],
+                           filter=[m["filter"] for m in stateset],
+                           type=[m["type"] for m in stateset],
+                           log_prob=[m["log_prob"] for m in stateset],
+                           state_vector=[m["state_vector"] for m in stateset],
+                           state_error=[m["state_error"] for m in stateset])
+        #
+        # if (debug_mode&0b1010):
+        #     self.setMarkers(image=[m["image"] for m in prediction_markerset],
+        #                     type=[m["type"] for m in prediction_markerset],
+        #                     x=[m["x"] for m in prediction_markerset],
+        #                     y=[m["y"] for m in prediction_markerset],
+        #                     text=[m["text"] for m in prediction_markerset],
+        #                     style=[m["style"] for m in prediction_markerset])
+        # if (debug_mode&0b1100):
+        #     self.setMarkers(image=[m["image"] for m in measurement_markerset],
+        #                     type=[m["type"] for m in measurement_markerset],
+        #                     x=[m["x"] for m in measurement_markerset],
+        #                     y=[m["y"] for m in measurement_markerset],
+        #                     text=[m["text"] for m in measurement_markerset])
         if verbose:
             print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
 
