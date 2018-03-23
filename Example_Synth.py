@@ -19,44 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with PenguTrack. If not, see <http://www.gnu.org/licenses/>.
 
-from PenguTrack.Detectors import Measurement
-import numpy as np
-
-class SyntheticDataGenerator(object):
-    def __init__(self, object_number, position_variation, speed_variation, model, loose=False):
-        self.N = int(object_number)
-        self.R = float(position_variation)
-        self.Q = float(speed_variation)
-        self.Model = model
-        self.Loose = bool(loose)
-        vec = np.random.rand(self.N, self.Model.State_dim, 1)
-        vec [:,::2] *= self.R
-        vec [1:,::2] *= self.Q
-        self.Objects = {0: dict(zip(range(self.N), vec))}
-
-        for i in range(100):
-            self.step()
-
-    def step(self):
-        i = max(self.Objects.keys())
-        tracks = list(self.Objects[i].keys())
-        positions = [self.Objects[i][k] for k in tracks]
-        self.Objects[i+1] = dict(zip(tracks,np.array([
-            self.Model.predict(
-            self.Model.evolute(
-                self.Q*np.random.randn(
-                    self.Model.Evolution_dim, 1),
-                pos),
-                np.zeros((self.Model.Control_dim, 1)))
-            for pos in positions])))
-        out = [Measurement(1.0, self.Model.measure(pos)) for pos in self.Objects[i+1].values()]
-        if self.Loose:
-            for k in set(np.random.randint(low=0, high=self.N, size=int(self.N*0.1))):
-                try:
-                    out.pop(k)
-                except IndexError:
-                    pass
-        return out
+from PenguTrack.Tools.SyntheticDataGenerator import SyntheticDataGenerator
 
 if __name__ == '__main__':
 
@@ -106,7 +69,7 @@ if __name__ == '__main__':
                     filter.update(z=Positions, i=i, verbose=False)
                     # Write everything to a DataBase
                     db.track_marker_type = db_track_marker_types[filter.name()]
-                    db.write_to_DB(filter, image, i=i,# debug_mode=0b0000,
+                    db.write_to_DB(filter, image, i=i, debug_mode=0b00000,
                                    db_tracker=db_trackers[filter.name()],
                                    db_model=db_models[filter.name()])
 
@@ -116,18 +79,24 @@ if __name__ == '__main__':
 
     all_params = []
 
-    from PenguTrack.Trackers import VariableSpeedTracker, GreedyVariableSpeedTracker
+    from PenguTrack.Trackers import VariableSpeedTracker, GreedyVariableSpeedTracker, NetworkVariableSpeedTracker
 
     MultiKal = VariableSpeedTracker(q=1., no_dist=False, prob_update=False)
+    MultiKal.LogProbabilityThreshold = -10.
     MultiKal2 = GreedyVariableSpeedTracker(q=1., no_dist=False, prob_update=False)
+    MultiKal2.LogProbabilityThreshold = -10.
+    MultiKal3 = NetworkVariableSpeedTracker(q=1., no_dist=False, prob_update=False)
+    MultiKal3.LogProbabilityThreshold = -10.
+    Kals = [MultiKal, MultiKal2, MultiKal3]
     # MultiKal.LogProbabilityThreshold = -3.
     # Physical Model (used for predictions)
     from PenguTrack.Models import VariableSpeed
     from PenguTrack.DataFileExtended import DataFileExtended
 
-    Generator = SyntheticDataGenerator(114, 100., 1., VariableSpeed(dim=2, timeconst=0.5, damping=1.), loose=True)
+    mult = 1024
+    Generator = SyntheticDataGenerator(int(1.1*mult), 0.5*mult, 1., VariableSpeed(dim=2, timeconst=0.5, damping=1.), loose=True)
 
-    MultiKal, MultiKal2 = track([MultiKal, MultiKal2], Generator)
+    Kals = track(Kals, Generator)
 
 
     # db = DataFileExtended("./synth_data.cdb", "r")
