@@ -844,7 +844,7 @@ class DataFileExtended(clickpoints.DataFile):
         return model_item, tracker_item
 
     def write_to_DB(self, Tracker, image, i=None, text=None, cam_values=False, db_tracker=None, db_model=None,
-                    debug_mode=0b1111, image_transform=None, verbose=True):
+                    debug_mode=0b11111, image_transform=None, verbose=True):
         """
         Writes a tracking step to the extended DataBase
         :param Tracker: PenguTrack Tracker (e.g. Hungarian Tracker) holding multiple
@@ -878,7 +878,7 @@ class DataFileExtended(clickpoints.DataFile):
             cam_errors = image_transform([np.diag(Tracker.Filters[k].X_error[i]) for k in Tracker.Filters if i in Tracker.Filters[k].X_error])
             cam_errors = dict(zip([k for k in Tracker.Filters if i in Tracker.Filters[k].X_error], [np.diag(c) for c in cam_errors]))
 
-            if debug_mode & 0b1010:
+            if (debug_mode & 0b00001) or (debug_mode & 0b01000):
                 cam_pred = image_transform([Tracker.Filters[k].Predicted_X[i] for k in Tracker.Filters if i in Tracker.Filters[k].Predicted_X])
                 cam_pred = dict(zip([k for k in Tracker.Filters if i in Tracker.Filters[k].Predicted_X], cam_pred))
                 cam_pred_err = image_transform([np.diag(Tracker.Filters[k].Predicted_X_error[i]) for k in Tracker.Filters if i in Tracker.Filters[k].Predicted_X_error])
@@ -971,7 +971,7 @@ class DataFileExtended(clickpoints.DataFile):
                                                 text=text,
                                                 style = '{}'))
                                                 # style='{"scale":%.2f}'%(state_err)))
-                    if (debug_mode & 0b001):
+                    if (debug_mode & 0b00100):
                         stateset.append(dict(log_prob=prob,
                                              filter=db_filter,
                                              image=image,
@@ -980,14 +980,15 @@ class DataFileExtended(clickpoints.DataFile):
                                              state_error=Tracker.Filters[k].X_error.get(i, None)))
 
                 # Case 2: we want to see the prediction markers
-                if i in Tracker.Filters[k].Predicted_X.keys() and (debug_mode&0b010):
-                    stateset.append(dict(log_prob=prob,
-                                         filter=db_filter,
-                                         image=image,
-                                         type=self.TYPE_PREDICTION,
-                                         state_vector=Tracker.Filters[k].Predicted_X[i],
-                                         state_error=Tracker.Filters[k].Predicted_X_error.get(i, None)))
-                    if debug_mode&0b1010:
+                if i in Tracker.Filters[k].Predicted_X.keys() and ((debug_mode&0b01000)or(debug_mode&0b00001)):
+                    if debug_mode&0b01000:
+                        stateset.append(dict(log_prob=prob,
+                                             filter=db_filter,
+                                             image=image,
+                                             type=self.TYPE_PREDICTION,
+                                             state_vector=Tracker.Filters[k].Predicted_X[i],
+                                             state_error=Tracker.Filters[k].Predicted_X_error.get(i, None)))
+                    if debug_mode&0b00001:
                         prediction = Tracker.Filters[k].Predicted_X[i]
                         try:
                             prediction_err = Tracker.Model.measure(Tracker.Filters[k].Predicted_X_error[i])
@@ -1017,20 +1018,20 @@ class DataFileExtended(clickpoints.DataFile):
                                                          style='{"scale":%.2f}'%(pred_err)))
 
                 # Case 3: we want to see the measurement markers
-                if i in Tracker.Filters[k].Measurements.keys() and (debug_mode&0b100):
+                if i in Tracker.Filters[k].Measurements.keys() and ((debug_mode&0b10000)or(debug_mode&0b00010)):
                     meas = Tracker.Filters[k].Measurements[i]
                     meas_x = meas.PositionX
                     meas_y = meas.PositionY
 
                     meas_err = meas.Covariance
-
-                    stateset.append(dict(filter=db_filter,
-                                         log_prob=prob,
-                                         image=image,
-                                         type=self.TYPE_MEASUREMENT,
-                                         state_vector=np.array([meas_x, meas_y]),
-                                         state_error=meas_err))
-                    if debug_mode&0b1100:
+                    if debug_mode&0b10000:
+                        stateset.append(dict(filter=db_filter,
+                                             log_prob=prob,
+                                             image=image,
+                                             type=self.TYPE_MEASUREMENT,
+                                             state_vector=np.array([meas_x, meas_y]),
+                                             state_error=meas_err))
+                    if debug_mode&0b00010:
                         measurement_markerset.append(dict(image=image, x=meas_y, y=meas_x,
                                                           text="Track %s" % (db_track.id),
                                                           track=None,
@@ -1058,9 +1059,9 @@ class DataFileExtended(clickpoints.DataFile):
         #                     model=[f["model"] for f in filter_list])
 
 
-        if (debug_mode&0b1010):
+        if (debug_mode&0b00001):
             markerset.extend(prediction_markerset)
-        if (debug_mode&0b1100):
+        if (debug_mode&0b00010):
             markerset.extend(measurement_markerset)
 
         self.setMarkers(image=[m["image"] for m in markerset],
@@ -1071,27 +1072,13 @@ class DataFileExtended(clickpoints.DataFile):
                         text=[m["text"] for m in markerset],
                         style=[m["style"] for m in markerset])
 
-        if (debug_mode&0b001):
+        if ((debug_mode&0b10000)or(debug_mode&0b01000)or(debug_mode&0b00100)):
             self.setStates(image=[m["image"] for m in stateset],
                            filter=[m["filter"] for m in stateset],
                            type=[m["type"] for m in stateset],
                            log_prob=[m["log_prob"] for m in stateset],
                            state_vector=[m["state_vector"] for m in stateset],
                            state_error=[m["state_error"] for m in stateset])
-        #
-        # if (debug_mode&0b1010):
-        #     self.setMarkers(image=[m["image"] for m in prediction_markerset],
-        #                     type=[m["type"] for m in prediction_markerset],
-        #                     x=[m["x"] for m in prediction_markerset],
-        #                     y=[m["y"] for m in prediction_markerset],
-        #                     text=[m["text"] for m in prediction_markerset],
-        #                     style=[m["style"] for m in prediction_markerset])
-        # if (debug_mode&0b1100):
-        #     self.setMarkers(image=[m["image"] for m in measurement_markerset],
-        #                     type=[m["type"] for m in measurement_markerset],
-        #                     x=[m["x"] for m in measurement_markerset],
-        #                     y=[m["y"] for m in measurement_markerset],
-        #                     text=[m["text"] for m in measurement_markerset])
         if verbose:
             print("Got %s Filters" % len(Tracker.ActiveFilters.keys()))
 
