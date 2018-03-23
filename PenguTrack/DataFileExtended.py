@@ -909,35 +909,35 @@ class DataFileExtended(clickpoints.DataFile):
                 else:
                     db_track = self.setTrack(self.track_marker_type)
                     new = "new "
-                    if ((debug_mode & 0b100000)
-                            or (debug_mode & 0b010000)
-                            or (debug_mode & 0b0010000)
-                            or (debug_mode & 0b0001000)):
-                        db_dist_s = self.setDistribution(name=parse_dist_name(Tracker.Filters[k].State_Distribution),
-                                                         **parse_dist_dict(Tracker.Filters[k].State_Distribution.__dict__))
-                        db_dist_m = self.setDistribution(name=parse_dist_name(Tracker.Filters[k].Measurement_Distribution),
-                                                         **parse_dist_dict(Tracker.Filters[k].Measurement_Distribution.__dict__))
-                        db_filter_model = self.setModel(name=db_model.name,
-                                                        state_dim=db_model.state_dim,
-                                                        control_dim=db_model.control_dim,
-                                                        meas_dim=db_model.meas_dim,
-                                                        evolution_dim=db_model.evolution_dim,
-                                                        state_matrix=db_model.state_matrix,
-                                                        control_matrix=db_model.control_matrix,
-                                                        measurement_matrix=db_model.measurement_matrix,
-                                                        evolution_matrix=db_model.evolution_matrix,
-                                                        opt_params=db_model.opt_params,
-                                                        opt_params_shape=db_model.opt_params_shape,
-                                                        opt_params_borders=db_model.opt_params_borders,
-                                                        initial_args=db_model.initial_args,
-                                                        initial_kwargs=db_model.initial_kwargs,
-                                                        extensions=db_model.extensions,
-                                                        measured_variables=db_model.measured_variables)
-                        db_filter = self.setFilter(filter_id=k,
-                                                    model=db_filter_model.id, tracker=db_tracker.id,
-                                                    track=db_track.id,
-                                                    measurement_distribution=db_dist_m.id,
-                                                    state_distribution=db_dist_s.id)
+                    # if ((debug_mode & 0b100000)
+                    #         or (debug_mode & 0b010000)
+                    #         or (debug_mode & 0b0010000)
+                    #         or (debug_mode & 0b0001000)):
+                    db_dist_s = self.setDistribution(name=parse_dist_name(Tracker.Filters[k].State_Distribution),
+                                                     **parse_dist_dict(Tracker.Filters[k].State_Distribution.__dict__))
+                    db_dist_m = self.setDistribution(name=parse_dist_name(Tracker.Filters[k].Measurement_Distribution),
+                                                     **parse_dist_dict(Tracker.Filters[k].Measurement_Distribution.__dict__))
+                    db_filter_model = self.setModel(name=db_model.name,
+                                                    state_dim=db_model.state_dim,
+                                                    control_dim=db_model.control_dim,
+                                                    meas_dim=db_model.meas_dim,
+                                                    evolution_dim=db_model.evolution_dim,
+                                                    state_matrix=db_model.state_matrix,
+                                                    control_matrix=db_model.control_matrix,
+                                                    measurement_matrix=db_model.measurement_matrix,
+                                                    evolution_matrix=db_model.evolution_matrix,
+                                                    opt_params=db_model.opt_params,
+                                                    opt_params_shape=db_model.opt_params_shape,
+                                                    opt_params_borders=db_model.opt_params_borders,
+                                                    initial_args=db_model.initial_args,
+                                                    initial_kwargs=db_model.initial_kwargs,
+                                                    extensions=db_model.extensions,
+                                                    measured_variables=db_model.measured_variables)
+                    db_filter = self.setFilter(filter_id=k,
+                                                model=db_filter_model.id, tracker=db_tracker.id,
+                                                track=db_track.id,
+                                                measurement_distribution=db_dist_m.id,
+                                                state_distribution=db_dist_s.id)
 
                     # filter_list.append(dict(filter_id=k,
                     #                         model=db_filter_model.id, tracker=db_tracker.id,
