@@ -17,6 +17,66 @@ import pandas
 
 all_filters = tuple([v for v in dict(inspect.getmembers(Filters)).values() if type(v)==type])
 
+class new_Detection_Evaluator(object):
+    def __init__(self):
+        self.System_Point_Dict = {}
+        self.GT_Point_Dict = {}
+        self.System_Type = None
+        self.GT_Type = None
+        self.System_array = None
+        self.GT_array = None
+        self.system_db = None
+        self.gt_db = None
+
+    def load_tracks_from_clickpoints(self, path, type):
+        db = clickpoints.DataFile(path)
+        type = db.getMarkerType(name=type)
+        array = np.array(db.db.execute_sql("select sort_index, x, y, id from marker join image on marker.image_id = image.id  where type_id = ? order by sort_index",
+                                           [type.id]).fetchall(), dtype=float)
+        dictionary = dict(zip(range(len(array), array[:,3])))
+        print("Marker loaded!")
+        return db, array[:,:-1], type, dictionary
+
+    def load_GT_marker_from_clickpoints(self, path, type):
+        self.gt_db, self.GT_array, self.GT_Type, self.GT_Point_Dict = self.load_tracks_from_clickpoints(path, type)
+
+    def load_System_marker_from_clickpoints(self, path, type):
+        self.system_db, self.System_array, self.System_Type, self.System_Point_Dict = self.load_tracks_from_clickpoints(path, type)
+
+    def match(self, method=None):
+        if method is None or method == "default" or method == "euclidic":
+            self.Matches = {}
+            for t in set(self.GT_array.T[2]):
+                sys_mask = self.System_array.T[2]==t
+                inner_sys_dict = dict(zip(np.arange(sys_mask.sum()), np.arange(len(self.System_array))[sys_mask]))
+                inner_sys_array = self.System_array[sys_mask][:,:2]
+                gt_mask = self.System_array.T[2]==t
+                inner_gt_dict = dict(zip(np.arange(gt_mask.sum()), np.arange(len(self.GT_array))[gt_mask]))
+                inner_gt_array = self.System_array[gt_mask][:,:2]
+                r, c = np.where(np.linalg.norm(inner_gt_array[:,None,:]-inner_sys_array[None,:,:])<(self.Object_Size/2.))
+                self.Matches.update(dict([[inner_gt_dict[r],
+                                           [inner_sys_dict[cc] for cc in c[r==rr]]] for rr in r]))
+                print("Matched Frame", t)
+        else:
+            raise ValueError("No matching method %s known!"%method)
+
+    def false_positives(self):
+        used = set()
+        for m in self.Matches:
+            used.update(self.Matches[m])
+        positives = set(range(len(self.System_array)))
+        return positives.difference(used)
+
+    def false_negatives(self):
+        matched = set([m for m in self.Matches if len(self.Matches[m])>0])
+        positives = set(range(len(self.GT_array)))
+        return positives.difference(matched)
+
+    def true_positives(self):
+        pass
+
+
+
 class new_Evaluator(object):
     def __init__(self):
         self.System_Track_Dict = {}
