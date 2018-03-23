@@ -446,8 +446,8 @@ class Filter(object):
                np.array(self.Predicted_X.values(), dtype=float),\
                np.array(self.Predicted_X_error.values(), dtype=float)
 
-    def cost_from_logprob(self, log_prob):
-        return cost_from_logprob(log_prob)
+    def cost_from_logprob(self, log_prob, **kwargs):
+        return cost_from_logprob(log_prob, **kwargs)
 
 
 class KalmanFilter(Filter):
@@ -1373,7 +1373,8 @@ class MultiFilter(Filter):
         x_err = {}
 
         cost_matrix = self.cost_from_logprob(probability_gain)
-        rows, cols = self.assign(cost_matrix)
+        rows, cols = self.assign(cost_matrix,
+                                 threshold=self.cost_from_logprob(probability_gain, value=self.LogProbabilityThreshold))
 
         if verbose:
             for t in range(N):
@@ -1502,7 +1503,7 @@ class MultiFilter(Filter):
             prob += self.Filters[j].log_prob(**kwargs)
         return prob
 
-    def assign(self, cost_matrix):
+    def assign(self, cost_matrix, **kwargs):
         return greedy_assignment(cost_matrix)
 
     def name(self):
@@ -1514,8 +1515,80 @@ class Tracker(MultiFilter):
 
 class HungarianTracker(Tracker):
 
-    def assign(self, cost_matrix):
-        return linear_sum_assignment(cost_matrix)
+    def assign(self, cost_matrix, **kwargs):
+        return hungarian_assignment(cost_matrix)
+
+class NetworkTracker(Tracker):
+    """
+    This Class describes a filter, which is capable of assigning measurements to tracks, which again are represented by
+    sub-filters. The type of these can be specified, as well as a physical model for predictions. With these objects it
+    is possible to assign possibilities to combinations of measurement and prediction.
+
+    Attributes
+    ----------
+    Model: PenguTrack.model object
+        A physical model to gain predictions from data.
+    Filter_Class: PenguTrack.Filter object
+        A Type of Filter from which all subfilters should be built.
+    Filters: dict
+        Dictionary containing all sub-filters as PenguTrack.Filter objects.
+    Active_Filters: dict
+        Dictionary containing all sub-filters, which are currently updated.
+    FilterThreshold: int
+        Number of time steps, before a filter is set inactive.
+    LogProbabilityThreshold: float
+        Threshold, under which log-probabilities are concerned negligible.
+    filter_args: list
+        Filter-Type specific arguments from the Multi-Filter initialisation can be stored here.
+    filter_kwargs: dict
+        Filter-Type specific keyword-arguments from the Multi-Filter initialisation can be stored here.
+    Measurement_Distribution: scipy.stats.distributions object
+        The distribution which describes measurement uncertainty.
+    State_Distribution: scipy.stats.distributions object
+        The distribution which describes state vector fluctuations.
+    X: dict
+        The time series of believes calculated for this filter. The keys equal the time stamp.
+    X_error: dict
+        The time series of errors on the corresponding believes. The keys equal the time stamp.
+    Predicted_X: dict
+        The time series of predictions made from the associated data. The keys equal the time stamp.
+    Predicted_X_error: dict
+        The time series of estimated prediction errors. The keys equal the time stamp.
+    Measurements: dict
+        The time series of measurements assigned to this filter. The keys equal the time stamp.
+    Controls: dict
+        The time series of control-vectors assigned to this filter. The keys equal the time stamp.
+    Order: int
+        The order of network assignments. The higher, the more costy and precise the assignment will be.
+
+    """
+    def __init__(self, *args, **kwargs):
+
+        """
+        This Class describes a filter, which is capable of assigning measurements to tracks, which again are represented by
+        sub-filters. The type of these can be specified, as well as a physical model for predictions. With these objects it
+        is possible to assign possibilities to combinations of measurement and prediction.
+        The network filter uses a network representation of the assignment problem and solves for a number of neighbours
+        for each node, called order.
+
+        Sub-filter specific arguments are handles by *args and **kwargs.
+
+        Parameters
+        ----------
+        model: PenguTrack.model object
+            A physical model to gain predictions from data.
+        meas_dist: scipy.stats.distributions object
+            The distribution which describes measurement uncertainty.
+        state_dist: scipy.stats.distributions object
+            The distribution which describes state vector fluctuations.
+        order: int, optioinal
+            Order Parameter, number of next-neighbour layer to be taken into account for assignment
+        """
+        super(NetworkTracker, self).__init__(*args, **kwargs)
+        self.Order = kwargs.get("order", 2)
+    def assign(self, cost_matrix, threshold=None, method="linear", **kwargs):
+        return network_assignment(cost_matrix, threshold=threshold
+                                  , method="linear", order=self.Order)
 
 
 class HybridSolver(Tracker):
