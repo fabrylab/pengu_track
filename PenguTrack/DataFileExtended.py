@@ -844,7 +844,7 @@ class DataFileExtended(clickpoints.DataFile):
         return model_item, tracker_item
 
     def write_to_DB(self, Tracker, image, i=None, text=None, cam_values=False, db_tracker=None, db_model=None,
-                    debug_mode=0b11111, image_transform=None, verbose=True):
+                    debug_mode=0b111111, image_transform=None, verbose=True):
         """
         Writes a tracking step to the extended DataBase
         :param Tracker: PenguTrack Tracker (e.g. Hungarian Tracker) holding multiple
@@ -878,7 +878,7 @@ class DataFileExtended(clickpoints.DataFile):
             cam_errors = image_transform([np.diag(Tracker.Filters[k].X_error[i]) for k in Tracker.Filters if i in Tracker.Filters[k].X_error])
             cam_errors = dict(zip([k for k in Tracker.Filters if i in Tracker.Filters[k].X_error], [np.diag(c) for c in cam_errors]))
 
-            if (debug_mode & 0b00001) or (debug_mode & 0b01000):
+            if (debug_mode & 0b000001) or (debug_mode & 0b001000):
                 cam_pred = image_transform([Tracker.Filters[k].Predicted_X[i] for k in Tracker.Filters if i in Tracker.Filters[k].Predicted_X])
                 cam_pred = dict(zip([k for k in Tracker.Filters if i in Tracker.Filters[k].Predicted_X], cam_pred))
                 cam_pred_err = image_transform([np.diag(Tracker.Filters[k].Predicted_X_error[i]) for k in Tracker.Filters if i in Tracker.Filters[k].Predicted_X_error])
@@ -909,31 +909,35 @@ class DataFileExtended(clickpoints.DataFile):
                 else:
                     db_track = self.setTrack(self.track_marker_type)
                     new = "new "
-                    db_dist_s = self.setDistribution(name=parse_dist_name(Tracker.Filters[k].State_Distribution),
-                                                     **parse_dist_dict(Tracker.Filters[k].State_Distribution.__dict__))
-                    db_dist_m = self.setDistribution(name=parse_dist_name(Tracker.Filters[k].Measurement_Distribution),
-                                                     **parse_dist_dict(Tracker.Filters[k].Measurement_Distribution.__dict__))
-                    db_filter_model = self.setModel(name=db_model.name,
-                                                    state_dim=db_model.state_dim,
-                                                    control_dim=db_model.control_dim,
-                                                    meas_dim=db_model.meas_dim,
-                                                    evolution_dim=db_model.evolution_dim,
-                                                    state_matrix=db_model.state_matrix,
-                                                    control_matrix=db_model.control_matrix,
-                                                    measurement_matrix=db_model.measurement_matrix,
-                                                    evolution_matrix=db_model.evolution_matrix,
-                                                    opt_params=db_model.opt_params,
-                                                    opt_params_shape=db_model.opt_params_shape,
-                                                    opt_params_borders=db_model.opt_params_borders,
-                                                    initial_args=db_model.initial_args,
-                                                    initial_kwargs=db_model.initial_kwargs,
-                                                    extensions=db_model.extensions,
-                                                    measured_variables=db_model.measured_variables)
-                    db_filter = self.setFilter(filter_id=k,
-                                                model=db_filter_model.id, tracker=db_tracker.id,
-                                                track=db_track.id,
-                                                measurement_distribution=db_dist_m.id,
-                                                state_distribution=db_dist_s.id)
+                    if ((debug_mode & 0b100000)
+                            or (debug_mode & 0b010000)
+                            or (debug_mode & 0b0010000)
+                            or (debug_mode & 0b0001000)):
+                        db_dist_s = self.setDistribution(name=parse_dist_name(Tracker.Filters[k].State_Distribution),
+                                                         **parse_dist_dict(Tracker.Filters[k].State_Distribution.__dict__))
+                        db_dist_m = self.setDistribution(name=parse_dist_name(Tracker.Filters[k].Measurement_Distribution),
+                                                         **parse_dist_dict(Tracker.Filters[k].Measurement_Distribution.__dict__))
+                        db_filter_model = self.setModel(name=db_model.name,
+                                                        state_dim=db_model.state_dim,
+                                                        control_dim=db_model.control_dim,
+                                                        meas_dim=db_model.meas_dim,
+                                                        evolution_dim=db_model.evolution_dim,
+                                                        state_matrix=db_model.state_matrix,
+                                                        control_matrix=db_model.control_matrix,
+                                                        measurement_matrix=db_model.measurement_matrix,
+                                                        evolution_matrix=db_model.evolution_matrix,
+                                                        opt_params=db_model.opt_params,
+                                                        opt_params_shape=db_model.opt_params_shape,
+                                                        opt_params_borders=db_model.opt_params_borders,
+                                                        initial_args=db_model.initial_args,
+                                                        initial_kwargs=db_model.initial_kwargs,
+                                                        extensions=db_model.extensions,
+                                                        measured_variables=db_model.measured_variables)
+                        db_filter = self.setFilter(filter_id=k,
+                                                    model=db_filter_model.id, tracker=db_tracker.id,
+                                                    track=db_track.id,
+                                                    measurement_distribution=db_dist_m.id,
+                                                    state_distribution=db_dist_s.id)
 
                     # filter_list.append(dict(filter_id=k,
                     #                         model=db_filter_model.id, tracker=db_tracker.id,
@@ -971,7 +975,7 @@ class DataFileExtended(clickpoints.DataFile):
                                                 text=text,
                                                 style = '{}'))
                                                 # style='{"scale":%.2f}'%(state_err)))
-                    if (debug_mode & 0b00100):
+                    if (debug_mode & 0b000100):
                         stateset.append(dict(log_prob=prob,
                                              filter=db_filter,
                                              image=image,
@@ -980,15 +984,15 @@ class DataFileExtended(clickpoints.DataFile):
                                              state_error=Tracker.Filters[k].X_error.get(i, None)))
 
                 # Case 2: we want to see the prediction markers
-                if i in Tracker.Filters[k].Predicted_X.keys() and ((debug_mode&0b01000)or(debug_mode&0b00001)):
-                    if debug_mode&0b01000:
+                if i in Tracker.Filters[k].Predicted_X.keys() and ((debug_mode&0b001000)or(debug_mode&0b000001)):
+                    if debug_mode&0b001000:
                         stateset.append(dict(log_prob=prob,
                                              filter=db_filter,
                                              image=image,
                                              type=self.TYPE_PREDICTION,
                                              state_vector=Tracker.Filters[k].Predicted_X[i],
                                              state_error=Tracker.Filters[k].Predicted_X_error.get(i, None)))
-                    if debug_mode&0b00001:
+                    if debug_mode&0b000001:
                         prediction = Tracker.Filters[k].Predicted_X[i]
                         try:
                             prediction_err = Tracker.Model.measure(Tracker.Filters[k].Predicted_X_error[i])
@@ -1018,37 +1022,37 @@ class DataFileExtended(clickpoints.DataFile):
                                                          style='{"scale":%.2f}'%(pred_err)))
 
                 # Case 3: we want to see the measurement markers
-                if i in Tracker.Filters[k].Measurements.keys() and ((debug_mode&0b10000)or(debug_mode&0b00010)):
+                if i in Tracker.Filters[k].Measurements.keys() and ((debug_mode&0b010000)or(debug_mode&0b000010)):
                     meas = Tracker.Filters[k].Measurements[i]
                     meas_x = meas.PositionX
                     meas_y = meas.PositionY
 
                     meas_err = meas.Covariance
-                    if debug_mode&0b10000:
+                    if debug_mode&0b010000:
                         stateset.append(dict(filter=db_filter,
                                              log_prob=prob,
                                              image=image,
                                              type=self.TYPE_MEASUREMENT,
                                              state_vector=np.array([meas_x, meas_y]),
                                              state_error=meas_err))
-                    if debug_mode&0b00010:
+                    if debug_mode&0b000010:
                         measurement_markerset.append(dict(image=image, x=meas_y, y=meas_x,
                                                           text="Track %s" % (db_track.id),
                                                           track=None,
                                                           style=None,
                                                           type=self.detection_marker_type))
 
-
-        try:
-            prob_gain = Tracker.Probability_Gain[i]
-            prob_gain_dict = Tracker.Probability_Gain_Dicts[i]
-            prob_assign_dict = Tracker.Probability_Assignment_Dicts[i]
-            self.setProbabilityGain(image=image, tracker=db_tracker,
-                                    probability_gain=prob_gain,
-                                    probability_gain_dict=prob_gain_dict,
-                                    probability_assignment_dict=prob_assign_dict)
-        except KeyError:
-            pass
+        if debug_mode & 0b100000:
+            try:
+                prob_gain = Tracker.Probability_Gain[i]
+                prob_gain_dict = Tracker.Probability_Gain_Dicts[i]
+                prob_assign_dict = Tracker.Probability_Assignment_Dicts[i]
+                self.setProbabilityGain(image=image, tracker=db_tracker,
+                                        probability_gain=prob_gain,
+                                        probability_gain_dict=prob_gain_dict,
+                                        probability_assignment_dict=prob_assign_dict)
+            except KeyError:
+                pass
 
         # if len(filter_list)>0:
         #     self.setFilters(filter_id=[f["filter_id"] for f in filter_list],
@@ -1059,9 +1063,9 @@ class DataFileExtended(clickpoints.DataFile):
         #                     model=[f["model"] for f in filter_list])
 
 
-        if (debug_mode&0b00001):
+        if (debug_mode&0b000001):
             markerset.extend(prediction_markerset)
-        if (debug_mode&0b00010):
+        if (debug_mode&0b000010):
             markerset.extend(measurement_markerset)
 
         self.setMarkers(image=[m["image"] for m in markerset],
@@ -1072,7 +1076,7 @@ class DataFileExtended(clickpoints.DataFile):
                         text=[m["text"] for m in markerset],
                         style=[m["style"] for m in markerset])
 
-        if ((debug_mode&0b10000)or(debug_mode&0b01000)or(debug_mode&0b00100)):
+        if ((debug_mode&0b010000)or(debug_mode&0b001000)or(debug_mode&0b000100)):
             self.setStates(image=[m["image"] for m in stateset],
                            filter=[m["filter"] for m in stateset],
                            type=[m["type"] for m in stateset],
