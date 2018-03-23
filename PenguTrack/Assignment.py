@@ -2,16 +2,20 @@ from scipy.optimize import linear_sum_assignment
 import numpy as np
 from copy import copy
 
-def cost_from_logprob(logprob):
+def hungarian_assignment(*args, **kwargs):
+    return linear_sum_assignment(*args, **kwargs)
+
+def cost_from_logprob(logprob, value=None):
     cost_matrix = np.copy(logprob)
+    if value is None:
+        value = cost_matrix
     if cost_matrix.std() > 0.:
         # optimize range of values after exponential function
-        cost_matrix -= cost_matrix.min()
-        cost_matrix *= 745. / (cost_matrix.max() - cost_matrix.min())
-        # cost_matrix *= 1454
-        cost_matrix -= 745
-    cost_matrix = -1 * np.exp(cost_matrix)
-    return cost_matrix
+        # value -= cost_matrix.min()
+        # value *= 745. / (cost_matrix.max() - cost_matrix.min())
+        # value -= 745
+        value = -1. * np.exp(value)
+    return value
 
 
 def greedy_assignment(cost):
@@ -79,6 +83,57 @@ def splitted_solver(mat, dom_threshold=0.5):
     args = np.argsort(r0)
     return r0[args], c0[args]
 
+def network_assignment(cost, order=2, threshold=None, method="linear"):
+    cost = np.array(cost)
+    if threshold is None:
+        threshold = np.nanmax(cost)
+    # dict to store results
+    row_col = {}
+    # Do for each track
+    for i in range(cost.shape[0]):
+        print("doing ", i)
+        # dict to store ids of matching candidates
+        all_rows = set([i])
+        all_cols = set()
+        for n in range(order):
+            if n%2:
+                id_list = list(all_cols)
+                # ids of horizontal candidates
+                ids = np.where(cost[:, id_list] < threshold)[0]
+                all_rows.update(ids)
+            else:
+                id_list = list(all_rows)
+                # ids of horizontal candidates
+                ids = np.where(cost[id_list] < threshold)[1]
+                all_cols.update(ids)
+
+        # dictionary to translate between sliced array and main arrays
+        row_dict = dict(enumerate(sorted(all_rows)))
+        col_dict = dict(enumerate(sorted(all_cols)))
+
+        # slice array
+        inner_array = cost[sorted(all_rows)][:, sorted(all_cols)]
+        print("length ", inner_array.shape)
+        # classical assignment in local array
+        if method == "greedy":
+            r, c = greedy_assignment(inner_array)
+        else:
+            r, c = linear_sum_assignment(inner_array)
+
+        # append results to match list
+        for R, C in zip(r, c):
+            # translate to entries in main arrays
+            R = row_dict[R]
+            C = col_dict[C]
+            # if cost[R, C] < threshold:
+            if R not in row_col:
+                row_col.update({R: C})
+                print("Match!")
+            elif cost[R, row_col[R]] > cost[R, C]:
+                row_col.update({R: C})
+                print("Overwriting Match!")
+    rows, cols = np.array(list(row_col.items())).T
+    return rows, cols
 # def hungarian(cost):
 #     n, m = cost.shape
 #     row_uncovered = np.ones(n, dtype=bool)
