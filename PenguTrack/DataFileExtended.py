@@ -29,6 +29,7 @@ from PenguTrack.Filters import Filter as PT_Filter
 import PenguTrack.Filters
 from PenguTrack.Detectors import Measurement as PT_Measurement
 from PenguTrack.Models import Model, VariableSpeed
+from .Assignment import reverse_dict
 import ast
 import scipy.stats
 import json
@@ -171,15 +172,6 @@ def parse_tracker_class(filter_class):
         return str(filter_class).split("'")[1].split(".")[-1]
     except IndexError:
         return "MultiFilter"
-
-
-def reverse_dict(D):
-    """
-    Auxiliar function to switch dict entries with keys.
-    :param D: dictionary
-    :return: dictionary
-    """
-    return dict([[D[d],d] for d in D])
 
 class MatrixField(peewee.BlobField):
     """
@@ -1357,6 +1349,9 @@ class DataFileExtended(clickpoints.DataFile):
         image_ids1 = [m.image_id for m in track1.markers]
         self.db.execute_sql()
 
+    def tracker_type_dict(self):
+        res = self.db.execute_sql("select tracker_id, name  from (select tracker_id, track_id from filter group by tracker_id) t inner join track on t.track_id = track.id inner join markertype m on m.id = track.type_id").fetchall()
+        return dict(res)
 
 def add_PT_Tracks(tracks):
     tracks_object = {}
