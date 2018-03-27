@@ -53,6 +53,8 @@ from skimage.feature import peak_local_max
 
 from .Parameters import Parameter, ParameterList
 
+import pandas
+
 try:
     from skimage.filters import threshold_niblack
 except IOError:
@@ -192,7 +194,7 @@ class Detector(object):
         self.ParameterList = ParameterList()
 
     def detect(self, *args, **kwargs):
-        return np.random.rand(2)
+        return pandas.DataFrame(np.random.rand(2), columns=["PositionX", "PositionY"])
 
     def __getattribute__(self, item):
         if item != "ParameterList":
@@ -206,7 +208,7 @@ class BlobDetector(Detector):
     """
     Detector classifying objects by size and number to be used with pengu-track modules.
     """
-    def __init__(self, object_size, object_number, threshold=None, return_regions=False):
+    def __init__(self, object_size, object_number, threshold=None):
         """
         Detector classifying objects by size and number.
 
@@ -227,7 +229,7 @@ class BlobDetector(Detector):
         self.ObjectSize = int(object_size)
         self.ObjectNumber = int(object_number)
         self.Threshold = threshold
-        self.ReturnRegions = bool(return_regions)
+        # self.ReturnRegions = bool(return_regions)
         self.ParameterList = ParameterList(Parameter("ObjectSize", object_size, min=0, value_type=int),
                                            Parameter("ObjectNumber", object_number, min=0, value_type=int),
                                            Parameter("Threshold", threshold, value_type=float)
@@ -269,13 +271,9 @@ class BlobDetector(Detector):
                         skimage.filters.laplace(
                             skimage.filters.gaussian(image.astype(np.uint8), self.ObjectSize)) > self.Threshold
                         ))
-        if self.ReturnRegions:
-            return regions
-        elif len(regions) > 0:
-            return [Measurement(1., [props.centroid[0], props.centroid[1]]) for props in regions]
-            # return np.array([[props.centroid[0], props.centroid[1], props.area] for props in regions], ndmin=2)
-        else:
-            return []
+
+        return pandas.DataFrame([[props.centroid[0], props.centroid[1], 1.] for props in regions],
+                                columns=["PositionX", "PositionY", "Log_Probability"]), None
 
 
 class NKCellDetector(Detector):
@@ -316,16 +314,16 @@ class NKCellDetector(Detector):
             intensities = prop.intensity_image[prop.image]
             mean_int = np.mean(intensities)
             std_int = np.std(intensities)
-            out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
+            # out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
+            out.append([prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int, prob, std_int])
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
 
-        Positions3D = []
         res = 6.45 / 10
-        for pos in out:
-            posZ = pos.PositionZ
-            Positions3D.append(Measurement(pos.Log_Probability,
-                                           [pos.PositionX * res, pos.PositionY * res, posZ * 10]))
+        out.PositionX *= res
+        out.PositionY *= res
+        out.PositionZ *= 10
 
-        return Positions3D, mask
+        return out, mask
 
 class NKCellDetector2(Detector):
     def __init__(self):
@@ -364,16 +362,16 @@ class NKCellDetector2(Detector):
             intensities = prop.intensity_image[prop.image]
             mean_int = np.mean(intensities)
             std_int = np.std(intensities)
-            out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
+            # out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
+            out.append([prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int, prob, std_int])
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
 
-        Positions3D = []
         res = 6.45 / 10
-        for pos in out:
-            posZ = pos.PositionZ
-            Positions3D.append(Measurement(pos.Log_Probability,
-                                           [pos.PositionX * res, pos.PositionY * res, posZ * 10]))
+        out.PositionX *= res
+        out.PositionY *= res
+        out.PositionZ *= 10
 
-        return Positions3D, mask
+        return out, mask
 
 class TCellDetector(Detector):
     """
@@ -443,16 +441,16 @@ class TCellDetector(Detector):
             intensities = prop.intensity_image[prop.image]
             mean_int = np.mean(intensities)
             std_int = np.std(intensities)
-            out.append(Measurement(prob, [prop.centroid[0], prop.centroid[1], mean_int], data=std_int))
+            # out.append(Measurement(prob, [prop.centroid[0], prop.centroid[1], mean_int], data=std_int))
+            out.append([prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int, prob, std_int])
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
 
-        Positions3D = []
         res = 6.45 / 10
-        for pos in out:
-            posZ = pos.PositionZ
-            Positions3D.append(Measurement(pos.Log_Probability,
-                                                      [pos.PositionX * res, pos.PositionY * res, posZ * 10]))
+        out.PositionX *= res
+        out.PositionY *= res
+        out.PositionZ *= 10
 
-        return Positions3D, mask
+        return out, mask
 
 class SimpleAreaDetector2(Detector):
     """
@@ -462,13 +460,8 @@ class SimpleAreaDetector2(Detector):
                  threshold=None,
                  lower_limit=None,
                  upper_limit=None,
-                 distxy_boundary = 10,
-                 distz_boundary = 21,
-                 pre_stitching = True,
-                 return_regions=False,
-                 get_all=False,
-                 return_labeled=False,
-                 only_for_detection=False):
+                 distxy_boundary=10,
+                 distz_boundary=21):
         """
         Detector classifying objects by number and size, taking area-separation into account.
 
@@ -483,7 +476,6 @@ class SimpleAreaDetector2(Detector):
             Threshold for binning the image.
         """
         super(SimpleAreaDetector2, self).__init__()
-        self.pre_stitching = pre_stitching
         self.distxy_boundary = distxy_boundary
         self.distz_boundary = distz_boundary
         self.start_ObjectArea = int(object_area)
@@ -501,10 +493,10 @@ class SimpleAreaDetector2(Detector):
 
         self.Threshold = threshold
         self.Sigma = np.sqrt((self.UpperLimit-self.LowerLimit)/(4*np.log(1./0.95))) # self.ObjectArea/2.
-        self.ReturnRegions = bool(return_regions)
-        self.GetAll = bool(get_all)
-        self.ReturnLabeled = bool(return_labeled)
-        self.OnlyForDetection = bool(only_for_detection)
+        # self.ReturnRegions = bool(return_regions)
+        # self.GetAll = bool(get_all)
+        # self.ReturnLabeled = bool(return_labeled)
+        # self.OnlyForDetection = bool(only_for_detection)
 
         self.ParameterList = ParameterList(Parameter("ObjectArea", object_area, min=0., value_type=float),
                                            Parameter("ObjectNumber", object_number, min=0, value_type=int),
@@ -513,8 +505,7 @@ class SimpleAreaDetector2(Detector):
                                            Parameter("LowerLimit", self.LowerLimit, value_type=float),
                                            Parameter("UpperLimit", self.UpperLimit, value_type=float),
                                            Parameter("distxy_boundary", self.distxy_boundary, value_type=float),
-                                           Parameter("distz_boundary", self.distz_boundary, value_type=float),
-                                           Parameter("pre_stitching", self.pre_stitching, value_type=bool)
+                                           Parameter("distz_boundary", self.distz_boundary, value_type=float)
                                            )
 
 
@@ -536,15 +527,12 @@ class SimpleAreaDetector2(Detector):
             List of information about each blob of adequate size.
         """
         image[mask] = np.zeros_like(image)[mask]
-        # image //= 2
         j_max = np.amax(image)
         stack = np.zeros((j_max, image.shape[0], image.shape[1]), dtype=np.bool)
         for j in range(j_max):
             stack[j, image == j] = True
 
         labels, n = label(stack, structure=np.ones((3, 3, 3)))
-        # labels, n = skimage.measure.label(stack.astype(np.uint8), connectivity=3)
-
 
         index_data2 = np.zeros_like(image)
         for l in labels:
@@ -554,18 +542,14 @@ class SimpleAreaDetector2(Detector):
             index_data2 = np.linalg.norm(index_data2, axis=-1)
 
         labeled = skimage.measure.label(index_data2, connectivity=2)
-        # labeled = skimage.measure.label(~mask, connectivity=2)
 
         # Filter the regions for area and convexity
-        if self.GetAll:
-            regions_list = [prop for prop in skimage.measure.regionprops(labeled)]
-        else:
-            regions_list = [prop for prop in skimage.measure.regionprops(labeled, intensity_image=image)
+        regions_list = [prop for prop in skimage.measure.regionprops(labeled, intensity_image=image)
                        if (self.UpperLimit > prop.area > self.LowerLimit)]
         if len(regions_list) <= 0:
             return np.array([])
 
-        print("Object Area at ",self.ObjectArea, "pm", self.Sigma)
+        print("Object Area at ", self.ObjectArea, "pm", self.Sigma)
 
         out = []
         sigma = self.Sigma
@@ -573,47 +557,42 @@ class SimpleAreaDetector2(Detector):
         for prop in regions_list:
             prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
                                                             prop.area - mu) / sigma) ** 2
-            if self.ReturnRegions:
-                out.append(prop, prob)
-            else:
-                # prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
-                #                                                                         prop.area - mu) / sigma) ** 2
-                # print(prob)
-                # out.append(Measurement(prob, prop.centroid))
-                intensities = prop.intensity_image[prop.image]
-                mean_int = np.mean(intensities)
-                std_int = np.std(intensities)
-                out.append(Measurement(prob, [prop.centroid[0], prop.centroid[1], mean_int], data=std_int))
-        if self.ReturnRegions:
-            if self.ReturnLabeled:
-                return out, labeled
-            else:
-                return out
+
+            intensities = prop.intensity_image[prop.image]
+            mean_int = np.mean(intensities)
+            std_int = np.std(intensities)
+            out.append([prop.centroid[0], prop.centroid[1], mean_int, prob, std_int])
+
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+
+
+        # #idea for speed up of the following
+        # vectorXY = out["PositionX", "PositionY"].values
+        # distxy_mat = np.linalg.norm(vectorXY[:, None, :]-vectorXY[None, :, :], axis=-1)
+        # vectorZ = out["PositionZ"].values
+        # distz_mat = np.abs(vectorZ[:,None]-vectorZ[None,:])
+        # mask = ~np.any((distxy_mat < self.distxy_boundary) & (distxy_mat != 0) & (distz_mat < self.distz_boundary),
+        #                axis=-1)
+        #
+        # out = out[mask]
+
         Positions2D = out
-        # Positions2D = self.Detector.detect(~db.getMask(frame=i, layer=0).data.astype(bool))
         Positions2D_cor = []
         for i1, pos1 in enumerate(Positions2D):
             Log_Probability1 = pos1.Log_Probability
-            Track_Id1 = pos1.Track_Id
-            Frame1 = pos1.Frame
             x1 = pos1.PositionX
             y1 = pos1.PositionY
             z1 = pos1.PositionZ
-            # z1 = index_data[int(x1), int(y1)] * 10.
-            # PosZ1 = index_data[int(x1), int(y1)]
             inc = 0
             for j1, pos2 in enumerate(Positions2D):
                 Log_Probability2 = pos2.Log_Probability
                 Log_Probability = (Log_Probability1 + Log_Probability2)/2.
-                # Log_Probabilitymax = np.max([Log_Probability1,Log_Probability2])
                 x2 = pos2.PositionX
                 y2 = pos2.PositionY
                 z2 = pos2.PositionZ
-                # z2 = index_data[int(x2), int(y2)] * 10.
-                # PosZ2 = index_data[int(x2), int(y2)]
+
                 PosZ = (z1 + z2)/2.
                 dist = np.sqrt((x1 - x2) ** 2. + (y1 - y2) ** 2.)
-                # distz = np.abs(z1 - z2)
                 distz = np.abs(z1 - z2)*10.
                 if dist < self.distxy_boundary and dist != 0 and distz < self.distz_boundary:
                     x3 = (x1 + x2) / 2.
@@ -621,37 +600,19 @@ class SimpleAreaDetector2(Detector):
                     if [x3, y3, Log_Probability, PosZ] not in Positions2D_cor:
                         Positions2D_cor.append([x3, y3, Log_Probability, PosZ])
                         print("Replaced")
-                        # print(x3)
-                        # print(y3)
-                        # print (Log_Probabilitymax)
-                        # print(PosZmax)
-                        # print('###')
                     inc += 1
             if inc == 0:
                 Positions2D_cor.append([x1, y1, Log_Probability1, z1])
-        if self.OnlyForDetection:
-            return Positions2D_cor
+
         Positions3D = []
         res = 6.45 / 10
-        if self.pre_stitching:
-            for pos in Positions2D_cor:
-                # posZ = index_data[int(pos[0]), int(pos[1])]
-                posZ = pos[3]
-                Positions3D.append(Measurement(pos[2], [pos[0] * res, pos[1] * res, posZ * 10]))
-            if self.ReturnLabeled:
-                return Positions3D, labeled
-            else:
-                return Positions3D
-        # for pos in Positions2D:
-        #     posZ = pos.mean_int  # war mal "Index_Image"
-        #     Positions3D.append(Measurement(pos.Log_Probability,
-        #                                           [pos.PositionX * res, pos.PositionY * res, posZ * 10],
-        #                                           frame=pos.Frame,
-        #                                           track_id=pos.Track_Id))
-        # if return_labeled:
-        #     return Positions3D, labeled
-        # else:
-        #     return Positions3D
+        for pos in Positions2D_cor:
+            Positions3D.append([pos[0] * res, pos[1] * res, pos[3] * 10, pos[2]])
+
+        Positions3D = pandas.DataFrame(Positions3D, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability"])
+
+        return Positions3D, None
+
 
 class SimpleAreaDetector(Detector):
     """
@@ -694,9 +655,6 @@ class SimpleAreaDetector(Detector):
         self.Threshold = threshold
         self.Sigma = np.sqrt((self.UpperLimit-self.LowerLimit)/(4*np.log(1./0.95))) # self.ObjectArea/2.
 
-        self.ReturnRegions = bool(return_regions)
-        self.GetAll = bool(get_all)
-        self.ReturnLabeled = bool(return_labeled)
 
         self.ParameterList = ParameterList(Parameter("ObjectArea", object_area, min=0., value_type=float),
                                            Parameter("ObjectNumber", object_number, min=0, value_type=int),
@@ -728,15 +686,12 @@ class SimpleAreaDetector(Detector):
         labeled = skimage.measure.label(image, connectivity=2)
 
         # Filter the regions for area and convexity
-        if self.GetAll:
-            regions_list = [prop for prop in skimage.measure.regionprops(labeled)]
-        else:
-            regions_list = [prop for prop in skimage.measure.regionprops(labeled)
+        regions_list = [prop for prop in skimage.measure.regionprops(labeled)
                        if (self.UpperLimit >= prop.area >= self.LowerLimit and prop.solidity > 0.5)]
         if len(regions_list) <= 0:
             return np.array([])
 
-        print("Object Area at ",self.ObjectArea, "pm", self.Sigma)
+        print("Object Area at ", self.ObjectArea, "pm", self.Sigma)
 
         out = []
         sigma = self.Sigma
@@ -744,17 +699,11 @@ class SimpleAreaDetector(Detector):
         for prop in regions_list:
             prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
                                                             prop.area - mu) / sigma) ** 2
-            if self.ReturnRegions:
-                out.append(prop, prob)
-            else:
-                # prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
-                #                                                                         prop.area - mu) / sigma) ** 2
-                # print(prob)
-                out.append(Measurement(prob, prop.centroid))
-        if self.ReturnLabeled:
-            return out, labeled
-        else:
-            return out
+            o = list(prop.centroid)
+            o.append(prob)
+            out.append(o)
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"])
+        return out, None
 
 
 def extended_regionprops(label_image, intensity_image=None, cache=True):
@@ -1214,10 +1163,26 @@ class RegionPropDetector(Detector):
     def detect(self, image):
         intensity_image = rgb2gray(image)
         regions = extended_regionprops(skimage.measure.label(image), intensity_image=intensity_image)
-        return [Measurement(
-            np.sum([filter.filter([region]) for filter in self.Filters]),
-            np.asarray(region.centroid)[:, None], data=dict([[filter.prop, [region.__getattribute__(filter.prop), filter.filter([region])]] for filter in self.Filters]))
-            for region in regions]
+        filter_dict = dict([[filter.prop, filter] for filter in self.Filters])
+
+        cols = ["PositionX", "PositionY", "Log_Probability"]
+        cols.extend(sorted(filter_dict.keys()))
+
+        out = []
+        for region in regions:
+            o = []
+            o.extend(region.centroid)
+            prob = 0.
+            o.append(prob)
+            for key in cols[2:]:
+                filter = filter_dict[key]
+                cols.update(filter.prop)
+                o[cols.index("Log_Probability")] += filter.filter([region])
+                o.append(region.__getattribute__(filter.prop))
+            out.append(o)
+
+        out = pandas.DataFrame(out, cols)
+        return out, None
 
 
 class AreaDetector(Detector):
@@ -1267,7 +1232,7 @@ class AreaDetector(Detector):
                                            )
 
     @detection_parameters(image=dict(frame=0, mask=False))
-    def detect(self, image, return_regions=False):
+    def detect(self, image):
         """
         Detection function. Parts the image into blob-regions with size according to their area.
         Returns information about the regions.
@@ -1320,17 +1285,8 @@ class AreaDetector(Detector):
         if len(regions_list) <= 0:
             return np.array([])
 
-        # import matplotlib.pyplot as plt
-        # print(self.ObjectArea, len(self.Areas))
+
         print("Object Area at ",self.ObjectArea, "pm", self.Sigma)
-        #if len(self.Areas)>1e3:
-        #    bins = int(np.amax(self.Areas)+1)
-        #    plt.hist(self.Areas, bins=bins)
-        #    hist, bin_edges = np.histogram(self.Areas, bins=bins)
-            # plt.figure()
-            # hfft = np.fft.fft(hist)
-            # plt.plot(hfft)
-        #    plt.show()
 
         out = []
         regions = {}
@@ -1341,41 +1297,34 @@ class AreaDetector(Detector):
         for prop in regions.values():
             n = np.ceil(prop.area/self.ObjectArea)
             if self.LowerLimit < prop.area < self.UpperLimit:
-                # if return_regions:
-                #     out.append(prop)
-                # else:
-                #     sigma = self.Sigma
-                #     mu = self.ObjectArea
-                #     prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5*((prop.area - mu)/sigma) ** 2
-                #     out.append(Measurement(prob, prop.centroid))
-                out.extend(self.measure(prop, 1, return_regions))
+                out.extend(self.measure(prop, 1))
             elif n < N_max:
                 pass
-                # out.extend(self.measure(prop, n, return_regions))
-        return out
+        return pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"])
 
-    def measure(self, prop, n, return_regions):
+    def measure(self, prop, n):
         out = []
-        if n ==1:
-            if return_regions:
-                out.append(prop)
-            else:
-                sigma = self.Sigma
-                mu = self.ObjectArea
+        if n == 1:
+            sigma = self.Sigma
+            mu = self.ObjectArea
+            prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
+                                                                                        prop.area - mu) / sigma) ** 2
+            o = []
+            o.extend(prop.centroid)
+            o.append(prob)
+            out.append(o)
+        elif n > 1:
+            if min(prop.image.shape) < 2:
+                bb = np.asarray(prop.bbox)
+                sigma = 2 * self.Sigma
+                mu = 2 * self.ObjectArea
                 prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
                                                                                             prop.area - mu) / sigma) ** 2
-                out.append(Measurement(prob, prop.centroid))
-        elif n>1:
-            if min(prop.image.shape) < 2:
-                if return_regions:
-                    out.extend([prop, prop])
-                else:
-                    bb = np.asarray(prop.bbox)
-                    sigma = 2 * self.Sigma
-                    mu = 2 * self.ObjectArea
-                    prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
-                                                                                                prop.area - mu) / sigma) ** 2
-                    out.extend([Measurement(prob, bb[:2]+i/float(n+1)*(bb[2:]-bb[:2])) for i in range(n+1)])
+                for i in range(n+1):
+                    o = []
+                    o.extend(bb[:2]+i/float(n+1)*(bb[2:]-bb[:2]))
+                    o.append(prob)
+                    out.append(o)
             else:
                 distance = ndi.distance_transform_edt(prop.image)
                 local_maxi = peak_local_max(distance, indices=False,
@@ -1384,14 +1333,16 @@ class AreaDetector(Detector):
                 labels = watershed(-distance, markers, mask=prop.image)
                 new_reg = skimage.measure.regionprops(labels)
                 new_reg = [new for new in new_reg if new.label <= n]
-                if return_regions:
-                    out.extend(new_reg)
-                else:
-                    sigma = 2 * self.Sigma
-                    mu = 2 * self.ObjectArea
-                    prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
-                                                                                                prop.area - mu) / sigma) ** 2
-                    out.extend([Measurement(prob, np.asarray(prop.bbox)[:2] + new.centroid) for new in new_reg])
+
+                sigma = 2 * self.Sigma
+                mu = 2 * self.ObjectArea
+                prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
+                                                                                            prop.area - mu) / sigma) ** 2
+                for new in new_reg:
+                    o = []
+                    o.extend(np.asarray(prop.bbox)[:2] + new.centroid)
+                    o.append(prob)
+                    out.append(o)
         return out
 
 
@@ -1468,21 +1419,16 @@ class AreaBlobDetector(Detector):
         mask = (areas >= self.Threshold)
         out = []
 
-        if return_regions:
-            for i, a in enumerate(areas):
-                if mask[i]:
-                    for j in range(int(a//(areas[mask].mean()))+1):
-                        out.append(regions[i])
-            return out
 
-        else:
-            for i, a in enumerate(areas):
-                if mask[i]:
-                    for j in range(int(a//(areas[mask].mean()))+1):
-                        # out.append(regions[i].centroid)
-                        out.append(Measurement(1., regions[i].centroid))
-            # return np.array(out, ndmin=2)
-            return out
+        for i, a in enumerate(areas):
+            if mask[i]:
+                for j in range(int(a//(areas[mask].mean()))+1):
+                    # out.append(regions[i].centroid)
+                    o = []
+                    o.extend(regions[i].centroid)
+                    o.append(1)
+                    out.append(o)
+        return pandas.DataFrame(out, columns=["PositionsX", "PositionsY", "Log_Probability"]), None
 
 
 class WatershedDetector(Detector):
@@ -1550,10 +1496,10 @@ class WatershedDetector(Detector):
         if return_regions:
             return regions
         elif len(regions) > 0:
-            return [Measurement(1., [props.centroid[0], props.centroid[1]]) for props in regions]
-            # return np.array([[props.centroid[0], props.centroid[1], props.area] for props in regions], ndmin=2)
+            return pandas.DataFrame([[1., props.centroid[0], props.centroid[1]] for props in regions],
+                                    columns=["Log_Probability", "PositionX", "PositionY"]), None
         else:
-            return []
+            return [], None
 
 
 class Segmentation(object):
