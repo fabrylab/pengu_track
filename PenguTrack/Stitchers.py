@@ -29,8 +29,9 @@ from .Models import Model, VariableSpeed
 from .DataFileExtended import DataFileExtended,\
     add_PT_Tracks, add_PT_Tracks_from_Tracker, load_tracks_from_clickpoints, load_measurements_from_clickpoints, \
     reverse_dict
-from PenguTrack.Filters import greedy_assignment
-from scipy.optimize import linear_sum_assignment
+# from PenguTrack.Filters import greedy_assignment
+# from scipy.optimize import linear_sum_assignment
+from .Assignment import *
 import time
 import peewee
 from copy import copy
@@ -40,22 +41,26 @@ import inspect
 all_filters = tuple([v for v in dict(inspect.getmembers(Filters)).values() if type(v)==type])
 
 class new_Stitcher(object):
-    def __init__(self, greedy=False):
+    def __init__(self, greedy=False, method="hungarian"):
         self.Track_Dict = {}
         self.Track_array = None
         self.db = None
         self.greedy = bool(greedy)
+        self.method = str(method)
         self.name = "Stitcher"
 
     def load_tracks_from_clickpoints(self, path, type):
         db = clickpoints.DataFile(path)
         tracks = db.getTracks(type=type)
+        if len(tracks) < 1:
+            raise ValueError("The given track-type is empty!")
         track_dict = dict(enumerate([t.id for t in tracks]))
         array = np.array([db.db.execute_sql("select (SELECT x from marker as m WHERE m.image_id = i.id AND m.track_id=?) as x, (SELECT y from marker as m WHERE m.image_id = i.id AND m.track_id=?) as y from image as i order by sort_index",[track_dict[k],track_dict[k]]).fetchall() for k in sorted(track_dict.keys())], dtype=float)
         print("Tracks loaded!")
         self.db, self.Track_array, self.Track_Dict = db, array, track_dict
 
         self.stiched_type = self.db.setMarkerType(name=self.name, color="F0F0FF")
+
 
     def add_PT_Tracks_from_Tracker(self, tracks):
         frames = set()
@@ -137,14 +142,19 @@ class new_Stitcher(object):
         Frames = np.cumsum(np.ones_like(self.Track_array[:,:,0]), axis=-1)
         return self.pos_delta(kernel=kernel, ignore_nans=ignore_nans, array=Frames)
 
-    def _stitch_(self, cost, threshold=np.inf):
+    def _stitch_(self, cost, threshold=np.inf, dummy=False):
         print(np.mean(cost>=threshold))
         cost [cost==np.amax(cost)] == np.nextafter(np.inf, 0)/(max(cost.shape)**2)
 
-        if self.greedy:
+        if self.greedy or self.method == "greedy":
             rows, cols = greedy_assignment(cost)
+        elif self.method == "network":
+            if threshold == np.inf:
+                Warning("Threshold is too high, network assignment will cost more computational time than hungarian!")
+            rows, cols = network_assignment(cost, threshold=threshold)
         else:
-            rows, cols = linear_sum_assignment(cost)
+            rows, cols = hungarian_assignment(cost)
+
         print("Assigned Tracks!")
 
         Frames = np.cumsum(np.ones_like(self.Track_array[:,:,0]), axis=-1)
@@ -153,24 +163,40 @@ class new_Stitcher(object):
         # get positions where cumsum of not_none is 1 and track is defined (first occurence of track)
         first_frame = Frames[(np.cumsum(not_none, axis=-1) == 1) & (not_none == True)]
 
-        dr = dict(np.array([rows, cols]).T)
-        dc = dict(np.array([cols, rows]).T)
+        # dr = dict(np.array([rows, cols]).T)
+        # dc = dict(np.array([cols, rows]).T)
         Tracks = reverse_dict(self.Track_Dict)
+        stitched = {}
         for j, k in enumerate(rows):
             if not cost[rows[j],cols[j]] >= threshold and not rows[j]==cols[j]:
                 print("preparing to stitch...")
                 a = rows[j]
                 b = cols[j]
-                while self.Track_Dict[a] not in Tracks:
-                    a = dc[a]
-                while self.Track_Dict[b] not in Tracks:
-                    b = dr[b]
+                if self.Track_Dict[a] not in Tracks:
+                    # try forward search:
+                    try:
+                        while self.Track_Dict[a] not in Tracks:
+                            a = stitched[a]
+                    # elso do backward search
+                    except KeyError:
+                        while self.Track_Dict[a] not in Tracks:
+                            a = reverse_dict(stitched)[a]
+                if self.Track_Dict[b] not in Tracks:
+                    # try backward search:
+                    try:
+                        while self.Track_Dict[b] not in Tracks:
+                            b = reverse_dict(stitched)[b]
+                    # else do forward search:
+                    except KeyError:
+                        while self.Track_Dict[b] not in Tracks:
+                            b = stitched[b]
                 appended_id, erased_id = np.array([a,b])[np.argsort([first_frame[a], first_frame[b]])]
+                stitched.update({a:b})
                 print("stitching %s and %s"%(appended_id, erased_id))
-                self.__stitch__(self.Track_Dict[appended_id], self.Track_Dict[erased_id])
+                self.__stitch__(self.Track_Dict[appended_id], self.Track_Dict[erased_id], dummy=dummy)
                 Tracks.pop(self.Track_Dict[erased_id])
 
-    def _stitch_from_rc(self, rows, cols):
+    def _stitch_from_rc(self, rows, cols, dummy=False):
         Frames = np.cumsum(np.ones_like(self.Track_array[:,:,0]), axis=-1)
         # look where tracks are defined
         not_none = np.all(~np.isnan(self.Track_array), axis=-1)
@@ -186,29 +212,70 @@ class new_Stitcher(object):
                 a = rows[j]
                 b = cols[j]
                 while self.Track_Dict[a] not in Tracks:
-                    a = dc[a]
+                    try:
+                        a = dc[a]
+                    except KeyError:
+                        a = dr[a]
                 while self.Track_Dict[b] not in Tracks:
-                    b = dr[b]
+                    try:
+                        b = dr[b]
+                    except KeyError:
+                        b = dc[b]
                 appended_id, erased_id = np.array([a,b])[np.argsort([first_frame[a], first_frame[b]])]
                 print("stitching %s and %s"%(appended_id, erased_id))
-                self.__stitch__(self.Track_Dict[appended_id], self.Track_Dict[erased_id])
+                self.__stitch__(self.Track_Dict[appended_id], self.Track_Dict[erased_id], dummy=dummy)
                 Tracks.pop(self.Track_Dict[erased_id])
 
-    def __stitch__(self, appended_id, erased_id):
+    def __stitch__(self, appended_id, erased_id, dummy=False):
         i = reverse_dict(self.Track_Dict)[appended_id]
         j = reverse_dict(self.Track_Dict)[erased_id]
         if self.db:
-            self.db.getTrack(appended_id).merge(erased_id, mode="average")
+            if not dummy:
+                self.db.getTrack(appended_id).merge(erased_id, mode="average")
             # look where tracks are defined
             not_none = np.all(~np.isnan(self.Track_array[j]), axis=-1)
             # get positions where cumsum of not_none is 1 and track is defined (first occurence of track)
             frame = (np.cumsum(not_none, axis=-1) == 1) & (not_none == True)
             x, y = self.Track_array[j][frame].T
-            self.db.setMarker(x=x, y=y, type=self.stiched_type, image=self.db.getImages(frame=np.where(frame)[0])[0])
+            try:
+                self.db.setMarker(x=x, y=y,
+                                  type=self.stiched_type,
+                                  image=self.db.getImages(frame=np.where(frame)[0])[0],
+                                  text="%s & %s"%(appended_id, erased_id))
+            except TypeError:
+                print("could not set debug marker!")
+        self.Track_array[appended_id] = np.nanmean([self.Track_array[appended_id], self.Track_array[erased_id]], axis=0)
+        self.Track_array[erased_id] = np.nan
         print("stitch!", appended_id, erased_id)
 
     def stitch(self):
         pass
+
+    def write_to_db(self, db, marker_type):
+        ids = []
+        x = []
+        y = []
+        frames = []
+        types = []
+        Frames = np.cumsum(np.ones_like(self.Track_array[0,:,0]), axis=-1)
+        for k, array in enumerate(self.Track_array):
+            print(k)
+            if np.any(~np.isnan(array)):
+                db_track = db.setTrack(type=marker_type)
+                print("as ", db_track.id)
+                mask = np.all(~np.isnan(array), axis=-1)
+                ids.extend(db_track.id * np.ones_like(Frames)[mask])
+                x.extend(array[:,0][mask])
+                y.extend(array[:,1][mask])
+                frames.extend(Frames[mask].astype(int)-1)
+                types.extend([marker_type for i in  np.ones_like(Frames)[mask]])
+                db.setMarkers(frame=frames, x=x, y=y, type=types, track=ids)
+                ids = []
+                x = []
+                y = []
+                frames = []
+                types = []
+        # frame = None, x = None, y = None, type = None, track = None
 
 class Richter_Stitcher(new_Stitcher):
     def __init__(self, greedy=False,
@@ -223,7 +290,7 @@ class Richter_Stitcher(new_Stitcher):
         self.inner_temporal_threshold = int(inner_temporal_threshold)
         self.outer_temporal_threshold = int(outer_temporal_threshold)
 
-    def stitch(self):
+    def stitch(self, dummy=False):
         # array of temporal and spatial differences between all tracks
         temp = self.temporal_diff()[:,:,0]
         space = self.spatial_diff()
@@ -270,7 +337,7 @@ class Richter_Stitcher(new_Stitcher):
                         print("Overwriting Match!")
 
         rows, cols = np.array(list(row_col.items())).T
-        self._stitch_from_rc(rows, cols)
+        self._stitch_from_rc(rows, cols, dummy=dummy)
         # for r in row_col:
         #     self.__stitch__(self.Track_Dict[r], self.Track_Dict[row_col[r]])
 
@@ -282,7 +349,7 @@ class new_DistanceStitcher(new_Stitcher):
             self.MaxF = int(max_frames)
             self.name ="DistanceStitcher"
 
-    def stitch(self):
+    def stitch(self, dummy=False):
         s = self.spatial_diff()
         t = self.temporal_diff()[:,:,0]
         cost = s/t
@@ -291,7 +358,7 @@ class new_DistanceStitcher(new_Stitcher):
         cost[cost>self.MaxV]=self.MaxV
         cost[cost<0]=self.MaxV
         cost[np.abs(t)>self.MaxF]=self.MaxV
-        self._stitch_(cost, threshold=self.MaxV)
+        self._stitch_(cost, threshold=self.MaxV, dummy=dummy)
 
 class new_MotionStitcher(new_Stitcher):
     def __init__(self, window_length, max_diff, *args, max_distance=np.inf, max_delay=np.inf, **kwargs):
@@ -302,7 +369,7 @@ class new_MotionStitcher(new_Stitcher):
         self.MaxDelay=float(max_delay)
         self.name = "MotionStitcher"
 
-    def stitch(self):
+    def stitch(self, dummy=False):
         cost = np.linalg.norm(self.vel_delta(kernel=self.kernel), axis=-1)
         s = self.pos_delta()
         s_abs = np.linalg.norm(s, axis=-1)
@@ -313,7 +380,7 @@ class new_MotionStitcher(new_Stitcher):
         # cost[np.abs(t)>self.MaxDelay] =  self.max_diff
         cost[t>self.MaxDelay] =  self.max_diff
         cost[t<=0] = self.max_diff
-        self._stitch_(cost, threshold=self.max_diff)
+        self._stitch_(cost, threshold=self.max_diff, dummy=dummy)
 
 class new_expDistanceStitcher(new_Stitcher):
     def __init__(self, k, w, *args, max_distance=np.inf, max_delay=np.inf, dim=(1,), **kwargs):
@@ -329,7 +396,7 @@ class new_expDistanceStitcher(new_Stitcher):
         self.Dim = dim
         self.name ="expDistanceStitcher"
 
-    def stitch(self):
+    def stitch(self, dummy=False):
         s = self.pos_delta()
         s_abs = np.linalg.norm(s,axis=-1)
         t = self.temporal_diff()[:,:,None]
@@ -339,7 +406,7 @@ class new_expDistanceStitcher(new_Stitcher):
         cost[s_abs>self.MaxDist] = max_cost
         cost[t.T[0].T>self.MaxDelay] = max_cost
         cost[t.T[0].T<0] = max_cost
-        self._stitch_(cost, threshold=max_cost)
+        self._stitch_(cost, threshold=max_cost, dummy=dummy)
 
 class Stitcher(object):
     def __init__(self, greedy=False):
@@ -830,17 +897,6 @@ class new_Splitter(new_Stitcher):
     def abs_pos(self):
         return np.linalg.norm(self.pos(), axis=-1)
 
-    def switch_mode(self):
-        return np.abs([np.convolve(x, [1, 2, 3, 0, -3, -6, -3, 0, 3, 2, 1], mode="same") for x in self.abs_pos()])
-
-    def _temp_local_max_(self, array, threshold):
-        mat = np.array(array)
-        mat[mat<threshold] = np.amin(mat)
-        b = np.zeros_like(mat, dtype=bool)
-        b[:, :-1] = mat[:, 1:] < mat[:, :-1]
-        b[:, 1:] &= mat[:, :-1] < mat[:, 1:]
-        return np.where(b)
-
     def _split_(self, row, collumn):
         Frames = np.cumsum(np.ones_like(self.Track_array[0,:,0]), axis=-1)
         for r,c in zip(row,collumn):
@@ -863,6 +919,39 @@ class new_Splitter(new_Stitcher):
                     db_track.split(m)
                 self.Track_Dict.update({len(self.Track_array): db_track.id})
             print("splitted ", track_id)
+
+
+class new_Motion_Splitter(new_Splitter):
+    def __init__(self, margin=5, mode_threshold=100):
+        super(new_Motion_Splitter, self).__init__()
+        self.name = "Motion_Splitter"
+        self.margin = int(margin)
+        self.mode_threshold = float(mode_threshold)
+
+    def switch_mode(self, window_size=3):
+        
+        win = np.ones(window_size)
+        #best practice kernel computing second derivative
+        kernel = np.convolve(np.convolve(np.convolve(win,np.hstack((win,-win))),[1,-1]), win)
+
+        sm = np.abs([np.convolve(x, kernel, mode="same") for x in self.abs_pos()])
+        return
+
+    def _temp_local_max_(self, array, threshold):
+        mat = np.array(array)
+        mat[mat < threshold] = np.amin(mat)
+        b = np.zeros_like(mat, dtype=bool)
+        b[:, :-1] = mat[:, 1:] < mat[:, :-1]
+        b[:, 1:] &= mat[:, :-1] < mat[:, 1:]
+        return np.where(b)
+
+    def split(self):
+        cost = self.switch_mode()
+        cost[:, :self.margin] = 0.
+        cost[:, -self.margin:] = 0.
+
+        r, c = self._temp_local_max_(cost, self.mode_threshold)
+        self._split_(r, c)
 
 class Splitter(Stitcher):
     def __init__(self):
@@ -895,6 +984,7 @@ class Splitter(Stitcher):
     def switch_mode(self):
         # sm = np.array([np.abs(np.convolve(np.abs(x - np.cumsum(x) / np.arange(len(x))),
         #                              [-0.1, 0., 0., 0., 0., 0.1], mode="same")) for x in self.abs_pos()])
+        kernel = np.convolve(np.convolve((np.convolve(np.ones(window_size),np.ones(window_size)),np.ones(window_size)),[1.,0,0,-1])
         sm = np.abs([np.convolve(x, [ 1,  2,  3,  0, -3, -6, -3,  0,  3,  2,  1], mode="same") for x in self.abs_pos()])
         return sm
 

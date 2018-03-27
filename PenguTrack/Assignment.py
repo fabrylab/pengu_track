@@ -2,6 +2,14 @@ from scipy.optimize import linear_sum_assignment
 import numpy as np
 from copy import copy
 
+def reverse_dict(D):
+    """
+    Auxiliar function to switch dict entries with keys.
+    :param D: dictionary
+    :return: dictionary
+    """
+    return dict([[D[d],d] for d in D])
+
 def hungarian_assignment(*args, **kwargs):
     return linear_sum_assignment(*args, **kwargs)
 
@@ -120,19 +128,27 @@ def network_assignment(cost, order=2, threshold=None, method="linear"):
         else:
             r, c = linear_sum_assignment(inner_array)
 
-        # append results to match list
-        for R, C in zip(r, c):
-            # translate to entries in main arrays
-            R = row_dict[R]
-            C = col_dict[C]
-            # if cost[R, C] < threshold:
-            if R not in row_col:
-                row_col.update({R: C})
-                print("Match!")
-            elif cost[R, row_col[R]] > cost[R, C]:
-                row_col.update({R: C})
-                print("Overwriting Match!")
+        if len(c)>0 and len(r)>0:
+            col = c[r == reverse_dict(row_dict)[i]]
+            if len(col) > 0:
+                col = col_dict[int(col[0])]
+                if col not in row_col.values():
+                    row_col.update({i: col})
+
+        # # append results to match list
+        # for R, C in zip(r, c):
+        #     # translate to entries in main arrays
+        #     R = row_dict[R]
+        #     C = col_dict[C]
+        #     # if cost[R, C] < threshold:
+        #     if R not in row_col:
+        #         row_col.update({R: C})
+        #         print("Match!")
+        #     elif cost[R, row_col[R]] > cost[R, C]:
+        #         row_col.update({R: C})
+        #         print("Overwriting Match!")
     rows, cols = np.array(list(row_col.items())).T
+    assert len(set(cols))==len(cols)
     return rows, cols
 # def hungarian(cost):
 #     n, m = cost.shape

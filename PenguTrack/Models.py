@@ -227,6 +227,7 @@ class Model(object):
 
     def add_variable(self, var):
         self.Extensions.append(var)
+        self.State_Variables.append(var)
         self.Meas_dim += 1
         self.Evolution_dim += 1
         self.State_dim += 1
