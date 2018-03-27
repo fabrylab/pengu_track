@@ -922,20 +922,25 @@ class new_Splitter(new_Stitcher):
 
 
 class new_Motion_Splitter(new_Splitter):
-    def __init__(self, margin=5, mode_threshold=100):
+    def __init__(self,  mode_threshold=100, window_size=3):
         super(new_Motion_Splitter, self).__init__()
         self.name = "Motion_Splitter"
-        self.margin = int(margin)
         self.mode_threshold = float(mode_threshold)
+        self.window_size = int(window_size)
 
-    def switch_mode(self, window_size=3):
-        
+    def switch_mode(self):
+        window_size = self.window_size
+        margin = 2*window_size-1
         win = np.ones(window_size)
         #best practice kernel computing second derivative
         kernel = np.convolve(np.convolve(np.convolve(win,np.hstack((win,-win))),[1,-1]), win)
+        kernel = kernel
 
-        sm = np.abs([np.convolve(x, kernel, mode="same") for x in self.abs_pos()])
-        return
+        # function reacts quadratic to window-size change -> rescale to fit thresholds
+        sm = np.abs([np.convolve(x, kernel, mode="same") for x in self.abs_pos()])*9/window_size**2
+        sm[:, :margin] = 0.
+        sm[:, -margin:] = 0.
+        return sm
 
     def _temp_local_max_(self, array, threshold):
         mat = np.array(array)
@@ -947,8 +952,6 @@ class new_Motion_Splitter(new_Splitter):
 
     def split(self):
         cost = self.switch_mode()
-        cost[:, :self.margin] = 0.
-        cost[:, -self.margin:] = 0.
 
         r, c = self._temp_local_max_(cost, self.mode_threshold)
         self._split_(r, c)
@@ -984,7 +987,7 @@ class Splitter(Stitcher):
     def switch_mode(self):
         # sm = np.array([np.abs(np.convolve(np.abs(x - np.cumsum(x) / np.arange(len(x))),
         #                              [-0.1, 0., 0., 0., 0., 0.1], mode="same")) for x in self.abs_pos()])
-        kernel = np.convolve(np.convolve((np.convolve(np.ones(window_size),np.ones(window_size)),np.ones(window_size)),[1.,0,0,-1])
+        # kernel = np.convolve(np.convolve((np.convolve(np.ones(window_size),np.ones(window_size)),np.ones(window_size)),[1.,0,0,-1])
         sm = np.abs([np.convolve(x, [ 1,  2,  3,  0, -3, -6, -3,  0,  3,  2,  1], mode="same") for x in self.abs_pos()])
         return sm
 
