@@ -51,6 +51,8 @@ from scipy.ndimage.filters import gaussian_filter
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max
 
+from .Parameters import Parameter, ParameterList
+
 try:
     from skimage.filters import threshold_niblack
 except IOError:
@@ -187,9 +189,17 @@ class Detector(object):
     """
     def __init__(self):
         super(Detector, self).__init__()
+        self.ParameterList = ParameterList()
 
     def detect(self, *args, **kwargs):
         return np.random.rand(2)
+
+    def __getattribute__(self, item):
+        if item != "ParameterList":
+            if item in self.ParameterList.keys():
+                return self.ParameterList[item].value
+            else:
+                return super(Detector, self).__getattribute__(item)
 
 
 class BlobDetector(Detector):
@@ -218,6 +228,10 @@ class BlobDetector(Detector):
         self.ObjectNumber = int(object_number)
         self.Threshold = threshold
         self.ReturnRegions = bool(return_regions)
+        self.ParameterList = ParameterList(Parameter("ObjectSize", object_size, min=0, value_type=int),
+                                           Parameter("ObjectNumber", object_number, min=0, value_type=int),
+                                           Parameter("Threshold", threshold, value_type=float)
+                                           )
 
     @detection_parameters(image=dict(frame=0, mask=False))
     def detect(self, image):
@@ -492,6 +506,17 @@ class SimpleAreaDetector2(Detector):
         self.ReturnLabeled = bool(return_labeled)
         self.OnlyForDetection = bool(only_for_detection)
 
+        self.ParameterList = ParameterList(Parameter("ObjectArea", object_area, min=0., value_type=float),
+                                           Parameter("ObjectNumber", object_number, min=0, value_type=int),
+                                           Parameter("Sigma", self.Sigma, min=0, value_type=float),
+                                           Parameter("Threshold", self.Threshold, value_type=float),
+                                           Parameter("LowerLimit", self.LowerLimit, value_type=float),
+                                           Parameter("UpperLimit", self.UpperLimit, value_type=float),
+                                           Parameter("distxy_boundary", self.distxy_boundary, value_type=float),
+                                           Parameter("distz_boundary", self.distz_boundary, value_type=float),
+                                           Parameter("pre_stitching", self.pre_stitching, value_type=bool)
+                                           )
+
 
     @detection_parameters(image=dict(frame=0, mask=False),
                           mask=dict(frame=0, mask=True))
@@ -672,6 +697,14 @@ class SimpleAreaDetector(Detector):
         self.ReturnRegions = bool(return_regions)
         self.GetAll = bool(get_all)
         self.ReturnLabeled = bool(return_labeled)
+
+        self.ParameterList = ParameterList(Parameter("ObjectArea", object_area, min=0., value_type=float),
+                                           Parameter("ObjectNumber", object_number, min=0, value_type=int),
+                                           Parameter("Sigma", self.Sigma, min=0, value_type=float),
+                                           Parameter("Threshold", self.Threshold, value_type=float),
+                                           Parameter("LowerLimit", self.LowerLimit, value_type=float),
+                                           Parameter("UpperLimit", self.UpperLimit, value_type=float)
+                                           )
 
     @detection_parameters(image=dict(frame=0, mask=False))
     def detect(self, image):
@@ -1119,22 +1152,26 @@ class RegionFilter(object):
         else:
             raise ValueError("False shape for upper limit parameter!")
 
-        if dist is not None:
-            self.dist = dist
-        else:
-            if self.dim == 1:
-                self.dist = stats.norm(loc=self.value, scale=np.sqrt(self.var))
-            else:
-                self.dist = stats.multivariate_normal(mean=self.value, cov = self.var)
+        self.set_dist()
+
+        self.val_parameter = Parameter(self.prop, value, min=self.lower_limit, max=self.upper_limit, value_type=float)
+        self.var_parameter = Parameter(self.prop+"_variance", self.var, min=0, value_type=float)
 
     def filter(self, regions):
         return [self.logprob(region.__getattribute__(self.prop)) for region in regions]
 
     def logprob(self, test_value):
+        self.set_dist()
         if np.all(self.lower_limit < test_value) and np.all(test_value  < self.upper_limit):
-            return self.dist.logpdf(test_value)
+            return self.dist.logpdf(test_value-self.value)
         else:
             return -np.inf
+
+    def set_dist(self):
+        if self.dim == 1:
+            self.dist = stats.norm(loc=np.zeros_like(self.value), scale=np.sqrt(self.var))
+        else:
+            self.dist = stats.multivariate_normal(mean=np.zeros_like(self.value), cov = self.var)
 
     @classmethod
     def from_dict(cls, dictionary):
@@ -1147,10 +1184,20 @@ class RegionFilter(object):
         return cls(prop, value, var=var, lower_limit=lower_limit, upper_limit=upper_limit, dist=dist)
 
 
+    def __getattribute__(self, item):
+        if item == "value":
+            return self.val_parameter.value
+        elif item == "var":
+            return self.val_parameter.value
+        else:
+            super(RegionFilter, self).__getattribute__(item)
+
+
 class RegionPropDetector(Detector):
     def __init__(self, RegionFilters):
         super(RegionPropDetector, self).__init__()
         self.Filters = []
+        param_list = []
         for filter in RegionFilters:
             if type(filter)==RegionFilter:
                 self.Filters.append(filter)
@@ -1158,6 +1205,8 @@ class RegionPropDetector(Detector):
                 self.Filters.append(RegionFilter.from_dict(filter))
             else:
                 raise ValueError("Filter must be of type RegionFilter or dictionary, not %s"%type(filter))
+            param_list.append(filter.parameter)
+        self.ParameterList = ParameterList(*param_list)
 
         # print("Got %s layers of filters in detector!"%len(self.Filters))
 
@@ -1206,6 +1255,16 @@ class AreaDetector(Detector):
         self.Threshold = threshold
         self.Areas = []
         self.Sigma = None
+
+
+
+        self.ParameterList = ParameterList(Parameter("ObjectArea", object_area, min=0., value_type=float),
+                                           Parameter("ObjectNumber", object_number, min=0, value_type=int),
+                                           Parameter("Sigma", self.Sigma, min=0, value_type=float),
+                                           Parameter("Threshold", self.Threshold, value_type=float),
+                                           Parameter("LowerLimit", self.LowerLimit, value_type=float),
+                                           Parameter("UpperLimit", self.UpperLimit, value_type=float)
+                                           )
 
     @detection_parameters(image=dict(frame=0, mask=False))
     def detect(self, image, return_regions=False):
@@ -1359,6 +1418,11 @@ class AreaBlobDetector(Detector):
         self.ObjectNumber = int(object_number)
         self.Threshold = threshold
 
+        self.ParameterList = ParameterList(Parameter("ObjectSize", object_size, min=0., value_type=int),
+                                           Parameter("ObjectNumber", object_number, min=0, value_type=int),
+                                           Parameter("Threshold", self.Threshold, value_type=float)
+                                           )
+
     @detection_parameters(image=dict(frame=0, mask=False))
     def detect(self, image, return_regions=False):
         """
@@ -1444,6 +1508,11 @@ class WatershedDetector(Detector):
         self.ObjectSize = int(object_size)
         self.ObjectNumber = int(object_number)
         self.Threshold = threshold
+
+        self.ParameterList = ParameterList(Parameter("ObjectSize", object_size, min=0., value_type=int),
+                                           Parameter("ObjectNumber", object_number, min=0, value_type=int),
+                                           Parameter("Threshold", self.Threshold, value_type=float)
+                                           )
 
     @detection_parameters(image=dict(frame=0, mask=False))
     def detect(self, image, return_regions=False):
