@@ -1,4 +1,6 @@
 from qtpy import QtCore, QtWidgets
+import numpy as np
+
 
 class QParameterEdit(QtWidgets.QWidget):
     """ base class for an widget to change the value of a parameter. """
@@ -51,7 +53,10 @@ class QParameterEdit(QtWidgets.QWidget):
         self.doSetValue(x)
 
         # change the value of the parameter
-        self.parameter.value = self.type(x)
+        if x is None or np.isnan(x):
+            self.parameter.value = x
+        else:
+            self.parameter.value = self.type(x)
         # notify the parameter of it's change
         self.parameter.valueChanged()
 
@@ -68,6 +73,7 @@ class QNumberChooser(QParameterEdit):
 
     # the slider input widget
     slider = None
+    nan_checkbox = None
 
     def __init__(self, parameter, layout, type_int):
         # call the super method's initializer
@@ -115,11 +121,19 @@ class QNumberChooser(QParameterEdit):
 
     def doSetValue(self, x):
         """ method, that displays the value of the parameter in the widget"""
-        # set the value in the spinbox
-        self.spinBox.setValue(x)
-        # and if existent in the slider
-        if self.slider is not None:
-            self.slider.setValue(x)
+        if x is None or np.isnan(x):
+            if self.nan_checkbox is None:
+                self.nan_checkbox = QtWidgets.QCheckBox("nan")
+                self.layout.addWidget(self.nan_checkbox)
+            self.nan_checkbox.setChecked(True)
+        else:
+            if self.nan_checkbox is not None:
+                self.nan_checkbox.setChecked(False)
+            # set the value in the spinbox
+            self.spinBox.setValue(x)
+            # and if existent in the slider
+            if self.slider is not None:
+                self.slider.setValue(x)
 
 
 class QStringChooser(QParameterEdit):
