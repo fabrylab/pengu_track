@@ -197,7 +197,7 @@ class BlobDetector(Detector):
     """
     Detector classifying objects by size and number to be used with pengu-track modules.
     """
-    def __init__(self, object_size, object_number, threshold=None):
+    def __init__(self, object_size=1, object_number=1, threshold=None):
         """
         Detector classifying objects by size and number.
 
@@ -445,7 +445,8 @@ class SimpleAreaDetector2(Detector):
     """
     Detector classifying objects by area and number to be used with pengu-track modules.
     """
-    def __init__(self, object_area, object_number,
+    def __init__(self, object_area=1,
+                 object_number=1,
                  threshold=None,
                  lower_limit=None,
                  upper_limit=None,
@@ -607,7 +608,8 @@ class SimpleAreaDetector(Detector):
     """
     Detector classifying objects by area and number to be used with pengu-track modules.
     """
-    def __init__(self, object_area, object_number,
+    def __init__(self, object_area=1,
+                 object_number=1,
                  threshold=None,
                  lower_limit=None,
                  upper_limit=None,
@@ -1178,7 +1180,7 @@ class AreaDetector(Detector):
     """
     Detector classifying objects by area and number to be used with pengu-track modules.
     """
-    def __init__(self, object_area, object_number, threshold=None, lower_limit=None, upper_limit=None):
+    def __init__(self, object_area=1, object_number=1, threshold=None, lower_limit=None, upper_limit=None):
         """
         Detector classifying objects by number and size, taking area-separation into account.
 
@@ -1339,7 +1341,7 @@ class AreaBlobDetector(Detector):
     """
     Detector classifying objects by area and number to be used with pengu-track modules.
     """
-    def __init__(self, object_size, object_number, threshold=None):
+    def __init__(self, object_size=1, object_number=1, threshold=None):
         """
         Detector classifying objects by number and size, taking area-separation into account.
 
@@ -1425,7 +1427,7 @@ class WatershedDetector(Detector):
     Detector classifying objects by area and number. It uses watershed algorithms to depart bigger areas.
     To be used with pengu-track modules.
     """
-    def __init__(self, object_size, object_number, threshold=None):
+    def __init__(self, object_size=1, object_number=1, threshold=None):
         """
         Detector classifying objects by number and size, taking area-separation into account.
 
