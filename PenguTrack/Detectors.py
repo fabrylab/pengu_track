@@ -185,12 +185,17 @@ class Detector(object):
     def detect(self, *args, **kwargs):
         return pandas.DataFrame(np.random.rand(2), columns=["PositionX", "PositionY"])
 
-    def __getattr__(self, item):
+    def __getattribute__(self, item):
         if item != "ParameterList":
             if item in self.ParameterList.keys():
-                return self.ParameterList[item].value
-            else:
-                return super(Detector, self).__getattr__(item)
+                return self.ParameterList[item]
+        return super(Detector, self).__getattribute__(item)
+
+    def __setattr__(self, key, value):
+        if key != "ParameterList" and key in self.ParameterList.keys():
+            self.ParameterList[key] = value
+        else:
+            return super(Detector, self).__setattr__(key, value)
 
 
 class BlobDetector(Detector):
