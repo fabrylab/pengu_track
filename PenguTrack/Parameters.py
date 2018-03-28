@@ -53,7 +53,7 @@ class QParameterEdit(QtWidgets.QWidget):
         self.doSetValue(x)
 
         # change the value of the parameter
-        if x is None or np.isnan(x):
+        if x is None:
             self.parameter.value = x
         else:
             self.parameter.value = self.type(x)
