@@ -427,3 +427,8 @@ class ParameterList(object):
                 # and if desired, update the widgets
                 if update_widgets and self.widgets is not None:
                     self.widgets[parameter.key].setValue(value)
+
+    def updateWidgets(self):
+        """ update the parameter values in the widget displays """
+        for parameter in self.parameters:
+            self.widgets[parameter.key].setValue(parameter.value)
