@@ -301,13 +301,13 @@ class NKCellDetector(Detector):
             mean_int = np.mean(intensities)
             std_int = np.std(intensities)
             # out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
-            out.append([prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int, prob, std_int])
+            out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
         out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
 
-        res = 6.45 / 10
-        out.PositionX *= res
-        out.PositionY *= res
-        out.PositionZ *= 10
+        #res = 6.45 / 10
+        #out.PositionX *= res
+        #out.PositionY *= res
+        #out.PositionZ *= 10
 
         return out, mask
 
@@ -349,13 +349,13 @@ class NKCellDetector2(Detector):
             mean_int = np.mean(intensities)
             std_int = np.std(intensities)
             # out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
-            out.append([prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int, prob, std_int])
+            out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
         out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
 
-        res = 6.45 / 10
-        out.PositionX *= res
-        out.PositionY *= res
-        out.PositionZ *= 10
+        #res = 6.45 / 10
+        #out.PositionX *= res
+        #out.PositionY *= res
+        #out.PositionZ *= 10
 
         return out, mask
 
@@ -428,13 +428,13 @@ class TCellDetector(Detector):
             mean_int = np.mean(intensities)
             std_int = np.std(intensities)
             # out.append(Measurement(prob, [prop.centroid[0], prop.centroid[1], mean_int], data=std_int))
-            out.append([prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int, prob, std_int])
+            out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
         out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
 
-        res = 6.45 / 10
-        out.PositionX *= res
-        out.PositionY *= res
-        out.PositionZ *= 10
+        #res = 6.45 / 10
+        #out.PositionX *= res
+        #out.PositionY *= res
+        #out.PositionZ *= 10
 
         return out, mask
 
@@ -592,9 +592,10 @@ class SimpleAreaDetector2(Detector):
                 Positions2D_cor.append([x1, y1, Log_Probability1, z1])
 
         Positions3D = []
-        res = 6.45 / 10
+        res = 1#6.45 / 10
+        resZ = 1#10
         for pos in Positions2D_cor:
-            Positions3D.append([pos[0] * res, pos[1] * res, pos[3] * 10, pos[2]])
+            Positions3D.append([pos[0] * res, pos[1] * res, pos[3] * resZ, pos[2]])
 
         Positions3D = pandas.DataFrame(Positions3D, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability"])
 
@@ -690,7 +691,7 @@ class SimpleAreaDetector(Detector):
             o = list(prop.centroid)
             o.append(prob)
             out.append(o)
-        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"])
+        out = pandas.DataFrame(out, columns=["PositionY", "PositionZ", "Log_Probability"])
         return out, None
 
 
@@ -1153,7 +1154,7 @@ class RegionPropDetector(Detector):
         regions = extended_regionprops(skimage.measure.label(image), intensity_image=intensity_image)
         filter_dict = dict([[filter.prop, filter] for filter in self.Filters])
 
-        cols = ["PositionX", "PositionY", "Log_Probability"]
+        cols = ["PositionY", "PositionX", "Log_Probability"]
         cols.extend(sorted(filter_dict.keys()))
 
         out = []
