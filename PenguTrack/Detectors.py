@@ -1422,7 +1422,7 @@ class AreaBlobDetector(Detector):
                     o.extend(regions[i].centroid)
                     o.append(1)
                     out.append(o)
-        return pandas.DataFrame(out, columns=["PositionsX", "PositionsY", "Log_Probability"]), None
+        return pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"]), None
 
 
 class WatershedDetector(Detector):
