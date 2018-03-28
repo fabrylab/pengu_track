@@ -166,23 +166,12 @@ class Measurement(dotdict):
         return [self[k] for k in keys]
 
 
-def detection_parameters(images=[[]], masks=[[]], index=0, layer_dict={"default": 0}, **parameter_dict):
-    kwargs = {}
-    for key in parameter_dict:
-        parameter=parameter_dict[key]
+def detection_parameters(**detection_parameters):
+    def real_decorator(function):
+        function.detection_parameters = detection_parameters
+        return function
+    return real_decorator
 
-        i = index + parameter.get("frame", 0)
-        l = layer_dict.get(parameter.get("layer","default"), 0)
-
-        if parameter.get("mask", False):
-            kwargs[key]=masks[i, l]
-        else:
-            kwargs[key]=images[i, l]
-
-    def detection_function(func):
-        return func(kwargs)
-
-    return detection_function
 
 class Detector(object):
     """
