@@ -261,7 +261,7 @@ class BlobDetector(Detector):
                             skimage.filters.gaussian(image.astype(np.uint8), self.ObjectSize)) > self.Threshold
                         ))
 
-        return pandas.DataFrame([[props.centroid[0], props.centroid[1], 1.] for props in regions],
+        return pandas.DataFrame([[props.centroid[1], props.centroid[0], 1.] for props in regions],
                                 columns=["PositionX", "PositionY", "Log_Probability"]), None
 
 
