@@ -244,8 +244,11 @@ class new_Stitcher(object):
                                   text="%s & %s"%(appended_id, erased_id))
             except TypeError:
                 print("could not set debug marker!")
-        not_none = ~(np.all(np.isnan(self.Track_array[appended_id]), axis=-1)&
-                     np.all(np.isnan(self.Track_array[erased_id]), axis=-1))
+        try:
+            not_none = ~(np.all(np.isnan(self.Track_array[appended_id]), axis=-1)&
+                         np.all(np.isnan(self.Track_array[erased_id]), axis=-1))
+        except IndexError:
+            return 
         self.Track_array[appended_id][not_none] = np.nanmean([self.Track_array[appended_id][not_none],
                                                               self.Track_array[erased_id][not_none]], axis=0)
         self.Track_array[erased_id] = np.nan
