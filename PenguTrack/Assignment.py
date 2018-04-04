@@ -29,15 +29,70 @@ def cost_from_logprob(logprob, value=None):
 def greedy_assignment(cost):
     r_out=[]
     c_out=[]
-    rows, cols = np.unravel_index(np.argsort(cost,kind="quicksort", axis=None), cost.shape)
-    # rows, cols = np.unravel_index(np.argsort(cost,kind="heapsort", axis=None), cost.shape)
+    rows, cols = np.unravel_index(np.argsort(cost, kind="quicksort", axis=None), cost.shape)
+    # rows, cols = np.unravel_index(np.argsort(cost, kind="heapsort", axis=None), cost.shape)
     while len(rows)>0:
         r_out.append(rows[0])
         c_out.append(cols[0])
-        mask = (rows!=rows[0])&(cols!=cols[0])
+        mask = (rows != rows[0]) & (cols != cols[0])
         rows = rows[mask]
         cols = cols[mask]
     return r_out, c_out
+
+
+def greedy_assignment2(cost):
+    r_out = np.zeros(min(cost.shape), dtype=int)
+    c_out = np.zeros(min(cost.shape), dtype=int)
+    rows, cols = np.unravel_index(np.argsort(cost, kind="quicksort", axis=None), cost.shape)
+    # rows, cols = np.unravel_index(np.argsort(cost, kind="heapsort", axis=None), cost.shape)
+    # while len(rows)>0:
+    # mask = np.ones_like(rows, dtype=bool)
+    for i in range(len(r_out)):
+        r_out[i] = rows[0]
+        c_out[i] = cols[0]
+        mask = (rows != r_out[i]) & (cols != c_out[i])
+
+        # r_out.append(rows[0])
+        # c_out.append(cols[0])
+        # mask &= (rows != rows[0]) & (cols != cols[0])
+        # mask &= (rows != r_out[i]) & (cols != c_out[i])
+        rows = rows[mask]
+        cols = cols[mask]
+    # assert len(set(c_out)) == len(c_out)
+    return r_out, c_out
+    # # rows, cols = np.unravel_index(np.argsort(cost, kind="quicksort", axis=None), cost.shape)
+    # # rows, cols = np.unravel_index(np.argsort(cost, kind="heapsort", axis=None), cost.shape)
+    # # idx = np.zeros_like(cost, dtype=int)
+    # # idx[rows, cols] = range(len(rows))
+    # idx = np.argsort(cost, kind="heapsort", axis=None).reshape(cost.shape)
+    # r,c = np.where(idx == np.amin(idx, axis=1)[:, None])
+    # assert len(set(c)) == len(c)
+    # return r,c
+    # # assert len(set(r))==len(r)
+    # # mat = np.array(idx)
+    # # mat2 = np.array(idx)
+    # # mat[:] = idx.min(axis=1)[:, None]
+    # # mat2[:] = idx.min(axis=0)[None, :]
+    # # mat3 = np.amin([mat, mat2], axis=0)
+    # # id = np.array(idx, dtype=float)
+    # # matb = np.array(id)
+    # # rows2 =[]
+    # # cols2 =[]
+    # # # while not np.all(np.isnan(id)):
+    # # for i in range(min(id.shape)):
+    # #     r, c = np.unravel_index(np.nanargmin(id), id.shape)
+    # #     matb[r] = (matb[r] > id[r, c])*id[r, c] + (matb[r] <= id[r, c])*matb[r]
+    # #     matb[:, c] = (matb[:, c] > id[r, c])*id[r, c] + (matb[:, c] <= id[r, c])*matb[r]
+    # #     id[r] = np.nan
+    # #     id[:, c] = np.nan
+    # #     rows2.append(r)
+    # #     cols2.append(c)
+    # # return np.array([np.where(mat3 == i) for i in range(min(idx.shape))]).T[0]
+
+
+def dummy_assignment(cost):
+    x = np.arange(min(cost.shape))
+    return x, x
 
 
 def mask(mat):
@@ -95,10 +150,17 @@ def network_assignment(cost, order=2, threshold=None, method="linear"):
     cost = np.array(cost)
     if threshold is None:
         threshold = np.nanmax(cost)
+
+    if cost.shape[1]<cost.shape[0]:
+        transposed = True
+        cost = cost.T
+    else:
+        transposed = False
+
     # dict to store results
     row_col = {}
     # Do for each track
-    for i in range(cost.shape[0]):
+    for i in np.argsort(cost.min(axis=1)):#range(cost.shape[0]):
         print("doing ", i)
         # dict to store ids of matching candidates
         all_rows = set([i])
@@ -115,6 +177,9 @@ def network_assignment(cost, order=2, threshold=None, method="linear"):
                 ids = np.where(cost[id_list] < threshold)[1]
                 all_cols.update(ids)
 
+        all_cols = all_cols.difference(row_col.values())
+        all_rows = all_rows.difference(row_col.keys())
+
         # dictionary to translate between sliced array and main arrays
         row_dict = dict(enumerate(sorted(all_rows)))
         col_dict = dict(enumerate(sorted(all_cols)))
@@ -128,12 +193,12 @@ def network_assignment(cost, order=2, threshold=None, method="linear"):
         else:
             r, c = linear_sum_assignment(inner_array)
 
-        if len(c)>0 and len(r)>0:
+        if len(c) > 0 and len(r) > 0:
             col = c[r == reverse_dict(row_dict)[i]]
             if len(col) > 0:
                 col = col_dict[int(col[0])]
-                if col not in row_col.values():
-                    row_col.update({i: col})
+                # if col not in row_col.values():
+                row_col.update({i: col})
 
         # # append results to match list
         # for R, C in zip(r, c):
@@ -148,8 +213,12 @@ def network_assignment(cost, order=2, threshold=None, method="linear"):
         #         row_col.update({R: C})
         #         print("Overwriting Match!")
     rows, cols = np.array(list(row_col.items())).T
-    assert len(set(cols))==len(cols)
-    return rows, cols
+    assert len(set(rows)) == len(rows) & len(set(cols))==len(cols)
+    assert len(rows) == len(cost)
+    if transposed:
+        return cols, rows
+    else:
+        return rows, cols
 # def hungarian(cost):
 #     n, m = cost.shape
 #     row_uncovered = np.ones(n, dtype=bool)
