@@ -214,7 +214,7 @@ def network_assignment(cost, order=2, threshold=None, method="linear"):
         #         print("Overwriting Match!")
     rows, cols = np.array(list(row_col.items())).T
     assert len(set(rows)) == len(rows) & len(set(cols))==len(cols)
-    assert len(rows) == len(cost)
+    # assert len(rows) == len(cost)
     if transposed:
         return cols, rows
     else:
