@@ -358,9 +358,10 @@ class new_DistanceStitcher(new_Stitcher):
         cost = s/t
         # velocity[np.abs(velocity)>=self.MaxV] = np.nan
         cost[np.diag(np.ones(len(cost), dtype=bool))] = self.MaxV
-        cost[cost>self.MaxV]=self.MaxV
-        cost[cost<0]=self.MaxV
-        cost[np.abs(t)>self.MaxF]=self.MaxV
+        cost[cost > self.MaxV] = self.MaxV
+        cost[cost < 0] = self.MaxV
+        cost[t>self.MaxF] = self.MaxV
+        cost[t<=0] = self.MaxV
         self._stitch_(cost, threshold=self.MaxV, dummy=dummy)
 
 class new_MotionStitcher(new_Stitcher):
@@ -379,9 +380,9 @@ class new_MotionStitcher(new_Stitcher):
         t = self.temporal_diff()[:,:,0]
         cost[cost>self.max_diff] = self.max_diff
         cost[np.isnan(cost)] = self.max_diff
-        cost[s_abs>self.MaxDist] =  self.max_diff
+        cost[s_abs>self.MaxDist] = self.max_diff
         # cost[np.abs(t)>self.MaxDelay] =  self.max_diff
-        cost[t>self.MaxDelay] =  self.max_diff
+        cost[t>self.MaxDelay] = self.max_diff
         cost[t<=0] = self.max_diff
         self._stitch_(cost, threshold=self.max_diff, dummy=dummy)
 
