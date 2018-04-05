@@ -91,6 +91,14 @@ class dotdict(dict):
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
 
+
+def measurements_to_pandasDF(measurement_list):
+    entries = set(["PositionX","PositionY","PositionZ","Log_Probability", "Covariance", "Frame"])
+    for m in measurement_list:
+        entries.update(m.keys())
+    return pandas.DataFrame([[m.get(e,None) for e in entries] for m in measurement_list],
+                           columns=entries)
+
 class Measurement(dotdict):
     """
     Base Class for detection results.
