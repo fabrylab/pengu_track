@@ -86,10 +86,14 @@ class new_Stitcher(object):
         if kernel is None:
             # look where tracks are defined
             not_none = np.all(~np.isnan(self.Track_array), axis=-1)
+            not_none_f = np.array(not_none)
+            not_none_f[:, -1:] = True
             # get positions where cumsum of not_none is 1 and track is defined (first occurence of track)
-            first_vals = array[(np.cumsum(not_none, axis=-1) == 1) & (not_none == True)]
+            first_vals = array[(np.nancumsum(not_none_f, axis=-1) == 1) & (not_none_f == True)]
             # same as above but with flipped time axis to get last occurence. Reflip mask array in the end
-            last_vals = array[((np.cumsum(not_none[:, ::-1], axis=-1) == 1) & (not_none == True)[:,::-1])[:,::-1]]
+            not_none_l = np.array(not_none)
+            not_none_l[:, :1] = True
+            last_vals = array[((np.nancumsum(not_none_l[:, ::-1], axis=-1) == 1) & (not_none_l == True)[:,::-1])[:,::-1]]
         else:
             # look where tracks are defined
             not_none = np.all(~np.isnan(self.Track_array), axis=-1)
@@ -100,13 +104,13 @@ class new_Stitcher(object):
                 # get cumsum of not_none (value is len of track at the specific timestep)
                 f_sum = np.cumsum(not_none_f, axis=-1)
                 # iterate over kernel. when index i of kernel value equals cumsum AND value is not none (i-th occurence)
-                first_vals = np.nansum([k * array[(f_sum == (i+1)) & (not_none == True)] for i, k in enumerate(kernel)],
+                first_vals = np.nansum([k * array[(f_sum == (i+1)) & (not_none_f == True)] for i, k in enumerate(kernel)],
                           axis=0)
                 # same but with flipped axis
                 not_none_l = np.array(not_none)
                 not_none_l[:, :len(kernel)-1] = True
                 l_sum = np.cumsum(not_none_l[:, ::-1], axis=-1)[:, ::-1]
-                last_vals = np.nansum([k * array[(l_sum == (i+1)) & (not_none == True)] for i, k in enumerate(kernel)],
+                last_vals = np.nansum([k * array[(l_sum == (i+1)) & (not_none_l == True)] for i, k in enumerate(kernel)],
                           axis=0)
             else:
                 # get cumsum of not_none.
@@ -937,6 +941,7 @@ class new_Motion_Splitter(new_Splitter):
 
     def switch_mode(self):
         window_size = self.window_size
+        # window_size = (self.window_size+1)//4
         margin = 2*window_size-1
         win = np.ones(window_size)
         #best practice kernel computing second derivative
