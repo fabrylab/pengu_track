@@ -252,7 +252,7 @@ class new_Stitcher(object):
             not_none = ~(np.all(np.isnan(self.Track_array[appended_id]), axis=-1)&
                          np.all(np.isnan(self.Track_array[erased_id]), axis=-1))
         except IndexError:
-            return 
+            return
         self.Track_array[appended_id][not_none] = np.nanmean([self.Track_array[appended_id][not_none],
                                                               self.Track_array[erased_id][not_none]], axis=0)
         self.Track_array[erased_id] = np.nan
@@ -352,9 +352,9 @@ class Richter_Stitcher(new_Stitcher):
         #     self.__stitch__(self.Track_Dict[r], self.Track_Dict[row_col[r]])
 
 
-class new_DistanceStitcher(new_Stitcher):
+class new_VelocityStitcher(new_Stitcher):
     def __init__(self,*args, max_velocity, max_frames=3, **kwargs):
-            super(new_DistanceStitcher, self).__init__(*args, **kwargs)
+            super(new_VelocityStitcher, self).__init__(*args, **kwargs)
             self.MaxV = float(max_velocity)
             self.MaxF = int(max_frames)
             self.name ="DistanceStitcher"
@@ -370,6 +370,27 @@ class new_DistanceStitcher(new_Stitcher):
         cost[t>self.MaxF] = self.MaxV
         cost[t<=0] = self.MaxV
         self._stitch_(cost, threshold=self.MaxV, dummy=dummy)
+
+
+class new_DistanceStitcher(new_Stitcher):
+    def __init__(self, *args, max_distance=1, max_frames=3, **kwargs):
+        super(new_DistanceStitcher, self).__init__(*args, **kwargs)
+        self.MaxD = float(max_distance)
+        self.MaxF = int(max_frames)
+        self.name = "DistanceStitcher"
+
+    def stitch(self, dummy=False):
+        s = self.spatial_diff()
+        t = self.temporal_diff()[:, :, 0]
+        cost = s
+        # velocity[np.abs(velocity)>=self.MaxV] = np.nan
+        cost[np.diag(np.ones(len(cost), dtype=bool))] = self.MaxD
+        cost[cost > self.MaxD] = self.MaxD
+        cost[cost < 0] = self.MaxD
+        cost[t > self.MaxF] = self.MaxD
+        cost[t <= 0] = self.MaxD
+        self._stitch_(cost, threshold=self.MaxD, dummy=dummy)
+
 
 class new_MotionStitcher(new_Stitcher):
     def __init__(self, window_length, max_diff, *args, max_distance=np.inf, max_delay=np.inf, **kwargs):
