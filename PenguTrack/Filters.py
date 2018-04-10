@@ -28,9 +28,10 @@ import numpy as np
 import scipy.stats as ss
 import sys
 import copy
-from PenguTrack.Detectors import Measurement
+from PenguTrack.Detectors import Measurement, array_to_pandasDF, measurements_to_pandasDF
 from .Assignment import *
 import scipy.integrate as integrate
+import pandas
 #  import scipy.optimize as opt
 
 
@@ -189,14 +190,15 @@ class Filter(object):
             except KeyError:
                 raise KeyError("No measurement for timepoint %s." % i)
         else:
-            if not isinstance(z, Measurement):
+            if not isinstance(z, pandas.Series):
                 z = np.array(z).flatten()
                 assert self.Model.Meas_dim == len(z),\
                     "Measurement input shape %s is not equal to model measurement dimension %s"%(
                         len(z),self.Model.Meas_dim)
                 z = Measurement(1.0, position=z)
-            self.Measurements.update({i: z})
-        measurement = copy(z)
+            measurement = z.copy()
+            self.Measurements.update({i: measurement})
+        # measurement = copy(z)
         # simplest possible update
         # try:
         #     self.X.update({i: np.asarray([z.PositionX, z.PositionY, z.PositionZ])})
@@ -206,7 +208,7 @@ class Filter(object):
         #     except(ValueError, AttributeError):
         #         self.X.update({i: np.asarray([z.PositionX])})
         #
-        z = np.array(self.Model.vec_from_meas(measurement))
+        z = np.array(self.Model.vec_from_pandas(measurement))
         # if len(self.Model.Extensions) > 0:
         #     z = np.array(np.hstack([np.array([measurement[v] for v in self.Model.Measured_Variables]),
         #                     np.array([measurement.Data[var] for var in self.Model.Extensions])]))
@@ -325,7 +327,7 @@ class Filter(object):
         if self.NoDist:
             return -np.linalg.norm(self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]))
         if self._meas_is_gaussian_:
-            x = self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]) - self._meas_mu_[:,None]
+            x = self.Model.vec_from_pandas(measurement)-self.Model.measure(self.Predicted_X[key]) - self._meas_mu_[:,None]
             return float(self._meas_norm_ -0.5*np.dot(x.T, np.dot(self._meas_sig_1, x)))
         return self.Measurement_Distribution.logpdf((self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key])).T)
 
@@ -604,7 +606,11 @@ class KalmanFilter(Filter):
         """
         z, i = super(KalmanFilter, self).update(z=z, i=i)
         measurement = copy(z)
-        z = np.array(self.Model.vec_from_meas(measurement))
+
+        if isinstance(measurement, pandas.Series):
+            z = np.array(self.Model.vec_from_pandas(measurement))
+        elif isinstance(measurement, Measurement):
+            z = np.array(self.Model.vec_from_meas(measurement))
 
         try:
             x = self.Predicted_X[i]
@@ -838,7 +844,11 @@ class InformationFilter(Filter):
         """
         z, i = super(InformationFilter, self).update(z=z, i=i)
         measurement = copy(z)
-        z = np.array(self.Model.vec_from_meas(measurement))
+
+        if isinstance(measurement, pandas.Series):
+            z = np.array(self.Model.vec_from_pandas(measurement))
+        elif isinstance(measurement, Measurement):
+            z = np.array(self.Model.vec_from_meas(measurement))
 
         try:
             x = self.Predicted_X[i]
@@ -1280,8 +1290,9 @@ class MultiFilter(Filter):
 
         if len(z)<1:
             raise ValueError("No Measurements found!")
-        measurements = list(z)
-        z = np.array([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
+        # measurements = list(z)
+        measurements = z.copy()
+        z = self.Model.vec_from_pandas(z)#np.array([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
 
         M = z.shape[0]
 
@@ -1290,7 +1301,7 @@ class MultiFilter(Filter):
             inferred_state = _filter.Model.infer_state(z[j])
             _filter.Predicted_X.update({i: inferred_state})
             _filter.X.update({i: inferred_state})
-            _filter.Measurements.update({i: measurements[j]})
+            _filter.Measurements.update({i: measurements.iloc[j]})
 
             try:
                 J = max(self.Filters.keys()) + 1
@@ -1319,12 +1330,29 @@ class MultiFilter(Filter):
             Recent/corresponding time-stamp.
         """
         assert not (z is None and i is None), "One of measurement vector or time stamp must be specified"
-        measurements = list(z)
-        self.Measurements.update({i:z})
 
-        meas_logp = np.array([m.Log_Probability for m in z])
+        # if measurement and mask where given from new pengu track detectors
+        if isinstance(z, tuple) and len(z)==2:
+            z = z[0]
 
-        z = np.array([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
+        # if input is dataframe, proceed
+        if isinstance(z, pandas.DataFrame):
+            measurements = z.copy()
+        # else test for Measurement objects
+        elif np.all([isinstance(m, Measurement) for m in z]):
+            measurements = measurements_to_pandasDF(z)
+        # else test for array objects
+        else:
+            try:
+                measurements = array_to_pandasDF(z)
+            except:
+                ValueError("Measurement input does not fit any known type (PenguTrack-Measurement, pandas, array)")
+
+        self.Measurements.update({i:measurements})
+
+        meas_logp = measurements.Log_Probability
+
+        z = self.Model.vec_from_pandas(measurements)
 
         mask = ~np.isneginf(meas_logp)
         if not np.all(~mask):
@@ -1332,7 +1360,8 @@ class MultiFilter(Filter):
             mask &= (meas_logp - np.nanmin(meas_logp) >=
                            (self.MeasurementProbabilityThreshold * (np.nanmax(meas_logp) - np.nanmin(meas_logp)))).astype(bool)
             z = z[mask]
-            measurements = list(np.asarray(measurements)[mask])
+            # measurements = list(np.asarray(measurements)[mask])
+            measurements = measurements[mask]
         else:
             self.Measurements.pop(i, None)
             return measurements, i
@@ -1349,10 +1378,13 @@ class MultiFilter(Filter):
 
 
         filter_keys = list(self.ActiveFilters.keys())
+        meas_dict = dict([[i, m[0]] for i, m in enumerate(measurements.iterrows())])
         for j, k in enumerate(filter_keys):
             gain_dict.append([j, k])
-            for m, meas in enumerate(measurements):
-                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i], measurements={i: meas},
+            for m, m_id in meas_dict.items():
+                meas = measurements.loc[m_id]
+                probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i],
+                                                                        measurements={i: meas},
                                                                         update=self.ProbUpdate)
         gain_dict = dict(gain_dict)
 
@@ -1392,7 +1424,7 @@ class MultiFilter(Filter):
                             probability_gain[k, m] > LogProbabilityThreshold or
                             (len(self.ActiveFilters[gain_dict[k]].X) < 2 and
                                      min([i-o for o in self.ActiveFilters[gain_dict[k]].X.keys() if i>o]) < 2 and big_jumps)) :
-                self.ActiveFilters[gain_dict[k]].update(z=measurements[m], i=i)
+                self.ActiveFilters[gain_dict[k]].update(z= measurements.loc[meas_dict[m]], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
                 if verbose:
@@ -1413,7 +1445,7 @@ class MultiFilter(Filter):
                 _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
                 _filter.Predicted_X.update({i: self.Model.infer_state(z[m])})
                 _filter.X.update({i: self.Model.infer_state(z[m])})
-                _filter.Measurements.update({i: measurements[m]})
+                _filter.Measurements.update({i: measurements.loc[meas_dict[m]]})
 
                 self.ActiveFilters.update({l: _filter})
                 self.Filters.update({l: _filter})

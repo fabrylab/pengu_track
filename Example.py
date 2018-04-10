@@ -92,43 +92,19 @@ if __name__ == '__main__':
 
         # Detection step
         SegMap = TS.detect(image.data)
-        Positions = AD.detect(SegMap)
+        Positions, Mask = AD.detect(SegMap)
         print("Found %s Objects!"%len(Positions))
 
         # Write Segmentation Mask to Database
         db.setMask(image=image, data=(~SegMap).astype(np.uint8))
         print("Mask save")
+        
 
         if len(Positions)>0:
             # Update Filter with new Detections
             MultiKal.update(z=Positions, i=i)
 
-            # Get Tracks from Filters
-            for k in MultiKal.Filters.keys():
-                x = y = np.nan
-                # Case 1: we tracked something in this filter
-                if i in MultiKal.Filters[k].Measurements.keys():
-                    meas = MultiKal.Filters[k].Measurements[i]
-                    x = meas.PositionX
-                    y = meas.PositionY
-                    prob = MultiKal.Filters[k].log_prob(keys=[i])
-
-                    if db.getTrack(k + 100):
-                        print('Setting Track(%s)-Marker at %s, %s' % ((100 + k), x, y))
-                    else:
-                        db.setTrack(track_marker_type, id=100 + k)
-                        print('Setting new Track %s and Track-Marker at %s, %s' % ((100 + k), x, y))
-                    track_marker = db.setMarker(image=image, type=track_marker_type, track=100 + k, x=y, y=x,
-                                                text='Track %s, Prob %.2f' % ((100 + k), prob))
-
-                    # Save measurement in Database
-                    db.setMeasurement(marker=track_marker, log=prob, x=x, y=y)
-
-                # Case 2: we want to see the prediction markers
-                if i in MultiKal.Filters[k].Predicted_X.keys():
-                    pred_x, pred_y = MultiKal.Model.measure(MultiKal.Filters[k].Predicted_X[i])[:2]
-                    pred_marker = db.setMarker(image=image, x=pred_y, y=pred_x, text="Track %s" % (100 + k),
-                                               type=prediction_marker_type)
+            db.write_to_DB(MultiKal, image, debug_mode=0b111000)
 
         print("Got %s Filters" % len(MultiKal.ActiveFilters.keys()))
 

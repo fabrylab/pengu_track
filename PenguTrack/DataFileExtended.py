@@ -963,7 +963,7 @@ class DataFileExtended(clickpoints.DataFile):
                         print('Setting %sTrack(%s)-Marker at %s, %s' % (new, k, x, y))
                     if set_text:
                         text = 'Filter %s, Prob %.2f' % (k, prob)
-                    markerset.append(dict(image=image, type=self.track_marker_type, track=db_track, x=y, y=x,
+                    markerset.append(dict(image=image, type=self.track_marker_type, track=db_track, x=x, y=y,
                                                 text=text,
                                                 style = '{}'))
                                                 # style='{"scale":%.2f}'%(state_err)))
@@ -1007,7 +1007,7 @@ class DataFileExtended(clickpoints.DataFile):
                             pred_y = Tracker.Model.measure(prediction)[i_y]
                             pred_err = (prediction_err[i_x, i_x]+prediction_err[i_y, i_y])*0.5
 
-                        prediction_markerset.append(dict(image=image, x=pred_y, y=pred_x,
+                        prediction_markerset.append(dict(image=image, x=pred_x, y=pred_y,
                                                          text="Filter %s" % k,
                                                          track=None,
                                                          type=self.prediction_marker_type,
@@ -1028,7 +1028,7 @@ class DataFileExtended(clickpoints.DataFile):
                                              state_vector=np.array([meas_x, meas_y]),
                                              state_error=meas_err))
                     if debug_mode&0b000010:
-                        measurement_markerset.append(dict(image=image, x=meas_y, y=meas_x,
+                        measurement_markerset.append(dict(image=image, x=meas_x, y=meas_y,
                                                           text="Track %s" % (db_track.id),
                                                           track=None,
                                                           style=None,

@@ -80,7 +80,7 @@ from cv2 import calcOpticalFlowFarneback, calcOpticalFlowPyrLK
 
 class dotdict(dict):
     """
-    enables .access on dicts
+    enables dot access on dicts
     """
     def __getattr__(self, attr):
         if attr.startswith('__'):
@@ -98,6 +98,16 @@ def measurements_to_pandasDF(measurement_list):
         entries.update(m.keys())
     return pandas.DataFrame([[m.get(e,None) for e in entries] for m in measurement_list],
                            columns=entries)
+
+
+def array_to_pandasDF(array):
+    array = np.asarray(array, dtype=float)
+    if len(array.shape) != 2 or array.shape[1] > 3:
+        raise ValueError("Array shape does not fit (N,1),(N,2) or (N,3)!")
+    n = array.shape[1]
+    entries = set(["Log_Probability","PositionX","PositionY","PositionZ"][:n+1])
+    return pandas.DataFrame(np.hstack((np.zeros((array.shape[0],1)), array)),
+                            columns=entries)
 
 class Measurement(dotdict):
     """
@@ -704,7 +714,7 @@ class SimpleAreaDetector(Detector):
             o = list(prop.centroid)
             o.append(prob)
             out.append(o)
-        out = pandas.DataFrame(out, columns=["PositionY", "PositionZ", "Log_Probability"])
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"])
         return out, None
 
 
@@ -1061,6 +1071,8 @@ class RegionFilter(object):
     def __init__(self, prop, value, var=None, lower_limit=None, upper_limit=None, dist=None):
         super(RegionFilter, self).__init__()
         self.prop = str(prop)
+        self.val_parameter = None
+        self.var_parameter = None
 
         self.value = np.asarray(value, dtype=float)
         if self.value.ndim == 1:
@@ -1114,7 +1126,7 @@ class RegionFilter(object):
     def logprob(self, test_value):
         self.set_dist()
         if np.all(self.lower_limit < test_value) and np.all(test_value  < self.upper_limit):
-            return self.dist.logpdf(test_value-self.value)
+            return float(self.dist.logpdf(test_value-self.value))
         else:
             return -np.inf
 
@@ -1137,11 +1149,17 @@ class RegionFilter(object):
 
     def __getattribute__(self, item):
         if item == "value":
-            return self.val_parameter.value
+            if self.val_parameter is None:
+                return super(RegionFilter, self).__getattribute__(item)
+            else:
+                return self.val_parameter.value
         elif item == "var":
-            return self.val_parameter.value
+            if self.var_parameter is None:
+                return super(RegionFilter, self).__getattribute__(item)
+            else:
+                return self.var_parameter.value
         else:
-            super(RegionFilter, self).__getattribute__(item)
+            return super(RegionFilter, self).__getattribute__(item)
 
 
 class RegionPropDetector(Detector):
@@ -1156,7 +1174,8 @@ class RegionPropDetector(Detector):
                 self.Filters.append(RegionFilter.from_dict(filter))
             else:
                 raise ValueError("Filter must be of type RegionFilter or dictionary, not %s"%type(filter))
-            param_list.append(filter.parameter)
+            param_list.append(filter.val_parameter)
+            param_list.append(filter.var_parameter)
         self.ParameterList = ParameterList(*param_list)
 
         # print("Got %s layers of filters in detector!"%len(self.Filters))
@@ -1167,7 +1186,7 @@ class RegionPropDetector(Detector):
         regions = extended_regionprops(skimage.measure.label(image), intensity_image=intensity_image)
         filter_dict = dict([[filter.prop, filter] for filter in self.Filters])
 
-        cols = ["PositionY", "PositionX", "Log_Probability"]
+        cols = ["PositionX", "PositionY", "Log_Probability"]
         cols.extend(sorted(filter_dict.keys()))
 
         out = []
@@ -1175,15 +1194,15 @@ class RegionPropDetector(Detector):
             o = []
             o.extend(region.centroid)
             prob = 0.
-            o.append(prob)
-            for key in cols[2:]:
+            o.append(float(prob))
+            for key in cols[3:]:
                 filter = filter_dict[key]
-                cols.update(filter.prop)
-                o[cols.index("Log_Probability")] += filter.filter([region])
+                # cols.update(filter.prop)
+                o[cols.index("Log_Probability")] += filter.filter([region])[0]
                 o.append(region.__getattribute__(filter.prop))
             out.append(o)
 
-        out = pandas.DataFrame(out, cols)
+        out = pandas.DataFrame(out, columns=cols)
         return out, None
 
 
@@ -3096,9 +3115,14 @@ class EmperorDetector(FlowDetector):
         return measurements
 
 def rgb2gray(rgb):
-    # rgb = np.asarray(rgb)
-    dt = rgb.dtype
-    return np.dot(rgb[...,:3], [0.299, 0.587, 0.114]).astype(dt)
+    rgb = np.asarray(rgb)
+    if len(rgb.shape)>2 and rgb.shape[2]==3:
+        dt = rgb.dtype
+        return np.dot(rgb[...,:3], [0.299, 0.587, 0.114]).astype(dt)
+    elif len(rgb.shape)==2:
+        return rgb
+    else:
+        raise ValueError("Array is not in image shape (N,M,3)!")
 
 def gray2rgb(gray):
     # rgb = np.asarray(rgb)

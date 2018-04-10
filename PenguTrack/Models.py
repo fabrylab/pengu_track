@@ -28,6 +28,7 @@ from __future__ import print_function, division
 import numpy as np
 #  import scipy.stats as ss
 import scipy.optimize as opt
+import pandas
 
 
 DIM_NAMES = ['X','Y','Z','U','V','W']
@@ -228,6 +229,7 @@ class Model(object):
     def add_variable(self, var):
         self.Extensions.append(var)
         self.State_Variables.append(var)
+        self.Measured_Variables.append(var)
         self.Meas_dim += 1
         self.Evolution_dim += 1
         self.State_dim += 1
@@ -275,6 +277,13 @@ class Model(object):
             return np.array([measurement[v] for v in self.Measured_Variables])
 
 
+    def vec_from_pandas(self, pandas_measurement):
+        if isinstance(pandas_measurement, pandas.DataFrame):
+            return np.asarray(pandas_measurement[self.Measured_Variables].values, dtype=float)[:, :, None]
+        elif isinstance(pandas_measurement, pandas.Series):
+            return np.asarray(pandas_measurement[self.Measured_Variables].values, dtype=float)[:, None]
+        else:
+            raise ValueError("Wrong input type!")
     def optimize(self, states, params = None):
         if params is None:
             params = self.Opt_Params
