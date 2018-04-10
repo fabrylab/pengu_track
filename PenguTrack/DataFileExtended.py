@@ -1019,8 +1019,7 @@ class DataFileExtended(clickpoints.DataFile):
                     meas_x = meas.PositionX
                     meas_y = meas.PositionY
 
-                    meas_err = meas.Covariance
-                    if debug_mode&0b010000:
+                    if debug_mode&0b010000 and "Covariance" in meas:
                         stateset.append(dict(filter=db_filter,
                                              log_prob=prob,
                                              image=image,

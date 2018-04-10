@@ -86,7 +86,7 @@ if __name__ == '__main__':
     images = db.getImageIterator()
     for image in images:
 
-        i = image.get_id()
+        i = image.sort_index
         # Prediction step, without applied control(vector of zeros)
         MultiKal.predict(i=i)
 

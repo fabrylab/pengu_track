@@ -276,7 +276,6 @@ class Model(object):
         else:
             return np.array([measurement[v] for v in self.Measured_Variables])
 
-
     def vec_from_pandas(self, pandas_measurement):
         if isinstance(pandas_measurement, pandas.DataFrame):
             return np.asarray(pandas_measurement[self.Measured_Variables].values, dtype=float)[:, :, None]
