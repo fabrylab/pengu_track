@@ -535,6 +535,8 @@ class KalmanFilter(Filter):
         self.C = self.Model.Measurement_Matrix
         self.G = self.Model.Evolution_Matrix
 
+        self.K = None
+
         p = np.dot(np.dot(self.C.T, self.R_0), self.C) + np.dot(np.dot(self.G, self.Q), self.G.T)#np.diag(np.ones(self.Model.State_dim) * max(measurement_variance))
         self.P_0 = p
 
@@ -624,6 +626,7 @@ class KalmanFilter(Filter):
         try:
             k = np.dot(np.dot(p, self.C.transpose()),
                        np.linalg.inv(np.dot(np.dot(self.C, p), self.C.transpose()) + self.R))
+            self.K = k
         except np.linalg.LinAlgError:
             e = sys.exc_info()[1]
             print(p)
@@ -948,35 +951,36 @@ class AdvancedKalmanFilter(KalmanFilter):
         """
         super(AdvancedKalmanFilter, self).__init__(*args, **kwargs)
         self.Lag = -1 * int(kwargs.pop('lag', -1))
+        self._is_obs_ = self.is_observable()
 
-    def predict(self, *args, **kwargs):
-        """
-        Function to get predictions from the corresponding model. Handles time-stamps and control-vectors.
-
-        Parameters
-        ----------
-        u: array_like, optional
-            Recent control-vector.
-        i: int
-            Recent/corresponding time-stamp
-
-        Returns
-        ----------
-        u: array_like
-            Recent control-vector.
-        i: int
-            Recent/corresponding time-stamp.
-        """
-        if self.Lag == 1 or (-1 * self.Lag > len(self.Predicted_X.keys())):
-            lag = 0
-        else:
-            lag = self.Lag
-        self.Q = np.dot(np.dot(self.G.T, np.cov(np.asarray(self.Predicted_X.values()[lag:]).T)), self.G)
-        print("Q at %s"%self.Q)
-        if np.any(np.isnan(self.Q)):# or np.any(np.linalg.eigvals(self.Q) < np.diag(self.Q_0)):
-            self.Q = self.Q_0
-        # print("Q at %s"%self.Q)
-        return super(AdvancedKalmanFilter, self).predict(*args, **kwargs)
+    # def predict(self, *args, **kwargs):
+    #     """
+    #     Function to get predictions from the corresponding model. Handles time-stamps and control-vectors.
+    #
+    #     Parameters
+    #     ----------
+    #     u: array_like, optional
+    #         Recent control-vector.
+    #     i: int
+    #         Recent/corresponding time-stamp
+    #
+    #     Returns
+    #     ----------
+    #     u: array_like
+    #         Recent control-vector.
+    #     i: int
+    #         Recent/corresponding time-stamp.
+    #     """
+    #     if self.Lag == 1 or (-1 * self.Lag > len(self.Predicted_X.keys())):
+    #         lag = 0
+    #     else:
+    #         lag = self.Lag
+    #     self.Q = np.dot(np.dot(self.G.T, np.cov(np.asarray(self.Predicted_X.values()[lag:]).T)), self.G)
+    #     print("Q at %s"%self.Q)
+    #     if np.any(np.isnan(self.Q)):# or np.any(np.linalg.eigvals(self.Q) < np.diag(self.Q_0)):
+    #         self.Q = self.Q_0
+    #     # print("Q at %s"%self.Q)
+    #     return super(AdvancedKalmanFilter, self).predict(*args, **kwargs)
 
     def update(self, *args, **kwargs):
         """
@@ -996,14 +1000,87 @@ class AdvancedKalmanFilter(KalmanFilter):
         i: int
             Recent/corresponding time-stamp.
         """
-        dif = np.array([np.dot(self.C, np.array(self.X.get(k, None)).T).T
-                        - np.asarray([self.Measurements[k].PositionX,
-                                      self.Measurements[k].PositionY]) for k in self.Measurements.keys()])
-        self.R = np.cov(dif.T)
-        if np.any(np.isnan(self.R)) or np.any(np.linalg.eigvals(self.R) < np.diag(self.R_0)):
-            self.R = self.R_0
-        print("R at %s"%self.R)
-        return super(AdvancedKalmanFilter, self).update(*args, **kwargs)
+        z, i = super(AdvancedKalmanFilter, self).update(*args, **kwargs)
+
+        frames = set(self.Measurements.keys()).intersection(self.Predicted_X.keys())
+
+        if self._is_obs_ and len(frames) >= self.Model.State_dim:
+            frames = sorted(frames)[-self.Model.State_dim:]
+            print("prev", np.diag(self.Q), np.diag(self.R))
+            cor_vals = np.array([self.Model.vec_from_meas(self.Measurements[f])-self.Model.measure(self.Predicted_X[f])
+                                 for f in frames])
+            cor = np.mean([cor_vals[-i, None, :] * cor_vals[-i, :, None] for i in range(self.Model.State_dim)], axis=0)[:,:,0]
+            # cor = self.COR(cor_vals, max_size=self.Model.State_dim)
+            self.R = cor - np.dot(np.dot(self.C, self.X_error[i]), self.C.T)
+            if np.any(np.diag(self.R)<0):
+                if np.any(np.diag(self.R)>0):
+                    v, w = np.linalg.eig(self.R)
+                    if np.any(v<0):
+                        self.R = np.dot(np.dot(w,np.abs(np.diag(v))), np.linalg.inv(w))
+                else:
+                    self.R *= -1.
+            # self.R = np.abs(self.R)
+            self.Q = np.dot(np.dot(np.dot(np.dot(self.G.T, self.K), cor), self.K.T), self.G)
+            print("post", np.diag(self.Q), np.diag(self.R))
+        # dif = np.array([np.dot(self.C, np.array(self.X.get(k, None)).T).T
+        #                 - np.asarray([self.Measurements[k].PositionX,
+        #                               self.Measurements[k].PositionY]) for k in self.Measurements.keys()])
+        # self.R = np.cov(dif.T)
+        # if np.any(np.isnan(self.R)) or np.any(np.linalg.eigvals(self.R) < np.diag(self.R_0)):
+        #     self.R = self.R_0
+        # print("R at %s"%self.R)
+        return z, i
+
+    # def optimize(self):
+    #     n = len(self.A)
+    #     M_0 =
+    #     K0 = np.dot(np.dot(M_0, self.C), np.linalg.inv(np.dot(self.C, np.dot(M_0, self.C.T)) - self.R))
+    #     K = np.dot(np.dot(p, self.C.transpose()),
+    #                np.linalg.inv(np.dot(np.dot(self.C, p), self.C.transpose()) + self.R))
+    #     AIKC = np.dot(self.A, np.diag(np.ones(n)) - np.dot(K, self.C))
+    #     aikc = {0: np.diag(np.ones(n))}
+    #     for i in range(2, n):
+    #         aikc.update({i: np.dot(AIKC, aikc[i-1])})
+    #     A = np.vstack([np.dot(self.C, np.dot(aikc[i], self.A)) for i in range(n)])
+    #     A_cross = np.dot(np.linalg.inv(np.dot(A.T, A)), A.T)
+    #
+    #     frames = set(self.X.keys()).intersection(self.Predicted_X.keys())
+    #     deltas = np.array([self.X[f]-self.Predicted_X[f] for f in frames])
+    #     C = np.vstack([c for c in self.COR(deltas, max_size=n)])
+    #
+    #     MH_T = np.dot(A_cross, C)
+    #     # B = np.dot(np.vstack([np.dot(self.C, A[i]) for i in range(n)]), self.A)
+    #     # B_cross = np.dot(np.linalg.inv(np.dot(B.T, B)), B.T)
+
+
+    def is_observable(self):
+        n = len(self.A)
+        A = {0: np.diag(np.ones(n)), 1: self.A}
+        for i in range(2, n):
+            A.update({i: np.dot(self.A, A[i-1])})
+        one = np.hstack([np.dot(self.C, A[i]).T for i in range(n)])
+        two = np.hstack([np.dot(A[i], self.G) for i in range(n)])
+        return (np.linalg.matrix_rank(one) == n) & (np.linalg.matrix_rank(two) == n)
+
+    def is_optimal(self):
+        frames = set(self.X.keys()).intersection(self.Predicted_X.keys())
+        deltas = np.array([self.X[f]-self.Predicted_X[f] for f in frames])
+        P = self.ACOR(deltas)
+        N = len(frames)
+        return np.all(np.sum([np.abs(np.diag(PP[:,:,0])) > (1.96/N**2) for PP in P[1:]], axis=0) < (0.05*N))
+
+    def COR(self, vals, max_size=-1):
+        vals = np.array(vals)
+        if max_size < 0:
+            return np.array([np.sum(vals[f:, None, :]*vals[f:, :, None], axis=0) for f in range(len(vals))])
+        else:
+            return np.array([np.sum(vals[f:, None, :]*vals[f:, :, None], axis=0) for f in range(max_size)])
+
+    def ACOR(self, vals):
+        c = self.COR(vals)
+        cc = (np.diag(c[0,:,:,0])[None,:]*np.diag(c[0,:,:,0])[:,None])**0.5
+        return c/cc
+
 
 
 class ParticleFilter(Filter):
