@@ -9,12 +9,12 @@ class SyntheticDataGenerator(object):
         self.Model = model
         self.Loose = bool(loose)
         vec = np.random.rand(self.N, self.Model.State_dim, 1)
-        vec [:,::2] *= self.R
-        vec [1:,::2] *= self.Q
-        self.Objects = {0: dict(zip(range(self.N), vec))}
+        vec[:, ::2] *= self.R
+        vec[1:, ::2] *= self.Q
+        self.Objects = {-1: dict(zip(range(self.N), vec))}
 
-        for i in range(100):
-            self.step()
+        # for i in range(100):
+        #     self.step()
 
     def step(self):
         i = max(self.Objects.keys())
