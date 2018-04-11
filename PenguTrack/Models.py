@@ -278,12 +278,14 @@ class Model(object):
 
     def vec_from_pandas(self, pandas_measurement):
         if isinstance(pandas_measurement, pandas.DataFrame):
-            return np.asarray(pandas_measurement[self.Measured_Variables].values, dtype=float)[:, :, None]
+            return np.asarray([[e[k] for k in self.Measured_Variables] for e in pandas_measurement.to_dict("index").values()], dtype=float)[:, :, None]
         elif isinstance(pandas_measurement, pandas.Series):
-            return np.asarray(pandas_measurement[self.Measured_Variables].values, dtype=float)[:, None]
+            pandas_measurement = pandas_measurement.to_dict()
+            return np.array([pandas_measurement[k] for k in self.Measured_Variables])[:, None]
         else:
             raise ValueError("Wrong input type!")
-    def optimize(self, states, params = None):
+
+    def optimize(self, states, params=None):
         if params is None:
             params = self.Opt_Params
         InitArgs = list(self.Initial_Args)
