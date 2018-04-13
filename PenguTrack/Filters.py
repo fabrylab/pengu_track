@@ -449,8 +449,7 @@ class Filter(object):
     def cost_from_logprob(self, log_prob, **kwargs):
         return cost_from_logprob(log_prob, **kwargs)
 
-
-class KalmanFilter(Filter):
+class KalmanBaseFilter(Filter):
     """
     This Class describes a kalman-filter in the pengu-track package. It calculates actual believed values from
     predictions and measurements.
@@ -542,12 +541,56 @@ class KalmanFilter(Filter):
 
         kwargs.update(dict(meas_dist=ss.multivariate_normal(cov=self.R),
                            state_dist=ss.multivariate_normal(cov=self.P_0)))
-        super(KalmanFilter, self).__init__(model, **kwargs)
+        super(KalmanBaseFilter, self).__init__(model, **kwargs)
 
         self.X_error.update({0: p})
         self.Predicted_X_error.update({0: p})
 
+    def _handle_state_(self, i, allow_predict=False, return_prediction=False):
+        if i in self.X and not return_prediction:
+            return self.X[i]
+        elif i in self.Predicted_X:
+            return self.Predicted_X[i]
+        elif allow_predict:
+            u, i = self.predict(i=i)
+            return self.Predicted_X[i]
+        else:
+            if return_prediction:
+                raise KeyError("No entry in prediction memory for timestamp %s" % i)
+            else:
+                raise KeyError("No entry in prediction or state memory for timestamp %s" % i)
 
+    def _handle_error_(self, i, allow_predict=False, return_prediction=False):
+        if i in self.X_error and not return_prediction:
+            return self.X_error[i]
+        elif i in self.Predicted_X_error:
+            return self.Predicted_X_error[i]
+        elif allow_predict:
+            u, i = self.predict(i=i)
+            return self.Predicted_X_error[i]
+        else:
+            if return_prediction:
+                raise KeyError("No entry in prediction memory for timestamp %s" % i)
+            else:
+                return self.P_0
+
+
+class KalmanFilter(KalmanBaseFilter):
+    # def __init__(self, model, evolution_variance, measurement_variance, **kwargs):
+    #     """
+    #     This Class describes a kalman-filter in the pengu-track package. It calculates actual believed values from
+    #     predictions and measurements.
+    #
+    #     Parameters
+    #     ----------
+    #     model: PenguTrack.model object
+    #         A physical model to gain predictions from data.
+    #     evolution_variance: array_like
+    #         Vector containing the estimated variances of the state-vector-entries.
+    #     measurement_variance: array_like
+    #         Vector containing the estimated variances of the measurement-vector-entries.
+    #     """
+    #     super(KalmanFilter, self).__init__(model, evolution_variance, measurement_variance, **kwargs)
     def predict(self, u=None, i=None):
         """
         Function to get predictions from the corresponding model. Handles time-stamps and control-vectors.
@@ -568,18 +611,11 @@ class KalmanFilter(Filter):
         """
         u, i = super(KalmanFilter, self).predict(u=u, i=i)
 
-        try:
-            x_ = np.dot(self.A, self.X[i-1]) + np.dot(self.B, u)
-        except KeyError:
-            x_ = np.dot(self.A, self.Predicted_X[i-1]) + np.dot(self.B, u)
+        x = self._handle_state_(i-1)
+        p = self._handle_error_(i-1)
 
-        try:
-            p_ = np.dot(np.dot(self.A, self.X_error[i-1]), self.A.T) + np.dot(np.dot(self.G, self.Q), self.G.T)
-        except KeyError:
-            try:
-                p_ = np.dot(np.dot(self.A, self.Predicted_X_error[i-1]), self.A.T) + np.dot(np.dot(self.G, self.Q), self.G.T)
-            except KeyError:
-                p_ = np.dot(np.dot(self.A, self.P_0), self.A.T) + np.dot(np.dot(self.G, self.Q), self.G.T)
+        p_ = np.dot(np.dot(self.A, p), self.A.T) + np.dot(np.dot(self.G, self.Q), self.G.T)
+        x_ = np.dot(self.A, x) + np.dot(self.B, u)
 
         self.Predicted_X.update({i: x_})
         self.Predicted_X_error.update({i: p_})
@@ -608,20 +644,8 @@ class KalmanFilter(Filter):
         measurement = copy(z)
         z = np.array(self.Model.vec_from_meas(measurement))
 
-        try:
-            x = self.Predicted_X[i]
-        except KeyError:
-            u, i = self.predict(i=i)
-            x = self.Predicted_X[i]
-
-        try:
-            p = self.Predicted_X_error[i]
-        except KeyError:
-            try:
-                u, i = self.predict(i=i)
-                p = self.Predicted_X_error[i]
-            except KeyError:
-                p = self.P_0
+        x = self._handle_state_(i, allow_predict=True, return_prediction=True)
+        p = self._handle_error_(i, allow_predict=True, return_prediction=True)
 
         try:
             k = np.dot(np.dot(p, self.C.transpose()),
@@ -640,25 +664,10 @@ class KalmanFilter(Filter):
         self.X.update({i: x_})
         self.X_error.update({i: p_})
 
-        # try:
-        #     self.State_Distribution = ss.multivariate_normal(cov=self.X_error[i])
-        # except np.linalg.LinAlgError:
-        #     self.State_Distribution = ss.multivariate_normal(cov=self.P_0)
-
         return measurement, i
 
-    # def _log_prob_(self, key):
-    #     current_cov = np.copy(self.State_Distribution.cov)
-    #     try:
-    #         self.State_Distribution.cov = self.X_error[key]
-    #     except KeyError:
-    #         self.State_Distribution.cov = self.P_0
-    #     value = super(KalmanFilter, self)._log_prob_(key)
-    #     self.State_Distribution.cov = current_cov
-    #     return value
 
-
-class InformationFilter(Filter):
+class InformationFilter(KalmanBaseFilter):
     """
     This Class describes a kalman-filter in the pengu-track package. It calculates actual believed values from
     predictions and measurements.
@@ -720,6 +729,7 @@ class InformationFilter(Filter):
         measurement_variance: array_like
             Vector containing the estimated variances of the measurement-vector-entries.
         """
+        super(InformationFilter, self).__init__(model, evolution_variance, measurement_variance, **kwargs)
         self.Model = model
 
         evolution_variance = np.array(evolution_variance, dtype=float)
@@ -751,14 +761,9 @@ class InformationFilter(Filter):
 
         kwargs.update(dict(meas_dist=ss.multivariate_normal(cov=self.R),
                            state_dist=ss.multivariate_normal(cov=self.P_0)))
-        super(InformationFilter, self).__init__(model, **kwargs)
 
         self.X_error.update({0: p})
         self.Predicted_X_error.update({0: p})
-        # self.Z_error = {0: self.O_0}
-        # self.Predicted_Z_error = {0: self.O_0}
-        # self.Z = {}#{0: np.dot(self.O_0, self.X[0])}
-        # self.Predicted_Z = {}#{0: self.Z[0]}
 
     def predict(self, u=None, i=None):
         """
@@ -778,44 +783,19 @@ class InformationFilter(Filter):
         i: int
             Recent/corresponding time-stamp.
         """
-        u, i = super(InformationFilter, self).predict(u=u, i=i)
+        u, i = super(super(InformationFilter, self), self).predict(u=u, i=i)
 
-        try:
-            p_old = self.X_error[i-1]
-            # o_old = self.Z_error[i-1]
-        except KeyError:
-            try:
-                # o_old = self.Predicted_Z_error[i-1]
-                p_old = self.Predicted_X_error[i-1]
-            except KeyError:
-                # o_old = self.O_0
-                p_old = self.P_0
-        try:
-            x_old = self.X[i - 1]
-            # z_old = self.Z[i - 1]
-        except KeyError:
-            x_old = self.Predicted_X[i - 1]
-            # try:
-            #     z_old = self.Predicted_Z[i - 1]
-            # except KeyError:
-            #     try:
-            #         self.Z[i-1] = np.dot(o_old, self.X[i-1])
-            #     except KeyError:
-            #         self.Z[i-1] = np.dot(o_old, self.Predicted_X[i-1])
-            #     z_old = self.Z[i - 1]
+        x_old = self._handle_state_(i-1)
+        p_old = self._handle_error_(i-1)
 
-
-        o_old_inv = p_old#np.linalg.inv(o_old)
+        o_old_inv = p_old
         o_old = np.linalg.inv(p_old)
         z_old = np.dot(o_old, x_old)
 
         new_o_inv = np.dot(np.dot(self.A, o_old_inv), self.A.T) + np.dot(np.dot(self.G, self.Q), self.G.T)
-        # o_ = np.linalg.inv(new_o_inv)
 
         z_ = np.dot(o_old, (np.dot(np.dot(self.A, o_old_inv), z_old) + np.dot(self.B, u)))
 
-        # self.Predicted_Z.update({i: z_})
-        # self.Predicted_Z_error.update({i: o_})
         self.Predicted_X.update({i: np.dot(new_o_inv, z_)})
         self.Predicted_X_error.update({i: new_o_inv})
 
@@ -843,46 +823,124 @@ class InformationFilter(Filter):
         measurement = copy(z)
         z = np.array(self.Model.vec_from_meas(measurement))
 
-        try:
-            x = self.Predicted_X[i]
-            # zz = self.Predicted_Z[i]
-        except KeyError:
-            u, i = self.predict(i=i)
-            x = self.Predicted_X[i]
-            # zz = self.Predicted_Z[i]
+        x = self._handle_state_(i, allow_predict=True, return_prediction=True)
+        p = self._handle_error_(i, allow_predict=True, return_prediction=True)
 
-        try:
-            p = self.Predicted_X_error[i]
-            # o = self.Predicted_Z_error[i]
-        except KeyError:
-            try:
-                u, i = self.predict(i=i)
-                p = self.Predicted_X_error[i]
-                # o = self.Predicted_Z_error[i]
-            except KeyError:
-                p = self.P_0
-                # o = self.O_0
-
+        o_inv = p
         o = np.linalg.inv(p)
         zz = np.dot(o, x)
 
-        # o_ = np.dot(np.dot(self.C.T, self.R_inv), self.C) + o
-        o_inv = p-np.dot(np.dot(np.dot(np.dot(p, self.C.T), np.linalg.inv(self.R + np.dot(np.dot(self.C, p), self.C.T))), self.C), o)
+        # o_inv = p-np.dot(np.dot(np.dot(np.dot(o_inv, self.C.T), np.linalg.inv(self.R + np.dot(np.dot(self.C, o_inv), self.C.T))), self.C), o)
+        o = np.dot(np.dot(self.C.T, self.R_inv), self.C) + o
         zz_ = np.dot(np.dot(self.C.T, self.R_inv), z) + zz
-        # o_inv = np.linalg.inv(o_)
 
-        # self.Z_error.update({i: o_})
-        # self.Z.update({i: zz_})
+        o_inv = np.linalg.inv(o)
+
         self.X.update({i: np.dot(o_inv, zz_)})
         self.X_error.update({i: o_inv})
 
-        # try:
-        #     self.State_Distribution = ss.multivariate_normal(cov=self.X_error[i])
-        # except np.linalg.LinAlgError:
-        #     self.State_Distribution = ss.multivariate_normal(cov=self.P_0)
-
         return measurement, i
 
+
+class AdaptedKalmanFilter(KalmanBaseFilter):
+    def __init__(self, model, evolution_variance, measurement_variance, **kwargs):
+        """
+        This Class describes a kalman-filter in the pengu-track package. It calculates actual believed values from
+        predictions and measurements.
+
+        Parameters
+        ----------
+        model: PenguTrack.model object
+            A physical model to gain predictions from data.
+        """
+        super(AdaptedKalmanFilter, self).__init__(model, evolution_variance, measurement_variance, **kwargs)
+        self.Y = {}
+
+    def predict(self, u=None, i=None):
+        """
+        Function to get predictions from the corresponding model. Handles time-stamps and control-vectors.
+
+        Parameters
+        ----------
+        u: array_like, optional
+            Recent control-vector.
+        i: int
+            Recent/corresponding time-stamp
+
+        Returns
+        ----------
+        u: array_like
+            Recent control-vector.
+        i: int
+            Recent/corresponding time-stamp.
+        """
+        u, i = super(AdaptedKalmanFilter, self).predict(u=u, i=i)
+
+        x = self._handle_state_(i-1)
+        p = self._handle_error_(i-1)
+
+        p_ = np.dot(np.dot(self.A, p), self.A.T) + np.dot(np.dot(self.G, self.Q), self.G.T)
+        x_ = np.dot(self.A, x) + np.dot(self.B, u)
+
+        self.Predicted_X.update({i: x_})
+        self.Predicted_X_error.update({i: p_})
+
+        return u, i
+
+
+    def update(self, z=None, i=None):
+        """
+        Function to get updates to the corresponding model. Handles time-stamps and measurement-vectors.
+
+        Parameters
+        ----------
+        z: PenguTrack.Measurement, optional
+            Recent measurement.
+        i: int
+            Recent/corresponding time-stamp
+
+        Returns
+        ----------
+        z: PenguTrack.Measurement
+            Recent measurement.
+        i: int
+            Recent/corresponding time-stamp.
+        """
+        z, i = super(AdaptedKalmanFilter, self).update(z=z, i=i)
+        measurement = copy(z)
+        z = np.array(self.Model.vec_from_meas(measurement))
+
+        x = self._handle_state_(i, allow_predict=True, return_prediction=True)
+        p = self._handle_error_(i, allow_predict=True, return_prediction=True)
+
+        y = z - np.dot(self.C, x)
+        self.Y.update({i: y})
+
+        sig = y[:, None] * y[None, :]
+
+        alpha = np.trace(sig)/np.trace(np.dot(np.dot(self.C, p), self.C.T) + self.R)
+        if alpha > 1:
+            alpha = 1
+        # elif alpha<0:
+        #     alpha = 0
+        print(alpha)
+
+        try:
+            k = (1./alpha)*np.dot(np.dot(p, self.C.transpose()),
+                       np.linalg.inv(np.dot(np.dot(self.C * (1./alpha), p), self.C.transpose()) + self.R))
+            self.K = k
+        except np.linalg.LinAlgError:
+            e = sys.exc_info()[1]
+            print(p)
+            raise np.linalg.LinAlgError(e)
+
+        x_ = x + np.dot(k, y)
+        p_ = (p - np.dot(np.dot(k, self.C), p))*(1./alpha)
+
+        self.X.update({i: x_})
+        self.X_error.update({i: p_})
+
+        return measurement, i
 
 
 class AdvancedKalmanFilter(KalmanFilter):
@@ -1584,7 +1642,7 @@ class MultiFilter(Filter):
         return greedy_assignment(cost_matrix)
 
     def name(self):
-        return str(self.__class__).split("'")[1].split(".")[-1]
+        return str(self.__class__).split("'")[1].split(".")[-1] + "_" + str(self.Filter_Class).split("'")[1].split(".")[-1]
 
 class Tracker(MultiFilter):
     pass

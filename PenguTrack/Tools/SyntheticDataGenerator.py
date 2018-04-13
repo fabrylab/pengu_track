@@ -2,19 +2,19 @@ import numpy as np
 from PenguTrack.Detectors import Measurement
 
 class SyntheticDataGenerator(object):
-    def __init__(self, object_number, position_variation, speed_variation, model, loose=False):
+    def __init__(self, object_number, position_variation, speed_variation, model, loose=False, pre_runs=0):
         self.N = int(object_number)
         self.R = float(position_variation)
         self.Q = float(speed_variation)
         self.Model = model
         self.Loose = bool(loose)
-        vec = np.random.rand(self.N, self.Model.State_dim, 1)
+        vec = 2.*np.random.rand(self.N, self.Model.State_dim, 1)-1.
         vec[:, ::2] *= self.R
         vec[1:, ::2] *= self.Q
-        self.Objects = {-1: dict(zip(range(self.N), vec))}
+        self.Objects = {-pre_runs-1: dict(zip(range(self.N), vec))}
 
-        # for i in range(100):
-        #     self.step()
+        for i in range(pre_runs):
+            self.step()
 
     def step(self):
         i = max(self.Objects.keys())
