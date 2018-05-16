@@ -1101,7 +1101,11 @@ class DataFileExtended(clickpoints.DataFile):
     def _migrateDBExtFrom(self, version):
         print("Migrating Ext-DB from version %s" % version)
         nr_version = int(version)
-        self.db.get_conn().row_factory = dict_factory
+
+        try:
+            self.db.get_conn().row_factory = dict_factory
+        except AttributeError:
+            self.db.connection().row_factory = dict_factory
 
         if nr_version < 1:
             print("\tto 1")
@@ -1162,9 +1166,10 @@ class DataFileExtended(clickpoints.DataFile):
                 self.db.execute_sql('ALTER TABLE filter_tmp RENAME TO filter')
             self._SetExtVersion(3)
 
-
-        self.db.get_conn().row_factory = None
-
+        try:
+            self.db.get_conn().row_factory = None
+        except AttributeError:
+            self.db.connection().row_factory = None
 
     def _SetExtVersion(self, nr_new_version):
         self.db.execute_sql("INSERT OR REPLACE INTO meta (id,key,value) VALUES ( \
