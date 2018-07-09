@@ -128,6 +128,14 @@ class QNumberChooser(QParameterEdit):
         # call the super method's initializer
         super().__init__(parameter, layout)
 
+        if type_int:
+            self.decimals = 0
+        elif self.parameter.decimals is None:
+            self.decimals = 2
+        else:
+            self.decimals = self.parameter.decimals
+        self.decimal_factor = 10**self.decimals
+
         # if the parameter has a minimum and maximum, we can add a slider to display it
         if self.parameter.min is not None and self.parameter.max is not None:
             # create a slider object
@@ -137,9 +145,9 @@ class QNumberChooser(QParameterEdit):
             # set the orientation of the slider to horizontal
             self.slider.setOrientation(QtCore.Qt.Horizontal)
             # set the range
-            self.slider.setRange(parameter.min, parameter.max)
+            self.slider.setRange(parameter.min*self.decimal_factor, parameter.max*self.decimal_factor)
             # and connect the valueChanged signal
-            self.slider.valueChanged.connect(self.setValue)
+            self.slider.valueChanged.connect(lambda x: self.setValue(x/self.decimal_factor))
 
         # if it is an integer, use a QSpinBox
         if type_int:
@@ -147,6 +155,7 @@ class QNumberChooser(QParameterEdit):
         # if it is a float, use a QDoubleSpinBox
         else:
             self.spinBox = QtWidgets.QDoubleSpinBox()
+            self.spinBox.setDecimals(self.decimals)
         # add the spinbox to the layout
         self.layout.addWidget(self.spinBox)
 
@@ -214,7 +223,7 @@ class QNumberChooser(QParameterEdit):
             self.spinBox.setValue(x)
             # and if existent in the slider
             if self.slider is not None:
-                self.slider.setValue(x)
+                self.slider.setValue(x*self.decimal_factor)
 
     def rangeChanged(self):
         if self.checkbox_fixed.isChecked():
@@ -346,7 +355,7 @@ class Parameter(object):
     fixed = False
 
     def __init__(self, key, default, name=None, min=None, max=None, range=None, values=None, value_type=None,
-                 desc=None):
+                 desc=None, decimals=None):
         """
         Creates a new parameter object.
 
@@ -359,6 +368,7 @@ class Parameter(object):
         :param values: the possible values, if it is a categorical parameter. These values are displayed in the ComboBox.
         :param value_type: the type of the parameter, can usually be inferred from the type of the default value.
         :param desc: a description of the parameter, is displayed as a tooltip on the input widget.
+        :param decimals: the number of decimals of a float input.
         """
         # store the key of the parameter
         self.key = key
@@ -380,6 +390,7 @@ class Parameter(object):
         if range is not None:
             self.min = range[0]
             self.max = range[1]
+        self.decimals = decimals
 
         # store the categories
         self.values = values
