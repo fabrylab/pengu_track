@@ -1616,23 +1616,26 @@ def enhance_contrast(image):
 
 class TinaCellDetector(Detector):
 
-    def __init__(self):
+    def __init__(self, disk_size=0, minimal_area=57, maximal_area=350, threshold=0.2):
         super(TinaCellDetector, self).__init__()
 
-    def detect(self,minProj, minIndices, maxProj, maxIndices, resXY, resZ,
-               disk_size=0, minimal_area=57, maximal_area=350, threhold=0.2):
+        self.ParameterList = ParameterList(Parameter("DiskSize", disk_size, min=0, max=20, value_type=int),
+                                           Parameter("MinimalArea", minimal_area, min=0, max =100, value_type=int),
+                                           Parameter("MaximalArea", maximal_area, min=0, max=1000, value_type=int),
+                                           Parameter("Threshold", threshold, min=0., max=1., value_type=float)
+                                           )
+
+    @detection_parameters(maxIndices=dict(frame=0, mask=False, layer=0),
+                          maxProj=dict(frame=0, mask=False, layer=1),
+                          minIndices=dict(frame=0, mask=False, layer=2),
+                          minProj=dict(frame=0, mask=False, layer=3))
+    def detect(self,minProj, minIndices, maxProj, maxIndices):
         """
 
         :param minProj:
         :param minIndices:
         :param maxProj:
         :param maxIndices:
-        :param resXY:
-        :param resZ:
-        :param disk_size:
-        :param minimal_area:
-        :param maximal_area:
-        :param threhold:
         :return:
         """
 
@@ -1648,7 +1651,7 @@ class TinaCellDetector(Detector):
         import scipy
         from skimage import filters
         maxproj_gausfilt = scipy.ndimage.filters.gaussian_filter(maxproj_ben, 2)
-        thres_max = threhold # threshold_otsu(maxproj_ben)
+        thres_max = Threhold # threshold_otsu(maxproj_ben)
 
         #minproj_gausfilt = scipy.ndimage.filters.gaussian_filter(minproj_ben, 0.2)
         #thres_min = threshold_otsu(minproj_ben)
@@ -1656,7 +1659,7 @@ class TinaCellDetector(Detector):
         mask = (maxproj_gausfilt > thres_max)
         #mask = (maxproj_gausfilt>thres_max)*(minproj_gausfilt>thres_min)
 
-        struct1 = skimage.morphology.disk(disk_size)
+        struct1 = skimage.morphology.disk(self.DiskSize)
         mask_erosion = scipy.ndimage.binary_erosion(mask).astype(mask.dtype)  # rauschbedingte Pixel werden geloescht
         mask_dilation = scipy.ndimage.binary_dilation(mask_erosion).astype(mask_erosion.dtype)
 
@@ -1673,8 +1676,8 @@ class TinaCellDetector(Detector):
 
         # threshold depending on cellsize
         area = np.array([e.area for e in regions])
-        area_thres_min = minimal_area
-        area_thres_max = maximal_area
+        area_thres_min = self.MinimalArea
+        area_thres_max = self.MaximalArea
         cells = [r for r in regions if (r.area <= area_thres_max) and (r.area >= area_thres_min)]
         cellx = np.array([e.centroid[0] for e in cells])
         celly = np.array([e.centroid[1] for e in cells])
