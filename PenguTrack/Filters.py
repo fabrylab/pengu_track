@@ -32,7 +32,7 @@ from PenguTrack.Detectors import Measurement
 from .Assignment import *
 import scipy.integrate as integrate
 #  import scipy.optimize as opt
-
+from .Detectors import array_to_measurement, array_to_pandasDF, pandasDF_to_array, pandasDF_to_measurement, measurements_to_array, measurements_to_pandasDF
 
 class Filter(object):
     """
@@ -1461,28 +1461,28 @@ class MultiFilter(Filter):
             measurements = list(z)
             self.Measurements.update({i:z})
 
-            meas_logp = np.array([m.Log_Probability for m in z])
-        if isinstance(z, tuple) and len(z)==2:
-            z = z[0]
-
-            z = np.array([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
+            # meas_logp = np.array([m.Log_Probability for m in z])
+        # if isinstance(z, tuple) and len(z)==2:
+        #     z = z[0]
+        #     z = np.array([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
 
         elif isinstance(z, np.ndarray):
-            if len(z.shape)==2:
-                z = z[:, :, None]
-            meas_logp = np.ones(z.shape[0])
-            measurements = [Measurement(1, pos) for pos in z]
-            self.Measurements.update({i:measurements})
+            measurements = array_to_measurement(z)
+            # if len(z.shape) == 2:
+            #     z = z[:, :, None]
+            # meas_logp = np.ones(z.shape[0])
+            # measurements = [Measurement(1, pos) for pos in z]
+            # self.Measurements.update({i: measurements})
         else:
             raise ValueError("Input Positions are not of type array or pengutrack measurement!")
-            except:
-                ValueError("Measurement input does not fit any known type (PenguTrack-Measurement, pandas, array)")
 
-        self.Measurements.update({i:measurements})
+        self.Measurements.update({i: measurements})
 
-        meas_logp = measurements.Log_Probability
+        # meas_logp = measurements.Log_Probability
+        meas_logp = [m.Log_Probability for m in measurements]
 
-        z = self.Model.vec_from_pandas(measurements)
+        # z = self.Model.vec_from_pandas(measurements)
+        z = [self.Model.vec_from_meas(m) for m in measurements]
 
         mask = ~np.isneginf(meas_logp)
         if not np.all(~mask):

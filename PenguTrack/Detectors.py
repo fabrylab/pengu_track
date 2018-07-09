@@ -113,6 +113,55 @@ def array_to_pandasDF(array):
     return pandas.DataFrame(np.hstack((np.zeros((array.shape[0],1)), array)),
                             columns=entries)
 
+def pandasDF_to_array(DF):
+    return DF.values()
+
+def measurements_to_array(measurements):
+    keys = set(measurements[0].getEntryKeys())
+    for m in measurements:
+        keys.intersection(m.getEntryKeys())
+    return np.array([[m[k] for k in keys] for m in measurements], dtype=float)
+
+def array_to_measurement(array, keys=[], dim=3):
+    shape = array.shape
+    if len(shape) == 2:
+        if shape[1] == 0:
+            raise ValueError("No Entries in measurement array!")
+        elif shape[1] == dim:
+            return [Measurement(1., a) for a in array]
+        elif shape[1] == dim+1:
+            return [Measurement(a[0], a[1:]) for a in array]
+        elif shape[1] == dim+len(keys):
+            return [Measurement(1., a, data=dict([[keys[i], array[i+dim]] for i in range(len(keys))])) for a in array]
+        elif shape[1] == dim+len(keys)+1:
+            return [Measurement(a[0],
+                                a[1:1+dim],
+                                data=dict([[keys[i], array[i+dim]] for i in range(len(keys))])) for a in array]
+        elif shape[1] == len(keys) and "PositionX" in keys and "Log_Probability" in keys:
+            return [Measurement(a[keys.index("Log_Probability")],
+                                a[[keys.index(n) for n in ["PositionX", "PositionY", "PositionZ"][:dim]]],
+                                data=dict([[n, a(keys.index(n))] for n in keys])) for a in array]
+    else:
+        raise ValueError("Can not interpret input array!")
+
+
+def pandasDF_to_measurement(DF):
+    dims = []
+    for k in ["X", "Y", "Z"]:
+        if "Position%s"%k in DF.columns:
+            dims.append("Position%s"%k)
+    keys = set(DF.columns).difference(dims)
+    keys = keys.difference(["Log_Probability"])
+    if "Log_Probability" in DF.coulumns:
+        return [Measurement(d["Log_Probability"],
+                            [d[k] for k in dims],
+                            data=dict([[k, d[k]] for k in keys])) for d in DF]
+    else:
+        return [Measurement(1.,
+                            [d[k] for k in dims],
+                            data=dict([[k, d[k]] for k in keys])) for d in DF]
+
+
 class Measurement(dotdict):
     """
     Base Class for detection results.
@@ -139,11 +188,14 @@ class Measurement(dotdict):
         self.Log_Probability = float(log_probability)
         try:
             self.PositionX, self.PositionY, self.PositionZ = np.asarray(position)
+            self.dim = 3
         except ValueError:
             try:
                 self.PositionX, self.PositionY = np.asarray(position)
+                self.dim = 2
             except ValueError:
                 self.PositionX = float(position)
+                self.dim = 1
         # self.Position = np.asarray(position)
         if track_id is not None:
             self.Track_Id = int(track_id)
@@ -187,6 +239,16 @@ class Measurement(dotdict):
     def getVector(self, keys):
         return [self[k] for k in keys]
 
+    def getEntryKeys(self):
+        keys = ["Log_Probability"]
+        keys.extend(["PositionX","PositionY", "PositionZ"][:self.dim])
+        keys.extend(self.Data.keys())
+        return keys
+
+    def getEntries(self):
+        keys = self.getEntryKeys()
+        return np.asarray([self[k] for k in keys], dtype=float)
+
 
 def detection_parameters(**detection_parameters):
     def real_decorator(function):
@@ -205,7 +267,8 @@ class Detector(object):
         self.ParameterList = ParameterList()
 
     def detect(self, *args, **kwargs):
-        return pandas.DataFrame(np.random.rand(2), columns=["PositionX", "PositionY"])
+        # return pandas.DataFrame(np.random.rand(2), columns=["PositionX", "PositionY"])
+        return Measurement(1., np.random.rand(2))
 
     def __getattribute__(self, item):
         if item != "ParameterList":
@@ -287,9 +350,11 @@ class BlobDetector(Detector):
                         skimage.filters.laplace(
                             skimage.filters.gaussian(image.astype(np.uint8), self.ObjectSize)) > self.Threshold
                         ))
+        # out = pandas.DataFrame([[props.centroid[1], props.centroid[0], 1.] for props in regions],
+        #                         columns=["PositionX", "PositionY", "Log_Probability"])
+        out = [Measurement(1., props.centroid) for props in regions]
 
-        return pandas.DataFrame([[props.centroid[1], props.centroid[0], 1.] for props in regions],
-                                columns=["PositionX", "PositionY", "Log_Probability"]), None
+        return out, None
 
 
 class NKCellDetector(Detector):
@@ -329,7 +394,9 @@ class NKCellDetector(Detector):
             std_int = np.std(intensities)
             # out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
             out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
-        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        # out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        out = [Measurement(o[3], o[:3], data={"IntensitySTD": o[4]}) for o in out]
+
 
         #res = 6.45 / 10
         #out.PositionX *= res
@@ -377,7 +444,8 @@ class NKCellDetector2(Detector):
             std_int = np.std(intensities)
             # out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
             out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
-        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        # out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        out = [Measurement(o[3], o[:3], data={"IntensitySTD":o[4]}) for o in out]
 
         #res = 6.45 / 10
         #out.PositionX *= res
@@ -456,7 +524,8 @@ class TCellDetector(Detector):
             std_int = np.std(intensities)
             # out.append(Measurement(prob, [prop.centroid[0], prop.centroid[1], mean_int], data=std_int))
             out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
-        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        # out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        out = [Measurement(o[3], o[:3], data={"IntensitySTD": o[4]}) for o in out]
 
         #res = 6.45 / 10
         #out.PositionX *= res
@@ -577,8 +646,8 @@ class SimpleAreaDetector2(Detector):
             std_int = np.std(intensities)
             out.append([prop.centroid[0], prop.centroid[1], mean_int, prob, std_int])
 
-        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
-
+        # out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        out = [Measurement(o[3], o[:3], data={"IntensitySTD":o[4]}) for o in out]
 
         # #idea for speed up of the following
         # vectorXY = out["PositionX", "PositionY"].values
@@ -624,7 +693,8 @@ class SimpleAreaDetector2(Detector):
         for pos in Positions2D_cor:
             Positions3D.append([pos[0] * res, pos[1] * res, pos[3] * resZ, pos[2]])
 
-        Positions3D = pandas.DataFrame(Positions3D, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability"])
+        # Positions3D = pandas.DataFrame(Positions3D, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability"])
+        Positions3D = [Measurement(o[3], o[:3]) for o in out]
 
         return Positions3D, None
 
@@ -718,7 +788,8 @@ class SimpleAreaDetector(Detector):
             o = list(prop.centroid)
             o.append(prob)
             out.append(o)
-        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"])
+        # out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"])
+        out = [Measurement(o[2], o[:2]) for o in out]
         return out, None
 
 
@@ -1206,7 +1277,10 @@ class RegionPropDetector(Detector):
                 o.append(region.__getattribute__(filter.prop))
             out.append(o)
 
-        out = pandas.DataFrame(out, columns=cols)
+        # out = pandas.DataFrame(out, columns=cols)
+        out = Measurement(o[cols.index("Log_Probability")],
+                          [o[cols.index("PositionX")], o[cols.index("PositionY")]],
+                          data=dict([[k, out[k]] for k in filter_dict.keys()]))
         return out, None
 
 
@@ -1325,7 +1399,8 @@ class AreaDetector(Detector):
                 out.extend(self.measure(prop, 1))
             elif n < N_max:
                 pass
-        return pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"])
+        # return pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"])
+        return [Measurement(o[3], o[:3]) for o in out]
 
     def measure(self, prop, n):
         out = []
@@ -1453,7 +1528,8 @@ class AreaBlobDetector(Detector):
                     o.extend(regions[i].centroid)
                     o.append(1)
                     out.append(o)
-        return pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"]), None
+        # return pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"]), None
+        return [Measurement(o[3], o[:3]) for o in out], None
 
 
 class WatershedDetector(Detector):
@@ -1521,8 +1597,9 @@ class WatershedDetector(Detector):
         if return_regions:
             return regions
         elif len(regions) > 0:
-            return pandas.DataFrame([[1., props.centroid[0], props.centroid[1]] for props in regions],
-                                    columns=["Log_Probability", "PositionX", "PositionY"]), None
+            # return pandas.DataFrame([[1., props.centroid[0], props.centroid[1]] for props in regions],
+            #                         columns=["Log_Probability", "PositionX", "PositionY"]), None
+            return [Measurement(1., props.centroid) for props in regions], None
         else:
             return [], None
 
