@@ -85,25 +85,50 @@ class new_Evaluator(object):
         self.GT_array = None
         self.system_db = None
         self.gt_db = None
+        self.Frames = None
 
     def load_tracks_from_clickpoints(self, path, type):
         db = clickpoints.DataFile(path)
         tracks = db.getTracks(type=type)
         track_dict = dict(enumerate([t.id for t in tracks]))
-        array = np.array([db.db.execute_sql("select (SELECT x from marker as m WHERE m.image_id = i.id AND m.track_id=?) as x, (SELECT y from marker as m WHERE m.image_id = i.id AND m.track_id=?) as y from image as i order by sort_index",[track_dict[k],track_dict[k]]).fetchall() for k in sorted(track_dict.keys())], dtype=float)
+        if self.Frames is None:
+            array = np.array([db.db.execute_sql("select (SELECT x from marker as m WHERE m.image_id = i.id AND m.track_id=?) as x, (SELECT y from marker as m WHERE m.image_id = i.id AND m.track_id=?) as y from image as i order by sort_index",[track_dict[k],track_dict[k]]).fetchall() for k in sorted(track_dict.keys())], dtype=float)
+            self.Frames = range(array.shape[1])
+        else:
+            array = np.array([db.db.execute_sql("select (SELECT x from marker as m WHERE m.image_id = i.id AND m.track_id=?) as x, (SELECT y from marker as m WHERE m.image_id = i.id AND m.track_id=?) as y from image as i WHERE image.sort_index in ? order by sort_index",[track_dict[k], track_dict[k], self.Frames]).fetchall() for k in sorted(track_dict.keys())], dtype=float)
         print("Tracks loaded!")
         return db, array, track_dict
 
     def add_PT_Tracks_from_Tracker(self, tracks):
-        frames = set()
-        for track in tracks:
-            frames.update(track.X.keys())
+        if self.Frames is None:
+            frames = set()
+            for track in tracks.values():
+                frames.update(track.X.keys())
+            self.Frames = list(frames)
+        else:
+            frames = set(self.Frames)
         array = np.ones((len(tracks), len(frames), 2))
-        track_dict = enumerate(tracks.keys())
+        track_dict = dict(enumerate(tracks.keys()))
         for f in sorted(frames):
             for t in track_dict:
                 if f in tracks[track_dict[t]].X:
                     array[t, f, :] = tracks[track_dict[t]].X[f][:2,0]
+        return track_dict, array
+
+    def add_PT_Tracks_from_dicts(self, tracks):
+        if self.Frames is None:
+            frames = set()
+            for track in tracks.values():
+                frames.update(track.keys())
+            self.Frames = list(frames)
+        else:
+            frames = set(self.Frames)
+        array = np.ones((len(tracks), len(frames), 2))
+        track_dict = dict(enumerate(tracks.keys()))
+        for f in sorted(frames):
+            for t in track_dict:
+                if f in tracks[track_dict[t]]:
+                    array[t, f, :] = tracks[track_dict[t]][f][:2,0]
         return track_dict, array
 
     def add_PT_Tracks_from_Tracker_to_GT(self, tracks):
@@ -111,6 +136,12 @@ class new_Evaluator(object):
 
     def add_PT_Tracks_from_Tracker_to_System(self, tracks):
         self.System_Track_Dict, self.System_array = self.add_PT_Tracks_from_Tracker(tracks)
+
+    def add_PT_Tracks_from_Dicts_to_GT(self, tracks):
+        self.GT_Track_Dict, self.GT_array = self.add_PT_Tracks_from_dicts(tracks)
+
+    def add_PT_Tracks_from_Dicts_to_System(self, tracks):
+        self.System_Track_Dict, self.System_array = self.add_PT_Tracks_from_dicts(tracks)
 
     def load_GT_tracks_from_clickpoints(self, path, type):
         self.gt_db, self.GT_array, self.GT_Track_Dict = self.load_tracks_from_clickpoints(path, type)
@@ -122,7 +153,7 @@ class new_Evaluator(object):
         if method is None or method == "default" or method == "euclidic":
             self.Matches = {}
             for i, t in enumerate(self.GT_array):
-                matched = np.where(np.sum(np.linalg.norm(t-self.System_array, axis=-1)<(self.Object_Size/2.), axis=-1)>self.PointThreshold)[0]
+                matched = np.where(np.sum(np.linalg.norm(t-self.System_array, axis=-1) < (self.Object_Size/2.), axis=-1) > self.PointThreshold)[0]
                 self.Matches.update({self.GT_Track_Dict[i]: [self.System_Track_Dict[m] for m in matched]})
                 print("Matched ", self.GT_Track_Dict[i])
         else:
@@ -263,7 +294,7 @@ class new_Yin_Evaluator(new_Evaluator):
         pass
 
     def IDC(self, gt_track):
-        return len(self.Matches[gt_track])
+        return len(self.Matches[gt_track])+1
 
     def MIX(self, gt_track):
         return np.sum([np.sum([k in self.Matches[b] for b in self.Matches if b!=gt_track]) for k in self.Matches[gt_track]])

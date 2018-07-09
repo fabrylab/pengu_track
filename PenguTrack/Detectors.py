@@ -65,14 +65,18 @@ except ImportError:
     threshold_niblack = lambda image: image > threshold_otsu(image)
 
 # If we really need this function, better take it from skiamge. Maybe cv2 is not available.
+# try:
+#     from cv2 import bilateralFilter
+# except ImportError:
+#     from skimage.restoration import denoise_bilateral
+#     bilateralFilter = lambda src, d, sigmaColor, sigmaSpace: denoise_bilateral(src, win_size=d,
+#                                                                                sigma_color=sigmaColor,
+#                                                                                sigma_spatial=sigmaSpace)
+
 try:
-    from cv2 import bilateralFilter
+    import cv2
 except ImportError:
-    from skimage.restoration import denoise_bilateral
-    bilateralFilter = lambda src, d, sigmaColor, sigmaSpace: denoise_bilateral(src, win_size=d,
-                                                                               sigma_color=sigmaColor,
-                                                                               sigma_spatial=sigmaSpace)
-from cv2 import calcOpticalFlowFarneback, calcOpticalFlowPyrLK
+    print("No CV2 found. Optical Flow Detectors not usable!")
 
 # import theano
 # import theano.tensor as T
@@ -417,9 +421,9 @@ class TCellDetector(Detector):
         # maskedMinIndices = maskedMinIndices.astype(np.uint8)
         # maskedMinIndices = minIndices.data[:] + 1
         # maskedMinIndices = np.round(gaussian_filter(maskedMinIndices, 1)).astype(np.int)
-        # maskedMinIndices = np.round(bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
-        # maskedMinIndices = np.round(bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
-        maskedMinIndices = np.round(bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
+        # maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
+        # maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
+        maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
         # maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
         maskedMinIndices[~mask] = 0
         j_max = np.amax(maskedMinIndices)
@@ -3023,7 +3027,7 @@ class FlowDetector(Segmentation):
     def segmentate(self, image, *args, **kwargs):
         if self.Prev is None:
             raise AttributeError("First a starting image has to be added by FlowDetector.update")
-        return calcOpticalFlowFarneback(self.Prev, image,
+        return cv2.calcOpticalFlowFarneback(self.Prev, image,
                                  self.Flow,
                                  self.PyrScale,
                                  self.Levels,
