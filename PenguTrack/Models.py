@@ -271,10 +271,16 @@ class Model(object):
         # return np.array([measurement[v] for v in self.Measured_Variables])
         m = measurement
         if len(self.Extensions) > 0:
-            return np.vstack((np.array([measurement[v] for v in self.Measured_Variables]),
+            # return np.vstack((np.array([measurement[v] for v in self.Measured_Variables]),
+            #                 np.array([m.Data[var] for var in self.Extensions])))
+            out =  np.vstack((np.array([measurement[v] for v in self.Measured_Variables]),
                             np.array([m.Data[var] for var in self.Extensions])))
         else:
-            return np.array([measurement[v] for v in self.Measured_Variables])
+            # return np.array([measurement[v] for v in self.Measured_Variables])
+            out = np.array([measurement[v] for v in self.Measured_Variables])
+        if len(out.shape)<2:
+            out = out[:, None]
+        return out
 
     def vec_from_pandas(self, pandas_measurement):
         if isinstance(pandas_measurement, pandas.DataFrame):

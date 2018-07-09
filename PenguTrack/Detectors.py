@@ -267,8 +267,8 @@ class Detector(object):
         self.ParameterList = ParameterList()
 
     def detect(self, *args, **kwargs):
-        # return pandas.DataFrame(np.random.rand(2), columns=["PositionX", "PositionY"])
-        return Measurement(1., np.random.rand(2))
+        return pandas.DataFrame(np.random.rand(2), columns=["PositionX", "PositionY"])
+        # return Measurement(1., np.random.rand(2))
 
     def __getattribute__(self, item):
         if item != "ParameterList":
@@ -350,9 +350,9 @@ class BlobDetector(Detector):
                         skimage.filters.laplace(
                             skimage.filters.gaussian(image.astype(np.uint8), self.ObjectSize)) > self.Threshold
                         ))
-        # out = pandas.DataFrame([[props.centroid[1], props.centroid[0], 1.] for props in regions],
-        #                         columns=["PositionX", "PositionY", "Log_Probability"])
-        out = [Measurement(1., props.centroid) for props in regions]
+        out = pandas.DataFrame([[props.centroid[0], props.centroid[1], 1.] for props in regions],
+                                columns=["PositionX", "PositionY", "Log_Probability"])
+        # out = [Measurement(1., props.centroid) for props in regions]
 
         return out, None
 
@@ -369,10 +369,10 @@ class NKCellDetector(Detector):
         return image
 
 
-    @detection_parameters(minProj=dict(frame=0, layer="MinimumProjection", mask=False),
-                          minIndices=dict(frame=0, layer="MinimumIndices", mask=False),
-                          minProjPrvs=dict(frame=-1, layer="MinimumProjection", mask=False),
-                          maxIndices=dict(frame=0, layer="MaximumIndices", mask=False))
+    @detection_parameters(minProj=dict(frame=0, layer="MinProj", mask=False),
+                          minIndices=dict(frame=0, layer="MinIndices", mask=False),
+                          minProjPrvs=dict(frame=-1, layer="MinProj", mask=False),
+                          maxIndices=dict(frame=0, layer="MaxIndices", mask=False))
     def detect(self, minProj, minIndices, minProjPrvs, maxIndices):
         data = gaussian_filter(minProj.astype(float)-minProjPrvs.astype(float), 5)
         data[data > 0] = 0.
@@ -394,8 +394,8 @@ class NKCellDetector(Detector):
             std_int = np.std(intensities)
             # out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
             out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
-        # out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
-        out = [Measurement(o[3], o[:3], data={"IntensitySTD": o[4]}) for o in out]
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        # out = [Measurement(o[3], o[:3], data={"IntensitySTD": o[4]}) for o in out]
 
 
         #res = 6.45 / 10
@@ -444,8 +444,8 @@ class NKCellDetector2(Detector):
             std_int = np.std(intensities)
             # out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
             out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
-        # out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
-        out = [Measurement(o[3], o[:3], data={"IntensitySTD":o[4]}) for o in out]
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        # out = [Measurement(o[3], o[:3], data={"IntensitySTD":o[4]}) for o in out]
 
         #res = 6.45 / 10
         #out.PositionX *= res
@@ -524,8 +524,8 @@ class TCellDetector(Detector):
             std_int = np.std(intensities)
             # out.append(Measurement(prob, [prop.centroid[0], prop.centroid[1], mean_int], data=std_int))
             out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
-        # out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
-        out = [Measurement(o[3], o[:3], data={"IntensitySTD": o[4]}) for o in out]
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        # out = [Measurement(o[3], o[:3], data={"IntensitySTD": o[4]}) for o in out]
 
         #res = 6.45 / 10
         #out.PositionX *= res
@@ -646,8 +646,8 @@ class SimpleAreaDetector2(Detector):
             std_int = np.std(intensities)
             out.append([prop.centroid[0], prop.centroid[1], mean_int, prob, std_int])
 
-        # out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
-        out = [Measurement(o[3], o[:3], data={"IntensitySTD":o[4]}) for o in out]
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        # out = [Measurement(o[3], o[:3], data={"IntensitySTD":o[4]}) for o in out]
 
         # #idea for speed up of the following
         # vectorXY = out["PositionX", "PositionY"].values
@@ -693,8 +693,8 @@ class SimpleAreaDetector2(Detector):
         for pos in Positions2D_cor:
             Positions3D.append([pos[0] * res, pos[1] * res, pos[3] * resZ, pos[2]])
 
-        # Positions3D = pandas.DataFrame(Positions3D, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability"])
-        Positions3D = [Measurement(o[3], o[:3]) for o in out]
+        Positions3D = pandas.DataFrame(Positions3D, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability"])
+        # Positions3D = [Measurement(o[3], o[:3]) for o in out]
 
         return Positions3D, None
 
@@ -788,8 +788,8 @@ class SimpleAreaDetector(Detector):
             o = list(prop.centroid)
             o.append(prob)
             out.append(o)
-        # out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"])
-        out = [Measurement(o[2], o[:2]) for o in out]
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"])
+        # out = [Measurement(o[2], o[:2]) for o in out]
         return out, None
 
 
@@ -1277,10 +1277,10 @@ class RegionPropDetector(Detector):
                 o.append(region.__getattribute__(filter.prop))
             out.append(o)
 
-        # out = pandas.DataFrame(out, columns=cols)
-        out = Measurement(o[cols.index("Log_Probability")],
-                          [o[cols.index("PositionX")], o[cols.index("PositionY")]],
-                          data=dict([[k, out[k]] for k in filter_dict.keys()]))
+        out = pandas.DataFrame(out, columns=cols)
+        # out = Measurement(o[cols.index("Log_Probability")],
+        #                   [o[cols.index("PositionX")], o[cols.index("PositionY")]],
+        #                   data=dict([[k, out[k]] for k in filter_dict.keys()]))
         return out, None
 
 
@@ -1399,8 +1399,8 @@ class AreaDetector(Detector):
                 out.extend(self.measure(prop, 1))
             elif n < N_max:
                 pass
-        # return pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"])
-        return [Measurement(o[3], o[:3]) for o in out]
+        return pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"])
+        # return [Measurement(o[3], o[:3]) for o in out]
 
     def measure(self, prop, n):
         out = []
@@ -1528,8 +1528,8 @@ class AreaBlobDetector(Detector):
                     o.extend(regions[i].centroid)
                     o.append(1)
                     out.append(o)
-        # return pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"]), None
-        return [Measurement(o[3], o[:3]) for o in out], None
+        return pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"]), None
+        # return [Measurement(o[3], o[:3]) for o in out], None
 
 
 class WatershedDetector(Detector):
@@ -1597,9 +1597,9 @@ class WatershedDetector(Detector):
         if return_regions:
             return regions
         elif len(regions) > 0:
-            # return pandas.DataFrame([[1., props.centroid[0], props.centroid[1]] for props in regions],
-            #                         columns=["Log_Probability", "PositionX", "PositionY"]), None
-            return [Measurement(1., props.centroid) for props in regions], None
+            return pandas.DataFrame([[1., props.centroid[0], props.centroid[1]] for props in regions],
+                                    columns=["Log_Probability", "PositionX", "PositionY"]), None
+            # return [Measurement(1., props.centroid) for props in regions], None
         else:
             return [], None
 
@@ -1618,6 +1618,10 @@ class TinaCellDetector(Detector):
 
     def __init__(self, disk_size=0, minimal_area=57, maximal_area=350, threshold=0.2):
         super(TinaCellDetector, self).__init__()
+        self.DiskSize = disk_size
+        self.MinimalArea = minimal_area
+        self.MaximalArea = maximal_area
+        self.Threshold = threshold
 
         self.ParameterList = ParameterList(Parameter("DiskSize", disk_size, min=0, max=20, value_type=int),
                                            Parameter("MinimalArea", minimal_area, min=0, max =100, value_type=int),
@@ -1625,11 +1629,11 @@ class TinaCellDetector(Detector):
                                            Parameter("Threshold", threshold, min=0., max=1., value_type=float)
                                            )
 
-    @detection_parameters(maxIndices=dict(frame=0, mask=False, layer=0),
-                          maxProj=dict(frame=0, mask=False, layer=1),
-                          minIndices=dict(frame=0, mask=False, layer=2),
-                          minProj=dict(frame=0, mask=False, layer=3))
-    def detect(self,minProj, minIndices, maxProj, maxIndices):
+    @detection_parameters(minProj=dict(frame=0, mask=False, layer="MinProj"),
+                          minIndices=dict(frame=0, mask=False, layer="MinIndices"),
+                          maxProj=dict(frame=0, mask=False, layer="MaxProj"),
+                          maxIndices=dict(frame=0, mask=False, layer="MaxIndices"))
+    def detect(self, minProj, minIndices, maxProj, maxIndices):
         """
 
         :param minProj:
@@ -1638,6 +1642,7 @@ class TinaCellDetector(Detector):
         :param maxIndices:
         :return:
         """
+        print(minProj.sum(), minIndices.sum(), maxProj.sum(), maxIndices.sum())
 
         minind_contrast = enhance_contrast(minIndices)
         maxproj_contrast =  enhance_contrast(maxProj)
@@ -1651,7 +1656,7 @@ class TinaCellDetector(Detector):
         import scipy
         from skimage import filters
         maxproj_gausfilt = scipy.ndimage.filters.gaussian_filter(maxproj_ben, 2)
-        thres_max = Threhold # threshold_otsu(maxproj_ben)
+        thres_max = self.Threshold # threshold_otsu(maxproj_ben)
 
         #minproj_gausfilt = scipy.ndimage.filters.gaussian_filter(minproj_ben, 0.2)
         #thres_min = threshold_otsu(minproj_ben)
@@ -1700,6 +1705,7 @@ class TinaCellDetector(Detector):
             zpos.append(z)
 
         Positions3D = np.c_[cellx,celly,zpos]
+        Positions3D = pandas.DataFrame(Positions3D, columns=["PositionY", "PositionX", "PositionZ"])
 
         # return posx,posy, cell_program, Positions3D, cellx, celly, mask_dilation2,posarea
         return Positions3D, mask_dilation2

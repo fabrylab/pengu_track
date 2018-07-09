@@ -1479,7 +1479,7 @@ class MultiFilter(Filter):
         self.Measurements.update({i: measurements})
 
         # meas_logp = measurements.Log_Probability
-        meas_logp = [m.Log_Probability for m in measurements]
+        meas_logp = np.array([m.Log_Probability for m in measurements])
 
         # z = self.Model.vec_from_pandas(measurements)
         z = [self.Model.vec_from_meas(m) for m in measurements]
@@ -1489,9 +1489,9 @@ class MultiFilter(Filter):
             meas_logp[~mask] = np.nanmin(meas_logp[mask])
             mask &= (meas_logp - np.nanmin(meas_logp) >=
                            (self.MeasurementProbabilityThreshold * (np.nanmax(meas_logp) - np.nanmin(meas_logp)))).astype(bool)
-            z = z[mask]
+            z = np.array(z)[mask]
             # measurements = list(np.asarray(measurements)[mask])
-            measurements = measurements[mask]
+            measurements = np.array(measurements)[mask]
         else:
             self.Measurements.pop(i, None)
             return measurements, i
@@ -1508,11 +1508,9 @@ class MultiFilter(Filter):
 
 
         filter_keys = list(self.ActiveFilters.keys())
-        meas_dict = dict([[i, m[0]] for i, m in enumerate(measurements.iterrows())])
         for j, k in enumerate(filter_keys):
             gain_dict.append([j, k])
-            for m, m_id in meas_dict.items():
-                meas = measurements.loc[m_id]
+            for m, meas in enumerate(measurements):
                 probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i],
                                                                         measurements={i: meas},
                                                                         update=self.ProbUpdate)
@@ -1536,7 +1534,8 @@ class MultiFilter(Filter):
 
         cost_matrix = self.cost_from_logprob(probability_gain)
         rows, cols = self.assign(cost_matrix,
-                                 threshold=self.cost_from_logprob(probability_gain, value=self.LogProbabilityThreshold))
+                                 threshold=self.cost_from_logprob(probability_gain,
+                                                                  value=self.LogProbabilityThreshold))
 
         if verbose:
             for t in range(N):
@@ -1554,7 +1553,7 @@ class MultiFilter(Filter):
                             probability_gain[k, m] > LogProbabilityThreshold or
                             (len(self.ActiveFilters[gain_dict[k]].X) < 2 and
                                      min([i-o for o in self.ActiveFilters[gain_dict[k]].X.keys() if i>o]) < 2 and big_jumps)) :
-                self.ActiveFilters[gain_dict[k]].update(z= measurements.loc[meas_dict[m]], i=i)
+                self.ActiveFilters[gain_dict[k]].update(z= measurements[m], i=i)
                 x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
                 x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
                 if verbose:
@@ -1575,7 +1574,7 @@ class MultiFilter(Filter):
                 _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
                 _filter.Predicted_X.update({i: self.Model.infer_state(z[m])})
                 _filter.X.update({i: self.Model.infer_state(z[m])})
-                _filter.Measurements.update({i: measurements.loc[meas_dict[m]]})
+                _filter.Measurements.update({i: measurements[m]})
 
                 self.ActiveFilters.update({l: _filter})
                 self.Filters.update({l: _filter})
