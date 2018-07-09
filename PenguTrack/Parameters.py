@@ -1,4 +1,6 @@
-from qtpy import QtCore, QtWidgets
+from qtpy import QtCore, QtGui, QtWidgets
+import numpy as np
+
 
 class QParameterEdit(QtWidgets.QWidget):
     """ base class for an widget to change the value of a parameter. """
@@ -27,16 +29,49 @@ class QParameterEdit(QtWidgets.QWidget):
         self.type = parameter.type
 
         # add a layout for this widget (with 0 margins)
-        self.layout = QtWidgets.QHBoxLayout(self)
+        self.main_layout = QtWidgets.QHBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+
+        """ value selector """
+        # add subwidget for value selection of this widget (with 0 margins)
+        self.widget_parameter = QtWidgets.QWidget()
+        self.main_layout.addWidget(self.widget_parameter)
+
+        # add a layout
+        self.layout = QtWidgets.QHBoxLayout(self.widget_parameter)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
         # add a label containing the parameters name
         self.label = QtWidgets.QLabel(parameter.name)
         self.layout.addWidget(self.label)
 
+        # add a stretch
+        self.layout.addStretch()
+
         # if the parameter has a description, add a tooltip
         if self.parameter.desc is not None:
             self.setToolTip(self.parameter.desc)
+
+        """ range selector """
+        # add a subwidget for the range selector
+        self.widget_range = QtWidgets.QWidget()
+        self.main_layout.addWidget(self.widget_range)
+
+        # add a layout
+        self.layoutRange = QtWidgets.QHBoxLayout(self.widget_range)
+        self.layoutRange.setContentsMargins(0, 0, 0, 0)
+
+        # add a label containing the parameters name
+        self.label = QtWidgets.QLabel(parameter.name)
+        self.layoutRange.addWidget(self.label)
+        self.layoutRange.addStretch()
+
+        # add a checkbox to specify if the value should be fixed and not optimized
+        self.checkbox_fixed = QtWidgets.QCheckBox("fixed")
+        self.checkbox_fixed.stateChanged.connect(self.rangeChanged)
+        self.layoutRange.addWidget(self.checkbox_fixed)
+
+        self.displayRanges(False)
 
     def setValue(self, x):
         """ set the value of the parameter """
@@ -51,7 +86,10 @@ class QParameterEdit(QtWidgets.QWidget):
         self.doSetValue(x)
 
         # change the value of the parameter
-        self.parameter.value = self.type(x)
+        if x is None:
+            self.parameter.value = x
+        else:
+            self.parameter.value = self.type(x)
         # notify the parameter of it's change
         self.parameter.valueChanged()
 
@@ -62,12 +100,29 @@ class QParameterEdit(QtWidgets.QWidget):
         """ method to overload for the implementation. The widget should set here the value to its slider/edit widgets. """
         pass
 
+    def rangeChanged(self):
+        pass
+
+    def displayRanges(self, do_display):
+        """ display the value selector or the range selector. """
+        # true means the range selector
+        if do_display:
+            self.widget_parameter.setHidden(True)
+            self.widget_range.setHidden(False)
+        # false means, show the value selector
+        else:
+            self.widget_parameter.setHidden(False)
+            self.widget_range.setHidden(True)
+
 
 class QNumberChooser(QParameterEdit):
     """ input widget to choose an integer or float value for a parameter. """
 
     # the slider input widget
     slider = None
+    nan_checkbox = None
+
+    check_log = None
 
     def __init__(self, parameter, layout, type_int):
         # call the super method's initializer
@@ -113,13 +168,82 @@ class QNumberChooser(QParameterEdit):
         # set the value of the parameter
         self.setValue(parameter.value)
 
+        """ range selection """
+        self.range_edits = []
+        for name in ["min", "max"]:
+            # the name of the range end, e.g. min or max
+            self.layoutRange.addWidget(QtWidgets.QLabel(name))
+
+            # the selector
+            edit = QtWidgets.QLineEdit()
+            # a validator for the input
+            if type_int:
+                edit.setValidator(QtGui.QIntValidator())
+            else:
+                edit.setValidator(QtGui.QDoubleValidator())
+            # connect the signal
+            edit.textEdited.connect(self.rangeChanged)
+            # style
+            edit.setMaximumWidth(50)
+            edit.setPlaceholderText(name+"imum")
+
+            # set the value if already a value is given
+            if self.parameter.min is not None:
+                edit.setText(str(self.parameter.min))
+
+            # add it to the layout and the list
+            self.layoutRange.addWidget(edit)
+            self.range_edits.append(edit)
+
+        # if the type is a float add a checkbox to sample from a log normal distribution for optimisation
+        if not type_int:
+            self.check_log = QtWidgets.QCheckBox("log-uniform")
+            self.layoutRange.addWidget(self.check_log)
+
     def doSetValue(self, x):
         """ method, that displays the value of the parameter in the widget"""
-        # set the value in the spinbox
-        self.spinBox.setValue(x)
-        # and if existent in the slider
-        if self.slider is not None:
-            self.slider.setValue(x)
+        if x is None or np.isnan(x):
+            if self.nan_checkbox is None:
+                self.nan_checkbox = QtWidgets.QCheckBox("nan")
+                self.layout.addWidget(self.nan_checkbox)
+            self.nan_checkbox.setChecked(True)
+        else:
+            if self.nan_checkbox is not None:
+                self.nan_checkbox.setChecked(False)
+            # set the value in the spinbox
+            self.spinBox.setValue(x)
+            # and if existent in the slider
+            if self.slider is not None:
+                self.slider.setValue(x)
+
+    def rangeChanged(self):
+        if self.checkbox_fixed.isChecked():
+            # set the range to invalid
+            self.parameter.current_range = None
+            # hide the input fields
+            self.range_edits[0].setEnabled(False)
+            self.range_edits[1].setEnabled(False)
+        else:
+            # get the input of both fields
+            range_values = []
+            for i in range(2):
+                # try to convert them to the type (e.g. int or float)
+                try:
+                    range_values.append(self.parameter.type(self.range_edits[i].text()))
+                # if not, the range is invalid
+                except ValueError:
+                    self.parameter.current_range = None
+                    break
+            else:
+                # set the range if both ends are valid
+                if self.check_log is not None and self.check_log.isChecked():
+                    self.parameter.current_range = (range_values[0], range_values[1], "log-uniform")
+                else:
+                    self.parameter.current_range = tuple(range_values)
+
+            # show the input fields
+            self.range_edits[0].setEnabled(True)
+            self.range_edits[1].setEnabled(True)
 
 
 class QStringChooser(QParameterEdit):
@@ -139,6 +263,10 @@ class QStringChooser(QParameterEdit):
         # set the value of the parameter
         self.setValue(parameter.value)
 
+        # strings cannot be optimized
+        self.checkbox_fixed.setChecked(True)
+        self.checkbox_fixed.setEnabled(False)
+
     def doSetValue(self, x):
         """ method, that displays the value of the parameter in the widget"""
         # set the value in the text edit
@@ -153,7 +281,7 @@ class QBoolChooser(QParameterEdit):
         super().__init__(parameter, layout)
 
         # create the QCheckBox
-        self.check = QtWidgets.QCheckBox()
+        self.check = QtWidgets.QCheckBox("")
         self.layout.addWidget(self.check)
 
         # and connect its stateChanged signal
@@ -166,6 +294,14 @@ class QBoolChooser(QParameterEdit):
         """ method, that displays the value of the parameter in the widget"""
         # set the value in the check box
         self.check.setChecked(x)
+
+    def rangeChanged(self):
+        # set the range to invalid
+        if self.checkbox_fixed.isChecked():
+            self.parameter.current_range = None
+        # or from 0 to 1
+        else:
+            self.parameter.current_range = (0, 1)
 
 
 class QChoiceChooser(QParameterEdit):
@@ -194,10 +330,20 @@ class QChoiceChooser(QParameterEdit):
         # set the value in the combo box
         self.comboBox.setCurrentText(str(x))
 
+    def rangeChanged(self):
+        # set the range to invalid
+        if self.checkbox_fixed.isChecked():
+            self.parameter.current_range = None
+        # or to the allowed values
+        else:
+            self.parameter.current_range = tuple(self.parameter.values)
+
 
 class Parameter(object):
     """ a class the represents a parameter with its meta information."""
     parent = None
+    current_range = None
+    fixed = False
 
     def __init__(self, key, default, name=None, min=None, max=None, range=None, values=None, value_type=None,
                  desc=None):
@@ -254,6 +400,12 @@ class Parameter(object):
 
         # start with the default value
         self.value = self.default
+
+        # set the current range
+        if self.values is not None:
+            self.current_range = tuple(self.values)
+        else:
+            self.current_range = (self.min, self.max)
 
     def addWidget(self, layout):
         """ creates a widget to control the parameter. Optionally add it to the provided layout. """
@@ -362,6 +514,10 @@ class ParameterList(object):
     def valueChangedEvent(self):
         pass
 
+    def displayRanges(self, do_display):
+        for parameter in self.parameters:
+            self.widgets[parameter.key].displayRanges(do_display)
+
     def getRanges(self):
         """ return a list of tuples indicating the ranges of all parameters. """
         # remember which parameters have been set
@@ -371,14 +527,9 @@ class ParameterList(object):
         ranges = []
         for parameter in self.parameters:
             # if th parameter has a min and max set, we can give a range
-            if parameter.min is not None and parameter.max is not None:
+            if parameter.current_range is not None:
                 # add the range and add it to the optimizable parameters
-                ranges.append((parameter.min, parameter.max))
-                self.optimizable_parameters.append(parameter)
-            # categorical parameters have a "range", which is the list of allowed values
-            elif parameter.values:
-                # add the allowed values and add it to the optimizable parameters
-                ranges.append(tuple(parameter.values))
+                ranges.append(parameter.current_range)
                 self.optimizable_parameters.append(parameter)
 
         # return all the ranges
@@ -413,3 +564,8 @@ class ParameterList(object):
                 # and if desired, update the widgets
                 if update_widgets and self.widgets is not None:
                     self.widgets[parameter.key].setValue(value)
+
+    def updateWidgets(self):
+        """ update the parameter values in the widget displays """
+        for parameter in self.parameters:
+            self.widgets[parameter.key].setValue(parameter.value)

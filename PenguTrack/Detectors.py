@@ -51,6 +51,10 @@ from scipy.ndimage.filters import gaussian_filter
 from skimage.morphology import watershed
 from skimage.feature import peak_local_max
 
+from .Parameters import Parameter, ParameterList
+
+import pandas
+
 try:
     from skimage.filters import threshold_niblack
 except IOError:
@@ -80,7 +84,7 @@ except ImportError:
 
 class dotdict(dict):
     """
-    enables .access on dicts
+    enables dot access on dicts
     """
     def __getattr__(self, attr):
         if attr.startswith('__'):
@@ -90,6 +94,24 @@ class dotdict(dict):
         return self.get(attr, None)
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
+
+
+def measurements_to_pandasDF(measurement_list):
+    entries = set(["PositionX","PositionY","PositionZ","Log_Probability", "Covariance", "Frame"])
+    for m in measurement_list:
+        entries.update(m.keys())
+    return pandas.DataFrame([[m.get(e,None) for e in entries] for m in measurement_list],
+                           columns=entries)
+
+
+def array_to_pandasDF(array):
+    array = np.asarray(array, dtype=float)
+    if len(array.shape) != 2 or array.shape[1] > 3:
+        raise ValueError("Array shape does not fit (N,1),(N,2) or (N,3)!")
+    n = array.shape[1]
+    entries = set(["Log_Probability","PositionX","PositionY","PositionZ"][:n+1])
+    return pandas.DataFrame(np.hstack((np.zeros((array.shape[0],1)), array)),
+                            columns=entries)
 
 class Measurement(dotdict):
     """
@@ -166,6 +188,13 @@ class Measurement(dotdict):
         return [self[k] for k in keys]
 
 
+def detection_parameters(**detection_parameters):
+    def real_decorator(function):
+        function.detection_parameters = detection_parameters
+        return function
+    return real_decorator
+
+
 class Detector(object):
     """
     This Class describes the abstract function of a detector in the pengu-track package.
@@ -173,16 +202,29 @@ class Detector(object):
     """
     def __init__(self):
         super(Detector, self).__init__()
+        self.ParameterList = ParameterList()
 
-    def detect(self, image):
-        return np.random.rand(2)
+    def detect(self, *args, **kwargs):
+        return pandas.DataFrame(np.random.rand(2), columns=["PositionX", "PositionY"])
+
+    def __getattribute__(self, item):
+        if item != "ParameterList":
+            if item in self.ParameterList.keys():
+                return self.ParameterList[item]
+        return super(Detector, self).__getattribute__(item)
+
+    def __setattr__(self, key, value):
+        if key != "ParameterList" and key in self.ParameterList.keys():
+            self.ParameterList[key] = value
+        else:
+            return super(Detector, self).__setattr__(key, value)
 
 
 class BlobDetector(Detector):
     """
     Detector classifying objects by size and number to be used with pengu-track modules.
     """
-    def __init__(self, object_size, object_number, threshold=None):
+    def __init__(self, object_size=1, object_number=1, threshold=None):
         """
         Detector classifying objects by size and number.
 
@@ -195,13 +237,22 @@ class BlobDetector(Detector):
             in the first picture and sets the threshold accordingly.
         threshold: float, optional
             Threshold for binning the image.
+        return_regions: bool, optional
+            If True, function will return skimage.measure.regionprops object,
+            else a list of the blob centroids and areas.
         """
         super(BlobDetector, self).__init__()
         self.ObjectSize = int(object_size)
         self.ObjectNumber = int(object_number)
         self.Threshold = threshold
+        # self.ReturnRegions = bool(return_regions)
+        self.ParameterList = ParameterList(Parameter("ObjectSize", object_size, min=0, value_type=int),
+                                           Parameter("ObjectNumber", object_number, min=0, value_type=int),
+                                           Parameter("Threshold", threshold, value_type=float)
+                                           )
 
-    def detect(self, image, return_regions=False):
+    @detection_parameters(image=dict(frame=0, mask=False))
+    def detect(self, image):
         """
         Detection function. Parts the image into blob-regions with size according to object_size.
         Returns information about the regions.
@@ -210,9 +261,6 @@ class BlobDetector(Detector):
         ----------
         image: array_like
             Image will be converted to uint8 Greyscale and then binnearized.
-        return_regions: bool, optional
-            If True, function will return skimage.measure.regionprops object,
-            else a list of the blob centroids and areas.
 
         Returns
         ----------
@@ -239,13 +287,9 @@ class BlobDetector(Detector):
                         skimage.filters.laplace(
                             skimage.filters.gaussian(image.astype(np.uint8), self.ObjectSize)) > self.Threshold
                         ))
-        if return_regions:
-            return regions
-        elif len(regions) > 0:
-            return [Measurement(1., [props.centroid[0], props.centroid[1]]) for props in regions]
-            # return np.array([[props.centroid[0], props.centroid[1], props.area] for props in regions], ndmin=2)
-        else:
-            return []
+
+        return pandas.DataFrame([[props.centroid[1], props.centroid[0], 1.] for props in regions],
+                                columns=["PositionX", "PositionY", "Log_Probability"]), None
 
 
 class NKCellDetector(Detector):
@@ -259,16 +303,18 @@ class NKCellDetector(Detector):
         image[image > 1.] = 1.
         return image
 
-    def detect(self, minProj, minIndices, minProjPrvs, maxIndices):
-        maxZ = int(re.sub("[^0-9]","", maxIndices.filename[-8:-4]))
 
-        data = gaussian_filter(minProj.data.astype(float)-minProjPrvs.data.astype(float), 5)
+    @detection_parameters(minProj=dict(frame=0, layer="MinimumProjection", mask=False),
+                          minIndices=dict(frame=0, layer="MinimumIndices", mask=False),
+                          minProjPrvs=dict(frame=-1, layer="MinimumProjection", mask=False),
+                          maxIndices=dict(frame=0, layer="MaximumIndices", mask=False))
+    def detect(self, minProj, minIndices, minProjPrvs, maxIndices):
+        data = gaussian_filter(minProj.astype(float)-minProjPrvs.astype(float), 5)
         data[data > 0] = 0.
         data = self.enhance(data, 1.)
         data = 1. - data
         mask = data > 0.5
         labeled, num_objects = label(mask)
-        data2 = gaussian_filter(0.5 * (minIndices.data + maxIndices.data).astype(float), 5)
 
         regions = regionprops(labeled, intensity_image=data)
         regions = [r for r in regions if r.area > 100]
@@ -281,16 +327,16 @@ class NKCellDetector(Detector):
             intensities = prop.intensity_image[prop.image]
             mean_int = np.mean(intensities)
             std_int = np.std(intensities)
-            out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
+            # out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
+            out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
 
-        Positions3D = []
-        res = 6.45 / 10
-        for pos in out:
-            posZ = pos.PositionZ
-            Positions3D.append(Measurement(pos.Log_Probability,
-                                           [pos.PositionX * res, pos.PositionY * res, posZ * 10]))
+        #res = 6.45 / 10
+        #out.PositionX *= res
+        #out.PositionY *= res
+        #out.PositionZ *= 10
 
-        return Positions3D, mask
+        return out, mask
 
 class NKCellDetector2(Detector):
     def __init__(self):
@@ -304,10 +350,13 @@ class NKCellDetector2(Detector):
         image[image > 1.] = 1.
         return image
 
+
+    @detection_parameters(minProj=dict(frame=0, layer="MinimumProjection", mask=False),
+                          minProjPrvs=dict(frame=-1, layer="MinimumProjection", mask=False))
     def detect(self, minProj, minProjPrvs):
 
-        minProjPrvs = self.enhance(minProjPrvs.data, 0.1)
-        minProj = self.enhance(minProj.data, 0.1)
+        minProjPrvs = self.enhance(minProjPrvs, 0.1)
+        minProj = self.enhance(minProj, 0.1)
 
         data = gaussian_filter(minProj-minProjPrvs, 5)
         data[data > 0] = 0.
@@ -326,16 +375,16 @@ class NKCellDetector2(Detector):
             intensities = prop.intensity_image[prop.image]
             mean_int = np.mean(intensities)
             std_int = np.std(intensities)
-            out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
+            # out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
+            out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
 
-        Positions3D = []
-        res = 6.45 / 10
-        for pos in out:
-            posZ = pos.PositionZ
-            Positions3D.append(Measurement(pos.Log_Probability,
-                                           [pos.PositionX * res, pos.PositionY * res, posZ * 10]))
+        #res = 6.45 / 10
+        #out.PositionX *= res
+        #out.PositionY *= res
+        #out.PositionZ *= 10
 
-        return Positions3D, mask
+        return out, mask
 
 class TCellDetector(Detector):
     """
@@ -356,32 +405,18 @@ class TCellDetector(Detector):
         image[image > 1.] = 1.
         return image
 
+
+    @detection_parameters(minProj=dict(frame=0, layer="MinimumProjection", mask=False),
+                          minIndices=dict(frame=0, layer="MinimumIndices", mask=False))
     def detect(self, minProj, minIndices):
-        """
-        Detection function. Parts the image into blob-regions with size according to their area.
-        Returns information about the regions.
-
-        Parameters
-        ----------
-        image: array_like
-            Image will be converted to uint8 Greyscale and then binnearized.
-        return_regions: bool, optional
-            If True, function will return skimage.measure.regionprops object,
-            else a list of the blob centroids and areas.
-
-        Returns
-        -------
-        regions: array_like
-            List of information about each blob of adequate size.
-        """
-        minProj2 = self.enhance(minProj.data, 0.1)
+        minProj2 = self.enhance(minProj, 0.1)
         thres = threshold_otsu(minProj2)
         mask = minProj2 < thres
 
         mask = binary_erosion(mask)
         # mask = remove_small_objects(mask, 24)
 
-        maskedMinIndices = minIndices.data.copy() + 1
+        maskedMinIndices = minIndices.copy() + 1
         maskedMinIndices = maskedMinIndices.astype('uint8')
         # maskedMinIndices = maskedMinIndices.astype(np.uint8)
         # maskedMinIndices = minIndices.data[:] + 1
@@ -392,7 +427,7 @@ class TCellDetector(Detector):
         # maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
         maskedMinIndices[~mask] = 0
         j_max = np.amax(maskedMinIndices)
-        stack = np.zeros((j_max, minProj.data.shape[0], minProj.data.shape[1]), dtype=np.bool)
+        stack = np.zeros((j_max, minProj.shape[0], minProj.shape[1]), dtype=np.bool)
         for j in range(j_max):
             stack[j, maskedMinIndices == j] = True
 
@@ -419,22 +454,28 @@ class TCellDetector(Detector):
             intensities = prop.intensity_image[prop.image]
             mean_int = np.mean(intensities)
             std_int = np.std(intensities)
-            out.append(Measurement(prob, [prop.centroid[0], prop.centroid[1], mean_int], data=std_int))
+            # out.append(Measurement(prob, [prop.centroid[0], prop.centroid[1], mean_int], data=std_int))
+            out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
 
-        Positions3D = []
-        res = 6.45 / 10
-        for pos in out:
-            posZ = pos.PositionZ
-            Positions3D.append(Measurement(pos.Log_Probability,
-                                                      [pos.PositionX * res, pos.PositionY * res, posZ * 10]))
+        #res = 6.45 / 10
+        #out.PositionX *= res
+        #out.PositionY *= res
+        #out.PositionZ *= 10
 
-        return Positions3D, mask
+        return out, mask
 
 class SimpleAreaDetector2(Detector):
     """
     Detector classifying objects by area and number to be used with pengu-track modules.
     """
-    def __init__(self, object_area, object_number, threshold=None, lower_limit=None, upper_limit=None, distxy_boundary = 10, distz_boundary = 21, pre_stitching = True):
+    def __init__(self, object_area=1,
+                 object_number=1,
+                 threshold=None,
+                 lower_limit=None,
+                 upper_limit=None,
+                 distxy_boundary=10,
+                 distz_boundary=21):
         """
         Detector classifying objects by number and size, taking area-separation into account.
 
@@ -449,7 +490,6 @@ class SimpleAreaDetector2(Detector):
             Threshold for binning the image.
         """
         super(SimpleAreaDetector2, self).__init__()
-        self.pre_stitching = pre_stitching
         self.distxy_boundary = distxy_boundary
         self.distz_boundary = distz_boundary
         self.start_ObjectArea = int(object_area)
@@ -467,8 +507,25 @@ class SimpleAreaDetector2(Detector):
 
         self.Threshold = threshold
         self.Sigma = np.sqrt((self.UpperLimit-self.LowerLimit)/(4*np.log(1./0.95))) # self.ObjectArea/2.
+        # self.ReturnRegions = bool(return_regions)
+        # self.GetAll = bool(get_all)
+        # self.ReturnLabeled = bool(return_labeled)
+        # self.OnlyForDetection = bool(only_for_detection)
 
-    def detect(self, image, mask, return_regions=False, get_all=False, return_labeled=False, only_for_detection=False):
+        self.ParameterList = ParameterList(Parameter("ObjectArea", object_area, min=0., value_type=float),
+                                           Parameter("ObjectNumber", object_number, min=0, value_type=int),
+                                           Parameter("Sigma", self.Sigma, min=0, value_type=float),
+                                           Parameter("Threshold", self.Threshold, value_type=float),
+                                           Parameter("LowerLimit", self.LowerLimit, value_type=float),
+                                           Parameter("UpperLimit", self.UpperLimit, value_type=float),
+                                           Parameter("distxy_boundary", self.distxy_boundary, value_type=float),
+                                           Parameter("distz_boundary", self.distz_boundary, value_type=float)
+                                           )
+
+
+    @detection_parameters(image=dict(frame=0, mask=False),
+                          mask=dict(frame=0, mask=True))
+    def detect(self, image, mask):
         """
         Detection function. Parts the image into blob-regions with size according to their area.
         Returns information about the regions.
@@ -477,9 +534,6 @@ class SimpleAreaDetector2(Detector):
         ----------
         image: array_like
             Image will be converted to uint8 Greyscale and then binnearized.
-        return_regions: bool, optional
-            If True, function will return skimage.measure.regionprops object,
-            else a list of the blob centroids and areas.
 
         Returns
         -------
@@ -487,15 +541,12 @@ class SimpleAreaDetector2(Detector):
             List of information about each blob of adequate size.
         """
         image[mask] = np.zeros_like(image)[mask]
-        # image //= 2
         j_max = np.amax(image)
         stack = np.zeros((j_max, image.shape[0], image.shape[1]), dtype=np.bool)
         for j in range(j_max):
             stack[j, image == j] = True
 
         labels, n = label(stack, structure=np.ones((3, 3, 3)))
-        # labels, n = skimage.measure.label(stack.astype(np.uint8), connectivity=3)
-
 
         index_data2 = np.zeros_like(image)
         for l in labels:
@@ -505,18 +556,14 @@ class SimpleAreaDetector2(Detector):
             index_data2 = np.linalg.norm(index_data2, axis=-1)
 
         labeled = skimage.measure.label(index_data2, connectivity=2)
-        # labeled = skimage.measure.label(~mask, connectivity=2)
 
         # Filter the regions for area and convexity
-        if get_all:
-            regions_list = [prop for prop in skimage.measure.regionprops(labeled)]
-        else:
-            regions_list = [prop for prop in skimage.measure.regionprops(labeled, intensity_image=image)
+        regions_list = [prop for prop in skimage.measure.regionprops(labeled, intensity_image=image)
                        if (self.UpperLimit > prop.area > self.LowerLimit)]
         if len(regions_list) <= 0:
             return np.array([])
 
-        print("Object Area at ",self.ObjectArea, "pm", self.Sigma)
+        print("Object Area at ", self.ObjectArea, "pm", self.Sigma)
 
         out = []
         sigma = self.Sigma
@@ -524,47 +571,42 @@ class SimpleAreaDetector2(Detector):
         for prop in regions_list:
             prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
                                                             prop.area - mu) / sigma) ** 2
-            if return_regions:
-                out.append(prop, prob)
-            else:
-                # prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
-                #                                                                         prop.area - mu) / sigma) ** 2
-                # print(prob)
-                # out.append(Measurement(prob, prop.centroid))
-                intensities = prop.intensity_image[prop.image]
-                mean_int = np.mean(intensities)
-                std_int = np.std(intensities)
-                out.append(Measurement(prob, [prop.centroid[0], prop.centroid[1], mean_int], data=std_int))
-        if return_regions:
-            if return_labeled:
-                return out, labeled
-            else:
-                return out
+
+            intensities = prop.intensity_image[prop.image]
+            mean_int = np.mean(intensities)
+            std_int = np.std(intensities)
+            out.append([prop.centroid[0], prop.centroid[1], mean_int, prob, std_int])
+
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+
+
+        # #idea for speed up of the following
+        # vectorXY = out["PositionX", "PositionY"].values
+        # distxy_mat = np.linalg.norm(vectorXY[:, None, :]-vectorXY[None, :, :], axis=-1)
+        # vectorZ = out["PositionZ"].values
+        # distz_mat = np.abs(vectorZ[:,None]-vectorZ[None,:])
+        # mask = ~np.any((distxy_mat < self.distxy_boundary) & (distxy_mat != 0) & (distz_mat < self.distz_boundary),
+        #                axis=-1)
+        #
+        # out = out[mask]
+
         Positions2D = out
-        # Positions2D = self.Detector.detect(~db.getMask(frame=i, layer=0).data.astype(bool))
         Positions2D_cor = []
         for i1, pos1 in enumerate(Positions2D):
             Log_Probability1 = pos1.Log_Probability
-            Track_Id1 = pos1.Track_Id
-            Frame1 = pos1.Frame
             x1 = pos1.PositionX
             y1 = pos1.PositionY
             z1 = pos1.PositionZ
-            # z1 = index_data[int(x1), int(y1)] * 10.
-            # PosZ1 = index_data[int(x1), int(y1)]
             inc = 0
             for j1, pos2 in enumerate(Positions2D):
                 Log_Probability2 = pos2.Log_Probability
                 Log_Probability = (Log_Probability1 + Log_Probability2)/2.
-                # Log_Probabilitymax = np.max([Log_Probability1,Log_Probability2])
                 x2 = pos2.PositionX
                 y2 = pos2.PositionY
                 z2 = pos2.PositionZ
-                # z2 = index_data[int(x2), int(y2)] * 10.
-                # PosZ2 = index_data[int(x2), int(y2)]
+
                 PosZ = (z1 + z2)/2.
                 dist = np.sqrt((x1 - x2) ** 2. + (y1 - y2) ** 2.)
-                # distz = np.abs(z1 - z2)
                 distz = np.abs(z1 - z2)*10.
                 if dist < self.distxy_boundary and dist != 0 and distz < self.distz_boundary:
                     x3 = (x1 + x2) / 2.
@@ -572,43 +614,33 @@ class SimpleAreaDetector2(Detector):
                     if [x3, y3, Log_Probability, PosZ] not in Positions2D_cor:
                         Positions2D_cor.append([x3, y3, Log_Probability, PosZ])
                         print("Replaced")
-                        # print(x3)
-                        # print(y3)
-                        # print (Log_Probabilitymax)
-                        # print(PosZmax)
-                        # print('###')
                     inc += 1
             if inc == 0:
                 Positions2D_cor.append([x1, y1, Log_Probability1, z1])
-        if only_for_detection:
-            return Positions2D_cor
+
         Positions3D = []
-        res = 6.45 / 10
-        if self.pre_stitching:
-            for pos in Positions2D_cor:
-                # posZ = index_data[int(pos[0]), int(pos[1])]
-                posZ = pos[3]
-                Positions3D.append(Measurement(pos[2], [pos[0] * res, pos[1] * res, posZ * 10]))
-            if return_labeled:
-                return Positions3D, labeled
-            else:
-                return Positions3D
-        # for pos in Positions2D:
-        #     posZ = pos.mean_int  # war mal "Index_Image"
-        #     Positions3D.append(Measurement(pos.Log_Probability,
-        #                                           [pos.PositionX * res, pos.PositionY * res, posZ * 10],
-        #                                           frame=pos.Frame,
-        #                                           track_id=pos.Track_Id))
-        # if return_labeled:
-        #     return Positions3D, labeled
-        # else:
-        #     return Positions3D
+        res = 1#6.45 / 10
+        resZ = 1#10
+        for pos in Positions2D_cor:
+            Positions3D.append([pos[0] * res, pos[1] * res, pos[3] * resZ, pos[2]])
+
+        Positions3D = pandas.DataFrame(Positions3D, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability"])
+
+        return Positions3D, None
+
 
 class SimpleAreaDetector(Detector):
     """
     Detector classifying objects by area and number to be used with pengu-track modules.
     """
-    def __init__(self, object_area, object_number, threshold=None, lower_limit=None, upper_limit=None):
+    def __init__(self, object_area=1,
+                 object_number=1,
+                 threshold=None,
+                 lower_limit=None,
+                 upper_limit=None,
+                 return_regions=False,
+                 get_all=False,
+                 return_labeled=False):
         """
         Detector classifying objects by number and size, taking area-separation into account.
 
@@ -639,7 +671,17 @@ class SimpleAreaDetector(Detector):
         self.Threshold = threshold
         self.Sigma = np.sqrt((self.UpperLimit-self.LowerLimit)/(4*np.log(1./0.95))) # self.ObjectArea/2.
 
-    def detect(self, image, return_regions=False, get_all=False, return_labeled=False):
+
+        self.ParameterList = ParameterList(Parameter("ObjectArea", object_area, min=0., value_type=float),
+                                           Parameter("ObjectNumber", object_number, min=0, value_type=int),
+                                           Parameter("Sigma", self.Sigma, min=0, value_type=float),
+                                           Parameter("Threshold", self.Threshold, value_type=float),
+                                           Parameter("LowerLimit", self.LowerLimit, value_type=float),
+                                           Parameter("UpperLimit", self.UpperLimit, value_type=float)
+                                           )
+
+    @detection_parameters(image=dict(frame=0, mask=False))
+    def detect(self, image):
         """
         Detection function. Parts the image into blob-regions with size according to their area.
         Returns information about the regions.
@@ -648,9 +690,6 @@ class SimpleAreaDetector(Detector):
         ----------
         image: array_like
             Image will be converted to uint8 Greyscale and then binnearized.
-        return_regions: bool, optional
-            If True, function will return skimage.measure.regionprops object,
-            else a list of the blob centroids and areas.
 
         Returns
         -------
@@ -663,15 +702,12 @@ class SimpleAreaDetector(Detector):
         labeled = skimage.measure.label(image, connectivity=2)
 
         # Filter the regions for area and convexity
-        if get_all:
-            regions_list = [prop for prop in skimage.measure.regionprops(labeled)]
-        else:
-            regions_list = [prop for prop in skimage.measure.regionprops(labeled)
+        regions_list = [prop for prop in skimage.measure.regionprops(labeled)
                        if (self.UpperLimit >= prop.area >= self.LowerLimit and prop.solidity > 0.5)]
         if len(regions_list) <= 0:
             return np.array([])
 
-        print("Object Area at ",self.ObjectArea, "pm", self.Sigma)
+        print("Object Area at ", self.ObjectArea, "pm", self.Sigma)
 
         out = []
         sigma = self.Sigma
@@ -679,17 +715,11 @@ class SimpleAreaDetector(Detector):
         for prop in regions_list:
             prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
                                                             prop.area - mu) / sigma) ** 2
-            if return_regions:
-                out.append(prop, prob)
-            else:
-                # prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
-                #                                                                         prop.area - mu) / sigma) ** 2
-                # print(prob)
-                out.append(Measurement(prob, prop.centroid))
-        if return_labeled:
-            return out, labeled
-        else:
-            return out
+            o = list(prop.centroid)
+            o.append(prob)
+            out.append(o)
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"])
+        return out, None
 
 
 def extended_regionprops(label_image, intensity_image=None, cache=True):
@@ -1045,6 +1075,8 @@ class RegionFilter(object):
     def __init__(self, prop, value, var=None, lower_limit=None, upper_limit=None, dist=None):
         super(RegionFilter, self).__init__()
         self.prop = str(prop)
+        self.val_parameter = None
+        self.var_parameter = None
 
         self.value = np.asarray(value, dtype=float)
         if self.value.ndim == 1:
@@ -1087,22 +1119,26 @@ class RegionFilter(object):
         else:
             raise ValueError("False shape for upper limit parameter!")
 
-        if dist is not None:
-            self.dist = dist
-        else:
-            if self.dim == 1:
-                self.dist = stats.norm(loc=self.value, scale=np.sqrt(self.var))
-            else:
-                self.dist = stats.multivariate_normal(mean=self.value, cov = self.var)
+        self.set_dist()
+
+        self.val_parameter = Parameter(self.prop, value, min=self.lower_limit, max=self.upper_limit, value_type=float)
+        self.var_parameter = Parameter(self.prop+"_variance", self.var, min=0, value_type=float)
 
     def filter(self, regions):
         return [self.logprob(region.__getattribute__(self.prop)) for region in regions]
 
     def logprob(self, test_value):
+        self.set_dist()
         if np.all(self.lower_limit < test_value) and np.all(test_value  < self.upper_limit):
-            return self.dist.logpdf(test_value)
+            return float(self.dist.logpdf(test_value-self.value))
         else:
             return -np.inf
+
+    def set_dist(self):
+        if self.dim == 1:
+            self.dist = stats.norm(loc=np.zeros_like(self.value), scale=np.sqrt(self.var))
+        else:
+            self.dist = stats.multivariate_normal(mean=np.zeros_like(self.value), cov = self.var)
 
     @classmethod
     def from_dict(cls, dictionary):
@@ -1115,10 +1151,26 @@ class RegionFilter(object):
         return cls(prop, value, var=var, lower_limit=lower_limit, upper_limit=upper_limit, dist=dist)
 
 
+    def __getattribute__(self, item):
+        if item == "value":
+            if self.val_parameter is None:
+                return super(RegionFilter, self).__getattribute__(item)
+            else:
+                return self.val_parameter.value
+        elif item == "var":
+            if self.var_parameter is None:
+                return super(RegionFilter, self).__getattribute__(item)
+            else:
+                return self.var_parameter.value
+        else:
+            return super(RegionFilter, self).__getattribute__(item)
+
+
 class RegionPropDetector(Detector):
     def __init__(self, RegionFilters):
         super(RegionPropDetector, self).__init__()
         self.Filters = []
+        param_list = []
         for filter in RegionFilters:
             if type(filter)==RegionFilter:
                 self.Filters.append(filter)
@@ -1126,23 +1178,43 @@ class RegionPropDetector(Detector):
                 self.Filters.append(RegionFilter.from_dict(filter))
             else:
                 raise ValueError("Filter must be of type RegionFilter or dictionary, not %s"%type(filter))
+            param_list.append(filter.val_parameter)
+            param_list.append(filter.var_parameter)
+        self.ParameterList = ParameterList(*param_list)
 
         # print("Got %s layers of filters in detector!"%len(self.Filters))
 
-    def detect(self, image, intensity_image=None):
-
+    @detection_parameters(image=dict(frame=0, mask=False))
+    def detect(self, image):
+        intensity_image = rgb2gray(image)
         regions = extended_regionprops(skimage.measure.label(image), intensity_image=intensity_image)
-        return [Measurement(
-            np.sum([filter.filter([region]) for filter in self.Filters]),
-            np.asarray(region.centroid)[:, None], data=dict([[filter.prop, [region.__getattribute__(filter.prop)]] for filter in self.Filters]))
-            for region in regions]
+        filter_dict = dict([[filter.prop, filter] for filter in self.Filters])
+
+        cols = ["PositionX", "PositionY", "Log_Probability"]
+        cols.extend(sorted(filter_dict.keys()))
+
+        out = []
+        for region in regions:
+            o = []
+            o.extend(region.centroid)
+            prob = 0.
+            o.append(float(prob))
+            for key in cols[3:]:
+                filter = filter_dict[key]
+                # cols.update(filter.prop)
+                o[cols.index("Log_Probability")] += filter.filter([region])[0]
+                o.append(region.__getattribute__(filter.prop))
+            out.append(o)
+
+        out = pandas.DataFrame(out, columns=cols)
+        return out, None
 
 
 class AreaDetector(Detector):
     """
     Detector classifying objects by area and number to be used with pengu-track modules.
     """
-    def __init__(self, object_area, object_number, threshold=None, lower_limit=None, upper_limit=None):
+    def __init__(self, object_area=1, object_number=1, threshold=None, lower_limit=None, upper_limit=None):
         """
         Detector classifying objects by number and size, taking area-separation into account.
 
@@ -1173,7 +1245,19 @@ class AreaDetector(Detector):
         self.Threshold = threshold
         self.Areas = []
         self.Sigma = None
-    def detect(self, image, return_regions=False):
+
+
+
+        self.ParameterList = ParameterList(Parameter("ObjectArea", object_area, min=0., value_type=float),
+                                           Parameter("ObjectNumber", object_number, min=0, value_type=int),
+                                           Parameter("Sigma", self.Sigma, min=0, value_type=float),
+                                           Parameter("Threshold", self.Threshold, value_type=float),
+                                           Parameter("LowerLimit", self.LowerLimit, value_type=float),
+                                           Parameter("UpperLimit", self.UpperLimit, value_type=float)
+                                           )
+
+    @detection_parameters(image=dict(frame=0, mask=False))
+    def detect(self, image):
         """
         Detection function. Parts the image into blob-regions with size according to their area.
         Returns information about the regions.
@@ -1226,17 +1310,8 @@ class AreaDetector(Detector):
         if len(regions_list) <= 0:
             return np.array([])
 
-        # import matplotlib.pyplot as plt
-        # print(self.ObjectArea, len(self.Areas))
+
         print("Object Area at ",self.ObjectArea, "pm", self.Sigma)
-        #if len(self.Areas)>1e3:
-        #    bins = int(np.amax(self.Areas)+1)
-        #    plt.hist(self.Areas, bins=bins)
-        #    hist, bin_edges = np.histogram(self.Areas, bins=bins)
-            # plt.figure()
-            # hfft = np.fft.fft(hist)
-            # plt.plot(hfft)
-        #    plt.show()
 
         out = []
         regions = {}
@@ -1247,41 +1322,34 @@ class AreaDetector(Detector):
         for prop in regions.values():
             n = np.ceil(prop.area/self.ObjectArea)
             if self.LowerLimit < prop.area < self.UpperLimit:
-                # if return_regions:
-                #     out.append(prop)
-                # else:
-                #     sigma = self.Sigma
-                #     mu = self.ObjectArea
-                #     prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5*((prop.area - mu)/sigma) ** 2
-                #     out.append(Measurement(prob, prop.centroid))
-                out.extend(self.measure(prop, 1, return_regions))
+                out.extend(self.measure(prop, 1))
             elif n < N_max:
                 pass
-                # out.extend(self.measure(prop, n, return_regions))
-        return out
+        return pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"])
 
-    def measure(self, prop, n, return_regions):
+    def measure(self, prop, n):
         out = []
-        if n ==1:
-            if return_regions:
-                out.append(prop)
-            else:
-                sigma = self.Sigma
-                mu = self.ObjectArea
+        if n == 1:
+            sigma = self.Sigma
+            mu = self.ObjectArea
+            prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
+                                                                                        prop.area - mu) / sigma) ** 2
+            o = []
+            o.extend(prop.centroid)
+            o.append(prob)
+            out.append(o)
+        elif n > 1:
+            if min(prop.image.shape) < 2:
+                bb = np.asarray(prop.bbox)
+                sigma = 2 * self.Sigma
+                mu = 2 * self.ObjectArea
                 prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
                                                                                             prop.area - mu) / sigma) ** 2
-                out.append(Measurement(prob, prop.centroid))
-        elif n>1:
-            if min(prop.image.shape) < 2:
-                if return_regions:
-                    out.extend([prop, prop])
-                else:
-                    bb = np.asarray(prop.bbox)
-                    sigma = 2 * self.Sigma
-                    mu = 2 * self.ObjectArea
-                    prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
-                                                                                                prop.area - mu) / sigma) ** 2
-                    out.extend([Measurement(prob, bb[:2]+i/float(n+1)*(bb[2:]-bb[:2])) for i in range(n+1)])
+                for i in range(n+1):
+                    o = []
+                    o.extend(bb[:2]+i/float(n+1)*(bb[2:]-bb[:2]))
+                    o.append(prob)
+                    out.append(o)
             else:
                 distance = ndi.distance_transform_edt(prop.image)
                 local_maxi = peak_local_max(distance, indices=False,
@@ -1290,14 +1358,16 @@ class AreaDetector(Detector):
                 labels = watershed(-distance, markers, mask=prop.image)
                 new_reg = skimage.measure.regionprops(labels)
                 new_reg = [new for new in new_reg if new.label <= n]
-                if return_regions:
-                    out.extend(new_reg)
-                else:
-                    sigma = 2 * self.Sigma
-                    mu = 2 * self.ObjectArea
-                    prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
-                                                                                                prop.area - mu) / sigma) ** 2
-                    out.extend([Measurement(prob, np.asarray(prop.bbox)[:2] + new.centroid) for new in new_reg])
+
+                sigma = 2 * self.Sigma
+                mu = 2 * self.ObjectArea
+                prob = np.log(self.ObjectNumber / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
+                                                                                            prop.area - mu) / sigma) ** 2
+                for new in new_reg:
+                    o = []
+                    o.extend(np.asarray(prop.bbox)[:2] + new.centroid)
+                    o.append(prob)
+                    out.append(o)
         return out
 
 
@@ -1305,7 +1375,7 @@ class AreaBlobDetector(Detector):
     """
     Detector classifying objects by area and number to be used with pengu-track modules.
     """
-    def __init__(self, object_size, object_number, threshold=None):
+    def __init__(self, object_size=1, object_number=1, threshold=None):
         """
         Detector classifying objects by number and size, taking area-separation into account.
 
@@ -1324,6 +1394,12 @@ class AreaBlobDetector(Detector):
         self.ObjectNumber = int(object_number)
         self.Threshold = threshold
 
+        self.ParameterList = ParameterList(Parameter("ObjectSize", object_size, min=0., value_type=int),
+                                           Parameter("ObjectNumber", object_number, min=0, value_type=int),
+                                           Parameter("Threshold", self.Threshold, value_type=float)
+                                           )
+
+    @detection_parameters(image=dict(frame=0, mask=False))
     def detect(self, image, return_regions=False):
         """
         Detection function. Parts the image into blob-regions with size according to their area.
@@ -1368,21 +1444,16 @@ class AreaBlobDetector(Detector):
         mask = (areas >= self.Threshold)
         out = []
 
-        if return_regions:
-            for i, a in enumerate(areas):
-                if mask[i]:
-                    for j in range(int(a//(areas[mask].mean()))+1):
-                        out.append(regions[i])
-            return out
 
-        else:
-            for i, a in enumerate(areas):
-                if mask[i]:
-                    for j in range(int(a//(areas[mask].mean()))+1):
-                        # out.append(regions[i].centroid)
-                        out.append(Measurement(1., regions[i].centroid))
-            # return np.array(out, ndmin=2)
-            return out
+        for i, a in enumerate(areas):
+            if mask[i]:
+                for j in range(int(a//(areas[mask].mean()))+1):
+                    # out.append(regions[i].centroid)
+                    o = []
+                    o.extend(regions[i].centroid)
+                    o.append(1)
+                    out.append(o)
+        return pandas.DataFrame(out, columns=["PositionX", "PositionY", "Log_Probability"]), None
 
 
 class WatershedDetector(Detector):
@@ -1390,7 +1461,7 @@ class WatershedDetector(Detector):
     Detector classifying objects by area and number. It uses watershed algorithms to depart bigger areas.
     To be used with pengu-track modules.
     """
-    def __init__(self, object_size, object_number, threshold=None):
+    def __init__(self, object_size=1, object_number=1, threshold=None):
         """
         Detector classifying objects by number and size, taking area-separation into account.
 
@@ -1409,6 +1480,12 @@ class WatershedDetector(Detector):
         self.ObjectNumber = int(object_number)
         self.Threshold = threshold
 
+        self.ParameterList = ParameterList(Parameter("ObjectSize", object_size, min=0., value_type=int),
+                                           Parameter("ObjectNumber", object_number, min=0, value_type=int),
+                                           Parameter("Threshold", self.Threshold, value_type=float)
+                                           )
+
+    @detection_parameters(image=dict(frame=0, mask=False))
     def detect(self, image, return_regions=False):
         """
         Detection function. Parts the image into blob-regions with size according to their area.
@@ -1444,10 +1521,10 @@ class WatershedDetector(Detector):
         if return_regions:
             return regions
         elif len(regions) > 0:
-            return [Measurement(1., [props.centroid[0], props.centroid[1]]) for props in regions]
-            # return np.array([[props.centroid[0], props.centroid[1], props.area] for props in regions], ndmin=2)
+            return pandas.DataFrame([[1., props.centroid[0], props.centroid[1]] for props in regions],
+                                    columns=["Log_Probability", "PositionX", "PositionY"]), None
         else:
-            return []
+            return [], None
 
 
 def enhance_contrast(image):
@@ -3141,9 +3218,14 @@ class EmperorDetector(FlowDetector):
         return measurements
 
 def rgb2gray(rgb):
-    # rgb = np.asarray(rgb)
-    dt = rgb.dtype
-    return np.dot(rgb[...,:3], [0.299, 0.587, 0.114]).astype(dt)
+    rgb = np.asarray(rgb)
+    if len(rgb.shape)>2 and rgb.shape[2]==3:
+        dt = rgb.dtype
+        return np.dot(rgb[...,:3], [0.299, 0.587, 0.114]).astype(dt)
+    elif len(rgb.shape)==2:
+        return rgb
+    else:
+        raise ValueError("Array is not in image shape (N,M,3)!")
 
 def gray2rgb(gray):
     # rgb = np.asarray(rgb)
