@@ -1450,6 +1450,105 @@ class WatershedDetector(Detector):
             return []
 
 
+def enhance_contrast(image):
+    # kontrastspreizung: Helligkeitsunterschiede werden ausgeglichen und Bild mit maximalen Kontrast dargestellt
+    image = image / np.percentile(image, 99.9)
+    image = image - np.percentile(image, 0.1)
+
+    image[image < 0] = 0  # alle Pixel mit Wert <0 werden auf 0 gesetzt
+    image[image > 1] = 1
+    return image
+
+
+class TinaCellDetector(Detector):
+
+    def __init__(self):
+        super(TinaCellDetector, self).__init__()
+
+    def detect(self,minProj, minIndices, maxProj, maxIndices, resXY, resZ,
+               disk_size=0, minimal_area=57, maximal_area=350, threhold=0.2):
+        """
+
+        :param minProj:
+        :param minIndices:
+        :param maxProj:
+        :param maxIndices:
+        :param resXY:
+        :param resZ:
+        :param disk_size:
+        :param minimal_area:
+        :param maximal_area:
+        :param threhold:
+        :return:
+        """
+
+        minind_contrast = enhance_contrast(minIndices)
+        maxproj_contrast =  enhance_contrast(maxProj)
+        minproj_contrast = enhance_contrast(minProj)
+
+        minproj_ben = minproj_contrast - np.min(minproj_contrast)
+        minproj_ben = minproj_ben / np.max(minproj_ben)
+        maxproj_ben = maxproj_contrast - np.min(maxproj_contrast)
+        maxproj_ben = maxproj_ben / np.max(maxproj_ben)
+
+        import scipy
+        from skimage import filters
+        maxproj_gausfilt = scipy.ndimage.filters.gaussian_filter(maxproj_ben, 2)
+        thres_max = threhold # threshold_otsu(maxproj_ben)
+
+        #minproj_gausfilt = scipy.ndimage.filters.gaussian_filter(minproj_ben, 0.2)
+        #thres_min = threshold_otsu(minproj_ben)
+
+        mask = (maxproj_gausfilt > thres_max)
+        #mask = (maxproj_gausfilt>thres_max)*(minproj_gausfilt>thres_min)
+
+        struct1 = skimage.morphology.disk(disk_size)
+        mask_erosion = scipy.ndimage.binary_erosion(mask).astype(mask.dtype)  # rauschbedingte Pixel werden geloescht
+        mask_dilation = scipy.ndimage.binary_dilation(mask_erosion).astype(mask_erosion.dtype)
+
+        mask_dilation2 = scipy.ndimage.binary_dilation(mask_dilation,struct1).astype(mask_dilation.dtype)
+        # mask_erosion = scipy.ndimage.binary_erosion(mask_dilation2).astype(mask_dilation2.dtype)  # rauschbedingte Pixel werden geloescht
+
+        mask_ind = mask_dilation2*maxIndices
+
+        labels, n = label(mask_ind)
+        #labels, n = label(mask_dilation2)
+        regions = regionprops(labels)
+        posx = np.array([ e.centroid[0] for e in regions])
+        posy = np.array([ e.centroid[1] for e in regions])
+
+        # threshold depending on cellsize
+        area = np.array([e.area for e in regions])
+        area_thres_min = minimal_area
+        area_thres_max = maximal_area
+        cells = [r for r in regions if (r.area <= area_thres_max) and (r.area >= area_thres_min)]
+        cellx = np.array([e.centroid[0] for e in cells])
+        celly = np.array([e.centroid[1] for e in cells])
+
+        cell_program = np.vstack((cellx, celly))
+        cell_program = cell_program.transpose()
+
+        posarea = ['%d' %e.area for e in regions]
+
+        labelposforz = [cells[e].label for e in range(len(cells))]
+        zmaxind = np.array([np.nanmean(maxIndices[labels==labelposforz[e]]) for e in range(len(labelposforz))])
+        zminind = np.array([np.nanmean(minIndices[labels==labelposforz[e]]) for e in range(len(labelposforz))])
+        meanind = (zmaxind+zminind)/2
+        zpos = []
+        for e in meanind:
+            (values, counts) = np.unique(e, return_counts=True) #to get most frequent number (=zpos) in  meanind
+            ind = np.argmax(counts)
+            z = values[ind]
+            z = np.round(z)
+            zpos.append(z)
+
+        Positions3D = np.c_[cellx,celly,zpos]
+
+        # return posx,posy, cell_program, Positions3D, cellx, celly, mask_dilation2,posarea
+        return Positions3D, mask_dilation2
+
+
+
 class Segmentation(object):
     """
     This Class describes the abstract function of a image-segmentation-algorithm in the pengu-track package.

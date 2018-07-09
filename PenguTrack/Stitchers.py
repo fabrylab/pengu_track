@@ -587,27 +587,28 @@ class Stitcher(object):
 
         track_set = []
         for track in self.Tracks:
-            db_track = db.setTrack(type=type)
+            #db_track = db.setTrack(type=type)
             for i in self.Tracks[track].X:
                 meas = self.Tracks[track].Measurements[i]
                 pos = self.Tracks[track].Model.vec_from_meas(meas)
                 pos = function(pos)
                 if flip:
-                    track_set.append(dict(track=db_track.id, type=type, frame=i, x=pos[0], y=pos[1]))
+                    track_set.append(dict(track=track, type=type, frame=i, x=pos[0], y=pos[1]))
                 else:
-                    track_set.append(dict(track=db_track.id, type=type, frame=i, x=pos[1], y=pos[0]))
+                    track_set.append(dict(track=track, type=type, frame=i, x=pos[1], y=pos[0]))
+
         try:
             db.setMarkers(track=[m["track"] for m in track_set],
                                frame=[m["frame"] for m in track_set],
-                               x=[m["x"] for m in track_set],
-                               y=[m["y"] for m in track_set])
+                               x=[m["x"][0] for m in track_set],
+                               y=[m["y"][0] for m in track_set])
         except peewee.OperationalError:
             for track in set([m["track"] for m in track_set]):
                 small_set = [m for m in track_set if m["track"]==track]
                 db.setMarkers(track=[m["track"] for m in small_set],
                               frame=[m["frame"] for m in small_set],
-                              x=[m["x"] for m in small_set],
-                              y=[m["y"] for m in small_set])
+                              x=[m["x"][0] for m in small_set],
+                              y=[m["y"][0] for m in small_set])
 
 class DistanceStitcher(Stitcher):
     def __init__(self, max_velocity, max_frames=3):

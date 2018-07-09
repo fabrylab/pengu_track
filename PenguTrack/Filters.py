@@ -1377,7 +1377,7 @@ class MultiFilter(Filter):
             _filter = self.ActiveFilters[j]
             if np.amax(list(_filter.Predicted_X.keys()))-np.amax(list(_filter.X.keys())) >= self.FilterThreshold:
                 self.ActiveFilters.pop(j)
-                print("Stoped track %s in frame %s with no updates for %s frames"%(j, i, self.FilterThreshold))
+                print("Stopped track %s in frame %s with no updates for %s frames"%(j, i, self.FilterThreshold))
 
         predicted_x = {}
         predicted_x_error = {}
@@ -1454,12 +1454,24 @@ class MultiFilter(Filter):
             Recent/corresponding time-stamp.
         """
         assert not (z is None and i is None), "One of measurement vector or time stamp must be specified"
-        measurements = list(z)
-        self.Measurements.update({i:z})
 
-        meas_logp = np.array([m.Log_Probability for m in z])
+        if not isinstance(z, np.ndarray) and isinstance(z[0], Measurement):
 
-        z = np.array([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
+            measurements = list(z)
+            self.Measurements.update({i:z})
+
+            meas_logp = np.array([m.Log_Probability for m in z])
+
+            z = np.array([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
+
+        elif isinstance(z, np.ndarray):
+            if len(z.shape)==2:
+                z = z[:, :, None]
+            meas_logp = np.ones(z.shape[0])
+            measurements = [Measurement(1, pos) for pos in z]
+            self.Measurements.update({i:measurements})
+        else:
+            raise ValueError("Input Positions are not of type array or pengutrack measurement!")
 
         mask = ~np.isneginf(meas_logp)
         if not np.all(~mask):
