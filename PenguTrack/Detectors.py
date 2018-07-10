@@ -31,19 +31,14 @@ import skimage.measure
 import skimage.color
 import skimage.filters as filters
 import skimage.morphology
-import re
+from skimage import img_as_uint
+from skimage.measure import regionprops
 
-from skimage import transform
 from scipy.ndimage.interpolation import map_coordinates
 from scipy.ndimage.interpolation import shift
-from skimage import img_as_uint
-from skimage.filters import threshold_otsu
-from skimage.morphology import remove_small_objects, binary_erosion
-from skimage.measure import regionprops
 
 from scipy import ndimage as ndi
 from scipy.interpolate import RegularGridInterpolator
-from scipy.special import lambertw
 from scipy.ndimage.measurements import label
 from scipy import stats
 from scipy.ndimage.filters import gaussian_filter
@@ -58,28 +53,14 @@ import pandas
 try:
     from skimage.filters import threshold_niblack
 except IOError:
-    from skimage.filters import threshold_otsu #as threshold_niblack #threshold_niblack
-    threshold_niblack = lambda image: image > threshold_otsu(image)
+    threshold_niblack = lambda image: image > filters.threshold_otsu(image)
 except ImportError:
-    from skimage.filters import threshold_otsu #as threshold_niblack #threshold_niblack
-    threshold_niblack = lambda image: image > threshold_otsu(image)
-
-# If we really need this function, better take it from skiamge. Maybe cv2 is not available.
-# try:
-#     from cv2 import bilateralFilter
-# except ImportError:
-#     from skimage.restoration import denoise_bilateral
-#     bilateralFilter = lambda src, d, sigmaColor, sigmaSpace: denoise_bilateral(src, win_size=d,
-#                                                                                sigma_color=sigmaColor,
-#                                                                                sigma_spatial=sigmaSpace)
+    threshold_niblack = lambda image: image > filters.threshold_otsu(image)
 
 try:
     import cv2
 except ImportError:
     print("No CV2 found. Optical Flow Detectors not usable!")
-
-# import theano
-# import theano.tensor as T
 
 
 class dotdict(dict):
@@ -196,7 +177,6 @@ class Measurement(dotdict):
             except ValueError:
                 self.PositionX = float(position)
                 self.dim = 1
-        # self.Position = np.asarray(position)
         if track_id is not None:
             self.Track_Id = int(track_id)
         else:
@@ -308,7 +288,6 @@ class BlobDetector(Detector):
         self.ObjectSize = int(object_size)
         self.ObjectNumber = int(object_number)
         self.Threshold = threshold
-        # self.ReturnRegions = bool(return_regions)
         self.ParameterList = ParameterList(Parameter("ObjectSize", object_size, min=0, value_type=int),
                                            Parameter("ObjectNumber", object_number, min=0, value_type=int),
                                            Parameter("Threshold", threshold, value_type=float)
@@ -356,184 +335,6 @@ class BlobDetector(Detector):
 
         return out, None
 
-
-class NKCellDetector(Detector):
-    def __init__(self):
-        super(NKCellDetector, self).__init__()
-
-    def enhance(self, image, percentile):
-        image -= np.percentile(image, percentile)
-        image /= np.percentile(image, 100. - percentile)
-        image[image < 0.] = 0.
-        image[image > 1.] = 1.
-        return image
-
-
-    @detection_parameters(minProj=dict(frame=0, layer="MinProj", mask=False),
-                          minIndices=dict(frame=0, layer="MinIndices", mask=False),
-                          minProjPrvs=dict(frame=-1, layer="MinProj", mask=False),
-                          maxIndices=dict(frame=0, layer="MaxIndices", mask=False))
-    def detect(self, minProj, minIndices, minProjPrvs, maxIndices):
-        data = gaussian_filter(minProj.astype(float)-minProjPrvs.astype(float), 5)
-        data[data > 0] = 0.
-        data = self.enhance(data, 1.)
-        data = 1. - data
-        mask = data > 0.5
-        labeled, num_objects = label(mask)
-
-        regions = regionprops(labeled, intensity_image=data)
-        regions = [r for r in regions if r.area > 100]
-
-        out = []
-        mu = np.mean([prop.area for prop in regions])
-        for prop in regions:
-            sigma = np.sqrt(prop.area)  # assuming Poisson distributed areas
-            prob = np.log(len(regions) / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((prop.area - mu) / sigma) ** 2
-            intensities = prop.intensity_image[prop.image]
-            mean_int = np.mean(intensities)
-            std_int = np.std(intensities)
-            # out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
-            out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
-        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
-        # out = [Measurement(o[3], o[:3], data={"IntensitySTD": o[4]}) for o in out]
-
-
-        #res = 6.45 / 10
-        #out.PositionX *= res
-        #out.PositionY *= res
-        #out.PositionZ *= 10
-
-        return out, mask
-
-class NKCellDetector2(Detector):
-    def __init__(self):
-        super(NKCellDetector2, self).__init__()
-
-    def enhance(self, image, percentile):
-        image = image.astype(np.float)
-        image -= np.percentile(image, percentile)
-        image /= np.percentile(image, 100. - percentile)
-        image[image < 0.] = 0.
-        image[image > 1.] = 1.
-        return image
-
-
-    @detection_parameters(minProj=dict(frame=0, layer="MinimumProjection", mask=False),
-                          minProjPrvs=dict(frame=-1, layer="MinimumProjection", mask=False))
-    def detect(self, minProj, minProjPrvs):
-
-        minProjPrvs = self.enhance(minProjPrvs, 0.1)
-        minProj = self.enhance(minProj, 0.1)
-
-        data = gaussian_filter(minProj-minProjPrvs, 5)
-        data[data > 0] = 0.
-        data = -1. * data
-        mask = data > 0.1
-        labeled, num_objects = label(mask)
-
-        regions = regionprops(labeled, intensity_image=data)
-        regions = [r for r in regions if r.area > 100]
-
-        out = []
-        mu = np.mean([prop.area for prop in regions])
-        for prop in regions:
-            sigma = np.sqrt(prop.area)  # assuming Poisson distributed areas
-            prob = np.log(len(regions) / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((prop.area - mu) / sigma) ** 2
-            intensities = prop.intensity_image[prop.image]
-            mean_int = np.mean(intensities)
-            std_int = np.std(intensities)
-            # out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
-            out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
-        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
-        # out = [Measurement(o[3], o[:3], data={"IntensitySTD":o[4]}) for o in out]
-
-        #res = 6.45 / 10
-        #out.PositionX *= res
-        #out.PositionY *= res
-        #out.PositionZ *= 10
-
-        return out, mask
-
-class TCellDetector(Detector):
-    """
-    Detector classifying objects by area and number to be used with pengu-track modules.
-    """
-    def __init__(self):
-        super(TCellDetector, self).__init__()
-
-    def enhance(self, image, percentile):
-        image = image.astype(np.float)
-
-        bgd = threshold_niblack(image, 51)
-        image = image / bgd
-
-        image -= np.percentile(image, percentile)
-        image /= np.percentile(image, 100. - percentile)
-        image[image < 0.] = 0.
-        image[image > 1.] = 1.
-        return image
-
-
-    @detection_parameters(minProj=dict(frame=0, layer="MinimumProjection", mask=False),
-                          minIndices=dict(frame=0, layer="MinimumIndices", mask=False))
-    def detect(self, minProj, minIndices):
-        minProj2 = self.enhance(minProj, 0.1)
-        thres = threshold_otsu(minProj2)
-        mask = minProj2 < thres
-
-        mask = binary_erosion(mask)
-        # mask = remove_small_objects(mask, 24)
-
-        maskedMinIndices = minIndices.copy() + 1
-        maskedMinIndices = maskedMinIndices.astype('uint8')
-        # maskedMinIndices = maskedMinIndices.astype(np.uint8)
-        # maskedMinIndices = minIndices.data[:] + 1
-        # maskedMinIndices = np.round(gaussian_filter(maskedMinIndices, 1)).astype(np.int)
-        # maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
-        # maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
-        maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
-        # maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
-        maskedMinIndices[~mask] = 0
-        j_max = np.amax(maskedMinIndices)
-        stack = np.zeros((j_max, minProj.shape[0], minProj.shape[1]), dtype=np.bool)
-        for j in range(j_max):
-            stack[j, maskedMinIndices == j] = True
-
-        labels3D, n = label(stack, structure=np.ones((3, 3, 3)))
-        labels2D = np.sum(labels3D, axis=0) - 1
-        # labels2D = remove_small_objects(labels2D, 24)
-
-        regions = regionprops(labels2D, maskedMinIndices)
-        areas = np.array([r.area for r in regions])
-        area_thres = threshold_otsu(areas) * 0.7
-        if area_thres > 60:
-            area_thres = 38.0
-        if area_thres < 10:
-            area_thres = 10.0
-        regions = [r for r in regions if r.area >= area_thres]
-        #centroids = np.array([r.centroid for r in regions]).T
-
-        out = []
-        mu = np.mean([prop.area for prop in regions])
-        for prop in regions:
-            sigma = np.sqrt(prop.area)  # assuming Poisson distributed areas
-            prob = np.log(len(regions) / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
-                                                            prop.area - mu) / sigma) ** 2
-            intensities = prop.intensity_image[prop.image]
-            mean_int = np.mean(intensities)
-            std_int = np.std(intensities)
-            # out.append(Measurement(prob, [prop.centroid[0], prop.centroid[1], mean_int], data=std_int))
-            out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
-        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
-        # out = [Measurement(o[3], o[:3], data={"IntensitySTD": o[4]}) for o in out]
-
-        #res = 6.45 / 10
-        #out.PositionX *= res
-        #out.PositionY *= res
-        #out.PositionZ *= 10
-
-        return out, mask
-
 class SimpleAreaDetector2(Detector):
     """
     Detector classifying objects by area and number to be used with pengu-track modules.
@@ -575,11 +376,7 @@ class SimpleAreaDetector2(Detector):
             self.UpperLimit = int(1.6*self.ObjectArea)
 
         self.Threshold = threshold
-        self.Sigma = np.sqrt((self.UpperLimit-self.LowerLimit)/(4*np.log(1./0.95))) # self.ObjectArea/2.
-        # self.ReturnRegions = bool(return_regions)
-        # self.GetAll = bool(get_all)
-        # self.ReturnLabeled = bool(return_labeled)
-        # self.OnlyForDetection = bool(only_for_detection)
+        self.Sigma = np.sqrt((self.UpperLimit-self.LowerLimit)/(4*np.log(1./0.95)))
 
         self.ParameterList = ParameterList(Parameter("ObjectArea", object_area, min=0., value_type=float),
                                            Parameter("ObjectNumber", object_number, min=0, value_type=int),
@@ -646,18 +443,12 @@ class SimpleAreaDetector2(Detector):
             std_int = np.std(intensities)
             out.append([prop.centroid[0], prop.centroid[1], mean_int, prob, std_int])
 
-        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        out = pandas.DataFrame(out, columns=["PositionX",
+                                             "PositionY",
+                                             "PositionZ",
+                                             "Log_Probability",
+                                             "IntensitySTD"])
         # out = [Measurement(o[3], o[:3], data={"IntensitySTD":o[4]}) for o in out]
-
-        # #idea for speed up of the following
-        # vectorXY = out["PositionX", "PositionY"].values
-        # distxy_mat = np.linalg.norm(vectorXY[:, None, :]-vectorXY[None, :, :], axis=-1)
-        # vectorZ = out["PositionZ"].values
-        # distz_mat = np.abs(vectorZ[:,None]-vectorZ[None,:])
-        # mask = ~np.any((distxy_mat < self.distxy_boundary) & (distxy_mat != 0) & (distz_mat < self.distz_boundary),
-        #                axis=-1)
-        #
-        # out = out[mask]
 
         Positions2D = out
         Positions2D_cor = []
@@ -688,10 +479,8 @@ class SimpleAreaDetector2(Detector):
                 Positions2D_cor.append([x1, y1, Log_Probability1, z1])
 
         Positions3D = []
-        res = 1#6.45 / 10
-        resZ = 1#10
         for pos in Positions2D_cor:
-            Positions3D.append([pos[0] * res, pos[1] * res, pos[3] * resZ, pos[2]])
+            Positions3D.append([pos[0], pos[1], pos[3], pos[2]])
 
         Positions3D = pandas.DataFrame(Positions3D, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability"])
         # Positions3D = [Measurement(o[3], o[:3]) for o in out]
@@ -707,10 +496,7 @@ class SimpleAreaDetector(Detector):
                  object_number=1,
                  threshold=None,
                  lower_limit=None,
-                 upper_limit=None,
-                 return_regions=False,
-                 get_all=False,
-                 return_labeled=False):
+                 upper_limit=None):
         """
         Detector classifying objects by number and size, taking area-separation into account.
 
@@ -944,36 +730,6 @@ def extended_regionprops(label_image, intensity_image=None, cache=True):
 
       for prop in region:
           print(prop, region[prop])
-
-    See Also
-    --------
-    label
-
-    References
-    ----------
-    .. [1] Wilhelm Burger, Mark Burge. Principles of Digital Image Processing:
-           Core Algorithms. Springer-Verlag, London, 2009.
-    .. [2] B. Jähne. Digital Image Processing. Springer-Verlag,
-           Berlin-Heidelberg, 6. edition, 2005.
-    .. [3] T. H. Reiss. Recognizing Planar Objects Using Invariant Image
-           Features, from Lecture notes in computer science, p. 676. Springer,
-           Berlin, 1993.
-    .. [4] http://en.wikipedia.org/wiki/Image_moment
-
-    Examples
-    --------
-    >>> from skimage import data, util
-    >>> from skimage.measure import label
-    >>> img = util.img_as_ubyte(data.coins()) > 110
-    >>> label_img = label(img, connectivity=img.ndim)
-    >>> props = regionprops(label_img)
-    >>> # centroid of first labeled object
-    >>> props[0].centroid
-    (22.729879860483141, 81.912285234465827)
-    >>> # centroid of first labeled object
-    >>> props[0]['centroid']
-    (22.729879860483141, 81.912285234465827)
-
     """
 
     label_image = np.squeeze(label_image)
@@ -1095,17 +851,8 @@ class ExtendedRegionProps(REGIONPROPS._RegionProperties):
         o_m = self.SurroundingMean
         return np.abs(i_m-o_m).astype(float)/(o_m+i_m)
 
-    # def in_out_contrast2(self):
-    #     i_max = self.InsideMax
-    #     i_min = self.InsideMin
-    #     o_m = self.SurroundingMean
-    #     o_sig = self.SurroundingStd
-    #     # return np.abs(i_m-o_m).astype(float)/256.
-    #     # return max(np.abs(i_max-o_m),np.abs(i_min-o_m)).astype(float)/o_sig
-    #     return max(np.abs(i_max-o_m),np.abs(i_min-o_m)).astype(float)/o_sig
-
     def in_out_contrast2(self):
-        int_im = self._oversize_image(1)#self._intensity_image[self._slice]
+        int_im = self._oversize_image(1)
         i_max = np.amax(int_im).astype(float)
         i_min = np.amin(int_im).astype(float)
         return (i_max-i_min)/(i_max+i_min)
@@ -1139,8 +886,6 @@ class ExtendedRegionProps(REGIONPROPS._RegionProperties):
             return self.in_max()
         else:
             raise AttributeError("'ExtendedRegionProps' object has no attribute '%s'"%item)
-            # self.__getattribute__(item)
-            # super(ExtendedRegionProps, self).__getattribute__(item)
 
 class RegionFilter(object):
     def __init__(self, prop, value, var=None, lower_limit=None, upper_limit=None, dist=None):
@@ -1253,12 +998,10 @@ class RegionPropDetector(Detector):
             param_list.append(filter.var_parameter)
         self.ParameterList = ParameterList(*param_list)
 
-        # print("Got %s layers of filters in detector!"%len(self.Filters))
-
-    @detection_parameters(image=dict(frame=0, mask=False))
-    def detect(self, image):
+    @detection_parameters(image=dict(frame=0, mask=False), mask=dict(drame=0, mask=True))
+    def detect(self, image, mask):
         intensity_image = rgb2gray(image)
-        regions = extended_regionprops(skimage.measure.label(image), intensity_image=intensity_image)
+        regions = extended_regionprops(skimage.measure.label(mask), intensity_image=intensity_image)
         filter_dict = dict([[filter.prop, filter] for filter in self.Filters])
 
         cols = ["PositionX", "PositionY", "Log_Probability"]
@@ -1375,10 +1118,6 @@ class AreaDetector(Detector):
             params, cov = curve_fit(curve, bins[1:], hist, (self.ObjectArea/6., self.ObjectArea), bounds=([1,0.5*self.ObjectArea], [self.ObjectArea, 2*self.ObjectArea]))
             self.Sigma, self.ObjectArea = params
             print("FOUND SIGMA OF %s"%self.Sigma)
-        # bad_ids = [prop.label for prop in skimage.measure.regionprops(labeled) if prop.area < self.ObjectArea]
-        # for id in bad_ids:
-        #     labeled[labeled == id] = 0
-        # regions_list = skimage.measure.regionprops(labeled)
         regions_list = [prop for prop in skimage.measure.regionprops(labeled) if prop.area > self.LowerLimit]
 
         if len(regions_list) <= 0:
@@ -1665,19 +1404,19 @@ class TinaCellDetector(Detector):
         #mask = (maxproj_gausfilt>thres_max)*(minproj_gausfilt>thres_min)
 
         struct1 = skimage.morphology.disk(self.DiskSize)
-        mask_erosion = scipy.ndimage.binary_erosion(mask).astype(mask.dtype)  # rauschbedingte Pixel werden geloescht
-        mask_dilation = scipy.ndimage.binary_dilation(mask_erosion).astype(mask_erosion.dtype)
+        mask_erosion = skimage.morphology.binary_erosion(mask).astype(mask.dtype)  # rauschbedingte Pixel werden geloescht
+        mask_dilation = skimage.morphology.binary_dilation(mask_erosion).astype(mask_erosion.dtype)
 
-        mask_dilation2 = scipy.ndimage.binary_dilation(mask_dilation,struct1).astype(mask_dilation.dtype)
-        # mask_erosion = scipy.ndimage.binary_erosion(mask_dilation2).astype(mask_dilation2.dtype)  # rauschbedingte Pixel werden geloescht
+        mask_dilation2 = skimage.morphology.binary_dilation(mask_dilation,struct1).astype(mask_dilation.dtype)
+        # mask_erosion = skimage.morphology.binary_erosion(mask_dilation2).astype(mask_dilation2.dtype)  # rauschbedingte Pixel werden geloescht
 
         mask_ind = mask_dilation2*maxIndices
 
         labels, n = label(mask_ind)
         #labels, n = label(mask_dilation2)
         regions = regionprops(labels)
-        posx = np.array([ e.centroid[0] for e in regions])
-        posy = np.array([ e.centroid[1] for e in regions])
+        posx = np.array([e.centroid[0] for e in regions])
+        posy = np.array([e.centroid[1] for e in regions])
 
         # threshold depending on cellsize
         area = np.array([e.area for e in regions])
@@ -1743,7 +1482,7 @@ class TresholdSegmentation(Segmentation):
         self.Skale = None
         self.reskale = reskale
 
-    def segmentate(self, image):
+    def segmentate(self, image, *args, **kwargs):
         data = np.array(image, ndmin=2)
         print(data.shape)
 
@@ -1779,7 +1518,7 @@ class TresholdSegmentation(Segmentation):
             raise ValueError('False format of data.')
         return self.SegMap
 
-    def update(self,mask, image):
+    def update(self, mask, image, *args, **kwargs):
         pass
 
 class VarianceSegmentation(Segmentation):
@@ -1795,7 +1534,7 @@ class VarianceSegmentation(Segmentation):
         self.Radius = int(r)
         self.selem = skimage.morphology.disk(self.Radius)
 
-    def segmentate(self, image):
+    def segmentate(self, image, *args, **kwargs):
         data = np.array(image, ndmin=2)
 
         if self.width is None or self.height is None:
@@ -1812,21 +1551,16 @@ class VarianceSegmentation(Segmentation):
         if self.SegMap is None:
             self.SegMap = np.ones((self.width, self.height), dtype=bool)
 
-
-        # data_mean = filters.rank.mean(data, self.selem)
-        # data_std = filters.rank.mean(data**2, self.selem) - data_mean**2
         if len(data.shape) == 3:
-            # self.SegMap = (np.sum(data_std**2, axis=-1)**0.5/data.shape[-1]**0.5 > self.Treshold**2).astype(bool)
             self.SegMap = (self.local_std(data) < self.Treshold).astype(bool)
         elif len(data.shape) == 2:
-            # print(np.amin(data), np.amax(data))
             std = self.local_std(data)
             self.SegMap = (self.local_std(data) < self.Treshold).astype(bool)
         else:
             raise ValueError('False format of data.')
         return self.SegMap
 
-    def update(self,mask, image):
+    def update(self, mask, image, *args, **kwargs):
         pass
 
     def local_std(self, img):
@@ -1888,7 +1622,7 @@ class MoGSegmentation(Segmentation):
 
         self.Mu = np.random.normal(self.Mu, np.sqrt(self.Var)+0.5)
 
-    def segmentate(self, image):
+    def segmentate(self, image, *args, **kwargs):
         """
         Segmentation function. This function binearizes the input image by assuming the pixels,
         which do not fit the background gaussians are foreground.
@@ -1939,7 +1673,7 @@ class MoGSegmentation(Segmentation):
         else:
             raise ValueError('False format of data.')
 
-    def update(self, mask, image):
+    def update(self, mask, image, *args, **kwargs):
 
         data = np.array(image, ndmin=2)
 
@@ -1965,7 +1699,7 @@ class MoGSegmentation(Segmentation):
         self.Mu[outliers] = np.mean(self.Mu, axis=0).ravel()
         self.Var[outliers] = np.mean(self.Var, axis=0).ravel()
 
-    def detect(self, image):
+    def detect(self, image, *args, **kwargs):
         """
         Segmentation function. This function binearizes the input image by assuming the pixels,
         which do not fit the background gaussians are foreground.
@@ -2010,7 +1744,6 @@ class MoGSegmentation(Segmentation):
         dists = np.abs(self.Mu-data)*(1/self.Var**0.5)
         matchs = np.zeros_like(data, dtype=bool)
         matchs[np.unravel_index(np.argmin(dists, axis=0), data.shape)] = True
-        # matchs = (dists == np.amin(dists, axis=0))
         outliers = (dists == np.amin(dists, axis=0))
 
         self.Mu[matchs] = (self.Mu[matchs] * ((self.N-1)/self.N) + data.ravel()*(1./self.N))
@@ -2031,7 +1764,7 @@ class MoGSegmentation2(Segmentation):
     Segmentation method comparing input images to image-background buffer. Able to learn new background information.
     """
 
-    def __init__(self, n=20, r=15, n_min=1, phi=16, init_image=None):
+    def __init__(self, n=20, r=15, init_image=None):
         """
         Segmentation method comparing input images to image-background buffer. Able to learn new background information.
 
@@ -2088,7 +1821,7 @@ class MoGSegmentation2(Segmentation):
         self.width = None
         self.height = None
 
-    def detect(self, image, do_neighbours=True):
+    def detect(self, image, do_neighbours=True, *args, **kwargs):
         """
         Segmentation function. This compares the input image to the background model and returns a segmentation map.
 
@@ -2106,10 +1839,9 @@ class MoGSegmentation2(Segmentation):
         SegMap: array_like, bool
             The segmented image.
         """
-        return super(MoGSegmentation2, self).detect(image)
+        return super(MoGSegmentation2, self).detect(image, *args, **kwargs)
 
-
-    def segmentate(self, image, do_neighbours=True, mask=None):
+    def segmentate(self, image, do_neighbours=True, mask=None, *args, **kwargs):
         super(MoGSegmentation2, self).segmentate(image)
         data = np.array(image, ndmin=2)
         self.Mask = mask
@@ -2167,7 +1899,7 @@ class MoGSegmentation2(Segmentation):
             self.SegMap &= ~self.Mask
         return self.SegMap
 
-    def update(self, mask, image, do_neighbours=True):
+    def update(self, mask, image, do_neighbours=True, *args, **kwargs):
 
         data = np.array(image, ndmin=2)
 
@@ -2259,7 +1991,7 @@ class ViBeSegmentation(Segmentation):
         self.width = None
         self.height = None
 
-    def detect(self, image, do_neighbours=True):
+    def detect(self, image, do_neighbours=True, *args, **kwargs):
         """
         Segmentation function. This compares the input image to the background model and returns a segmentation map.
 
@@ -2277,68 +2009,9 @@ class ViBeSegmentation(Segmentation):
         SegMap: array_like, bool
             The segmented image.
         """
-        return super(ViBeSegmentation, self).detect(image, do_neighbours=True)
+        return super(ViBeSegmentation, self).detect(image, do_neighbours=True, *args, **kwargs)
 
-        # data = np.array(image, ndmin=2)
-        #
-        # if self.width is None or self.height is None:
-        #     self.width, self.height = data.shape[:2]
-        # this_skale = np.mean((np.sum(data.astype(np.uint32)**2, axis=-1)**0.5))
-        #
-        # if this_skale == 0:
-        #     this_skale = self.Skale
-        # if self.Skale is None:
-        #     self.Skale = this_skale
-        #
-        # data = (data.astype(float)*(self.Skale/this_skale)).astype(np.int32)
-        # if self.Samples is None:
-        #     self.Samples = np.tile(data, self.N).reshape((self.N,)+data.shape)
-        # if self.SegMap is None:
-        #     self.SegMap = np.ones((self.width, self.height), dtype=bool)
-        #
-        # if len(data.shape) == 3:
-        #     self.SegMap = (np.sum((np.sum((self.Samples.astype(np.int32)-data)**2, axis=-1)**0.5/np.sqrt(data.shape[-1])
-        #                            > self.R), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
-        # elif len(data.shape) == 2:
-        #     self.SegMap = (np.sum((np.abs(self.Samples.astype(np.int32)-data) > self.R), axis=0, dtype=np.uint8)
-        #                    >= self.N_min).astype(bool)
-        # else:
-        #     raise ValueError('False format of data.')
-        #
-        # image_mask = (np.random.rand(self.width, self.height)*self.Phi < 1) & self.SegMap
-        #
-        # sample_index = np.random.randint(0, self.N)
-        # self.Samples[sample_index][image_mask] = (data[image_mask]).astype(np.uint8)
-        #
-        # n = np.sum(image_mask)
-        # if n > 0 and do_neighbours:
-        #     x, y = np.array(np.meshgrid(np.arange(self.width), np.arange(self.height))).T[image_mask].T
-        #     rand_x, rand_y = np.asarray(map(self._Neighbour_Map.get, np.random.randint(0, 8, size=n))).T
-        #     rand_x += x
-        #     rand_y += y
-        #     notdoubled = ~(np.asarray([x_ in rand_x[:i] for i, x_ in enumerate(rand_x)]) &
-        #                    np.asarray([y_ in rand_y[:i] for i, y_ in enumerate(rand_y)]))
-        #     notborder = np.asarray(((0 <= rand_y) & (rand_y < self.height)) & ((0 <= rand_x) & (rand_x < self.width)))
-        #     mask = notborder & notdoubled
-        #     x = x[mask]
-        #     y = y[mask]
-        #     rand_x = rand_x[mask]
-        #     rand_y = rand_y[mask]
-        #     neighbours = np.zeros_like(image_mask, dtype=bool)
-        #     neighbours[rand_x, rand_y] = True
-        #     mask1 = np.zeros_like(image_mask, dtype=bool)
-        #     mask1[x, y] = True
-        #     try:
-        #         self.Samples[sample_index][neighbours] = (data[mask1]).astype(np.uint8)
-        #     except ValueError:
-        #         print(np.sum(neighbours), np.sum(image_mask), x.shape, y.shape)
-        #         raise
-        # print("Updated %s pixels" % n)
-        # out = self.segmentate(image, do_neighbours=do_neighbours)
-        # self.update(out, image, do_neighbours=do_neighbours)
-        # return out
-
-    def segmentate(self, image, do_neighbours=True, mask=None, return_diff = False):
+    def segmentate(self, image, do_neighbours=True, mask=None, return_diff=False, *args, **kwargs):
         super(ViBeSegmentation, self).segmentate(image)
         data = np.array(image, ndmin=2)
         self.Mask = mask
@@ -2374,19 +2047,11 @@ class ViBeSegmentation(Segmentation):
             self.SegMap = (np.sum((diff
                                    > self.R).astype(np.uint8), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
         elif len(data.shape) == 2:
-            # diff = self.Samples
-            # diff[self.Samples>data] = (self.Samples -data)[self.Samples>data]
-            # diff[self.Samples<=data] = (data-self.Samples)[self.Samples<=data]
-            diff = np.asarray([np.amax([sample, data],axis=0)-np.amin([sample,data], axis=0) for sample in self.Samples])
+            diff = np.asarray([np.amax([sample, data], axis=0)-np.amin([sample,data], axis=0) for sample in self.Samples])
             self.SegMap = (np.sum((diff > self.R).astype(np.uint8), axis=0, dtype=np.uint8)
                            >= self.N_min).astype(bool)
-            # self.SegMap = (np.sum((np.abs(self.Samples.astype(next_dtype(-1*data))- data.astype(next_dtype(-1*data))
-            #                               ) > self.R).astype(np.uint8), axis=0, dtype=np.uint8)
-            #                >= self.N_min).astype(bool)
         else:
             raise ValueError('False format of data.')
-        # self.SegMap[self.Mask] = False
-        # self.SegMap = self.SegMap & ~self.Mask
         if self.Mask is not None and np.all(self.Mask.shape == self.SegMap.shape):
             self.SegMap &= ~self.Mask
 
@@ -2394,7 +2059,7 @@ class ViBeSegmentation(Segmentation):
             return self.SegMap, diff
         return self.SegMap
 
-    def update(self, mask, image, do_neighbours=True):
+    def update(self, mask, image, do_neighbours=True, *args, **kwargs):
 
         data = np.array(image, ndmin=2)
 
@@ -2422,11 +2087,7 @@ class ViBeSegmentation(Segmentation):
 
         self.Samples[sample_index][image_mask] = (data[image_mask]).astype(self.__dt__)
 
-        do_neighbours=False
-        # if do_neighbours:
-        #     n= np.sum(image_mask)
-        # else:
-        #     n=0
+        do_neighbours = False
         n = np.sum(image_mask)
         if n > 0 and do_neighbours:
             x, y = np.array(np.meshgrid(np.arange(self.width), np.arange(self.height))).T[image_mask].T
@@ -2457,9 +2118,8 @@ class DumbViBeSegmentation(ViBeSegmentation):
     def __init__(self, *args, **kwargs):
         super(DumbViBeSegmentation, self).__init__(*args, **kwargs)
         self.SampleIndex = 0
-        # self.DumbStory = None
 
-    def segmentate(self, image, do_neighbours=True, mask=None, return_diff = False):
+    def segmentate(self, image, do_neighbours=True, mask=None, return_diff=False, *args, **kwargs):
         super(ViBeSegmentation, self).segmentate(image)
         data = np.array(image, ndmin=2)
         self.Mask = mask
@@ -2488,28 +2148,14 @@ class DumbViBeSegmentation(ViBeSegmentation):
             self.SegMap = np.ones((self.width, self.height), dtype=bool)
 
         if len(data.shape) == 3:
-            # self.SegMap = (np.sum((np.sum((self.Samples.astype(np.int32)-data)**2, axis=-1)**0.5/np.sqrt(data.shape[-1])
-            #                        > self.R), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
             diff = self.Samples.astype(next_dtype(-1*data))
             diff = np.abs(rgb2gray(diff-data))
-            # self.SegMap = (np.sum((diff
-            #                        > self.R).astype(np.uint8), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
-            self.SegMap = np.all(diff>self.R, axis=0).astype(bool)
+            self.SegMap = np.all(diff > self.R, axis=0).astype(bool)
         elif len(data.shape) == 2:
-            # diff = self.Samples
-            # diff[self.Samples>data] = (self.Samples -data)[self.Samples>data]
-            # diff[self.Samples<=data] = (data-self.Samples)[self.Samples<=data]
             diff = np.asarray([np.amax([sample, data],axis=0)-np.amin([sample,data], axis=0) for sample in self.Samples])
-            # self.SegMap = (np.sum((diff > self.R).astype(np.uint8), axis=0, dtype=np.uint8)
-            #                >= self.N_min).astype(bool)
             self.SegMap = np.all(diff>self.R, axis=0).astype(bool)
-            # self.SegMap = (np.sum((np.abs(self.Samples.astype(next_dtype(-1*data))- data.astype(next_dtype(-1*data))
-            #                               ) > self.R).astype(np.uint8), axis=0, dtype=np.uint8)
-            #                >= self.N_min).astype(bool)
         else:
             raise ValueError('False format of data.')
-        # self.SegMap[self.Mask] = False
-        # self.SegMap = self.SegMap & ~self.Mask
         if self.Mask is not None and np.all(self.Mask.shape == self.SegMap.shape):
             self.SegMap &= ~self.Mask
 
@@ -2517,10 +2163,7 @@ class DumbViBeSegmentation(ViBeSegmentation):
             return self.SegMap, diff
         return self.SegMap
 
-    def update(self, mask, image, do_neighbours=True):
-
-        # if self.DumbStory is None:
-        #     self.DumbStory = np.zeros_like(image, dtype=np.uint8)
+    def update(self, mask, image, do_neighbours=True, *args, **kwargs):
 
         data = np.array(image, ndmin=2)
 
@@ -2542,13 +2185,10 @@ class DumbViBeSegmentation(ViBeSegmentation):
             self.__dt__ = smallest_dtype(data)
 
         data = (data.astype(float)*(self.Skale/this_skale)).astype(self.__dt__)
-        # image_mask = (np.random.rand(self.width, self.height)*self.Phi < 1) & mask
 
         self.SampleIndex = (self.SampleIndex+1)%self.N
 
-        # self.Samples[self.SampleIndex][image_mask] = (data[image_mask]).astype(self.__dt__)
         self.Samples[self.SampleIndex] = data.astype(self.__dt__)
-        # self.DumbStory = (self.DumbStory/(self.Phi+1))+self.SegMap
 
         print("Updated %s pixels" % np.sum(self.SegMap))
 
@@ -2561,7 +2201,7 @@ class AlexSegmentation(ViBeSegmentation):
     def __init__(self, *args, **kwargs):
         super(AlexSegmentation, self).__init__(*args, **kwargs)
 
-    def segmentate(self, image, do_neighbours=True, mask=None):
+    def segmentate(self, image, do_neighbours=True, mask=None, *args, **kwargs):
         super(ViBeSegmentation, self).segmentate(image)
         data = np.array(image, ndmin=2)
         self.Mask = mask
@@ -2592,23 +2232,16 @@ class AlexSegmentation(ViBeSegmentation):
         if len(data.shape) == 3:
             diff = self.Samples.astype(next_dtype(-1*data))
             diff = np.abs(rgb2gray(diff-data))
-            # self.SegMap = (np.mean(diff, axis=0, dtype=np.uint8) >= self.R).astype(bool)
             self.SegMap = (np.sum((diff
                                    > self.R).astype(np.uint8), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
-            # self.SegMap = np.any(diff > self.R, axis=0).astype(bool)
-            # self.Max = (np.tile(np.arange(self.N), data.shape[::-1] + (1, )).T == np.argmax(diff, axis=0))
         elif len(data.shape) == 2:
-            diff = np.asarray([np.amax([sample, data],axis=0)-np.amin([sample,data], axis=0) for sample in self.Samples])
-            # self.SegMap = (np.mean(diff, axis=0, dtype=np.uint8)>= self.R).astype(bool)
+            diff = np.asarray([np.amax([sample, data],axis=0)-np.amin([sample, data], axis=0) for sample in self.Samples])
             self.SegMap = (np.sum((diff > self.R).astype(np.uint8), axis=0, dtype=np.uint8)
                            >= self.N_min).astype(bool)
-            # self.SegMap = np.any(diff > self.R, axis=0).astype(bool)
-            # self.Max = (np.tile(np.arange(self.N), data.shape[::-1] + (1, )).T == np.argmax(diff, axis=0))
         else:
             raise ValueError('False format of data.')
         if self.Mask is not None and np.all(self.Mask.shape == self.SegMap.shape):
             self.SegMap &= ~self.Mask
-        # self.Max *= self.SegMap
         return self.SegMap, diff
 
     def update(self, mask, image, do_neighbours=True):
@@ -2635,9 +2268,6 @@ class AlexSegmentation(ViBeSegmentation):
         image_mask = (np.random.rand(self.width, self.height)*self.Phi < 1) & mask
 
         sample_index = np.random.randint(0, self.N)
-        #
-        # for i in range(self.N):
-        #     self.Samples[i][self.Max[i]] += (data[self.Max[i]]).astype(self.__dt__)
 
         self.Samples[sample_index][image_mask] = (data[image_mask]).astype(self.__dt__)
 
@@ -2674,7 +2304,7 @@ class BlobSegmentation(Segmentation):
         self.width = None
         self.height = None
 
-    def detect(self, image, do_neighbours=True):
+    def detect(self, image, do_neighbours=True, *args, **kwargs):
         """
         Segmentation function. This compares the input image to the background model and returns a segmentation map.
 
@@ -2718,481 +2348,8 @@ class BlobSegmentation(Segmentation):
                       skimage.filters.gaussian(image.astype(np.uint8), self.Min)))
         self.SegMap = (self.SegMap/256).astype(np.uint8)
         self.SegMap = (self.SegMap) >0 & (self.SegMap <6)
-        # else:
-        #     raise ValueError('False format of data.')
 
         return self.SegMap
-
-
-class SiAdViBeSegmentation(Segmentation):
-    """
-    Segmentation method comparing input images to image-background buffer. Able to learn new background information.
-    This Version uses also Size Adjustion, an adapted ortho-projection,
-     conserving the original size of an object in a plane.
-    """
-    function = None
-
-    def __init__(self, horizonmarkers, f, sensor_size, pengu_markers, h_p, max_dist, init_image,  n=20, r=15, n_min=1, phi=16, camera_h = None, log=True, subsampling=1):
-        """
-        Segmentation method comparing input images to image-background buffer. Able to learn new background information.
-
-        Parameters
-        ----------
-        horizonmarkers:
-            List of at least 3 points at horizon in the image.
-        f: float
-            Focal length of the objective.
-        sensor_size: array-like
-            Sensor-size of the used camera.
-        h: float
-            Height of the camera over the shown plane.
-        h_p: float
-            Height of penguin / object in on the plane.
-        max_dist: float, optional
-            Maximum distance (distance from camera into direction of horizon) to be shown.
-
-        n: int, optional
-            Number of buffer frames.
-        r: int, optional
-            Distance-Treshold in standard color-room. If a input pixel deviates more than r from a background-buffer
-            pixel it is counted as a deviation.
-        n_min: int, optional
-            Number of minimum deviations to count a pixel as foreground.
-        phi: int, optional
-            Inverse of update rate. Every phi-est foreground pixel will be updated to the background buffer.
-        init_image: array_like, optional
-            Image for initialisation of background.
-
-        """
-        super(SiAdViBeSegmentation, self).__init__()
-        self.N = int(n)
-        self.R = np.uint16(r)
-        self.N_min = int(n_min)
-        self.Phi = int(phi)
-        self.Skale = None
-        self.Samples = None
-        self.Horizonmarkers = horizonmarkers
-        self.Pengu_Markers = pengu_markers
-        self.F = f
-        self.Sensor_Size = sensor_size
-        self.h_p = h_p
-        self.w_p = 0.21
-        self.Max_Dist = max_dist
-
-
-        data = np.array(init_image, ndmin=2)
-
-        self.SegMap = None
-        self._Neighbour_Map = {0: [-1, -1],
-                               1: [-1, 0],
-                               2: [-1, 1],
-                               3: [0, -1],
-                               4: [0, 1],
-                               5: [1, -1],
-                               6: [1, 0],
-                               7: [1, 1]}
-        self.width = data.shape[1]
-        self.height = data.shape[0]
-
-        self.SubSampling = int(subsampling)
-
-        x, y = self.Horizonmarkers
-        m, t = np.polyfit(x, y, 1)  # linear fit for camera role
-        angle_m = np.arctan(m)
-        x_0 = self.width / 2
-        y_0 = x_0 * m + t
-
-        x_p1, y_p1, x_p2, y_p2 = self.Pengu_Markers
-        x_p1 = (x_p1 - x_0) * np.cos(angle_m) + x_0 - (y_p1 - y_0) * np.sin(angle_m)
-        y_p1 = (x_p1 - x_0) * np.sin(angle_m) + (y_p1 - y_0) * np.cos(angle_m) + y_0
-
-        x_p2 = (x_p2 - x_0) * np.cos(angle_m) + x_0 - (y_p2 - y_0) * np.sin(angle_m)
-        y_p2 = (x_p2 - x_0) * np.sin(angle_m) + (y_p2 - y_0) * np.cos(angle_m) + y_0
-
-        # calc phi (tilt of the camera)
-        self.Phi = self.calc_phi([x, y], self.Sensor_Size, [self.height, self.width], f)
-        # pp = 20 * np.pi / 180.
-
-        # get the lower ones of the markers
-        args = np.argmax([y_p1, y_p2], axis=0)
-        y11 = np.asarray([[y_p1[i], y_p2[i]][a] for i, a in enumerate(args)])
-        x11 = np.asarray([[x_p1[i], x_p2[i]][a] for i, a in enumerate(args)])
-
-        # calc height above plane
-        tt = self.calc_theta([x11, y11], self.Sensor_Size, [self.height, self.width], f)
-        gg = self.calc_gamma([x_p1, y_p1], [x_p2, y_p2], self.Sensor_Size, [self.height, self.width], f)
-        hh = self.calc_height(tt, gg, self.Phi, self.h_p)
-
-        if camera_h is None:
-            self.camera_h = np.mean(hh)
-            print("Height", np.mean(hh), np.std(hh) / len(hh) ** 0.5)
-        else:
-            self.camera_h = float(camera_h)
-
-        # Initialize grid
-        xx, yy = np.meshgrid(np.arange(self.width*self.SubSampling)/float(self.SubSampling), np.arange(self.height*self.SubSampling)/float(self.SubSampling))
-        # Grid has same aspect ratio as picture
-
-        # counter-angle to phi is used in further calculation
-        phi_ = np.pi/2 - self.Phi
-
-
-        # calculate Maximal analysed distance
-        self.c = 1. / (self.camera_h / self.h_p - 1.)
-        self.y_min = np.asarray([0, self.camera_h*np.tan(phi_-np.arctan(self.Sensor_Size[1]/2./f)), -self.camera_h])
-        # y_min = self.camera_h*np.tan(phi_-np.arctan(self.Sensor_Size[1]/2./f))
-        # print("y_min at ",y_min)
-        # CC = self.h_p/np.log(1+self.c)
-        # self.Max_Dist = - CC * lambertw(-self.y_min[1]/CC)
-        # self.Max_Dist = [y_min*np.exp(-1*lambertw(-y_min*(2j*np.pi*n*np.log(1+self.c)/self.h_p), k=-1)) for n in range(-10,10)]
-        # print(np.nanargmin([m.imag for m in self.Max_Dist]))
-        # self.Max_Dist = self.Max_Dist[np.nanargmax([abs(m) for m in self.Max_Dist])]
-        # max_dist = self.Max_Dist
-        # print(self.Max_Dist)
-        # self.Max_Dist = 1250#abs(self.Max_Dist)
-        # max_dist = 1250#abs(max_dist)
-        # raise NotImplementedError
-
-        # calculate Penguin-Projection Size
-        self.Penguin_Size = np.log(1 + self.c) * self.height / np.log(self.Max_Dist / self.y_min[1])
-
-        # warp the grid
-        self.Res = max_dist/self.height
-        yy = yy * (max_dist/self.height)
-        xx = (xx-self.width/2.) * (max_dist/self.height)
-        # x_s is the crossing-Point of camera mid-beam and grid plane
-        self.x_s = np.asarray([0, np.tan(phi_)*self.camera_h, -self.camera_h])
-        self.x_s_norm = np.linalg.norm(self.x_s)
-        # vector of maximal distance to camera (in y)
-        self.y_max = np.asarray([0, max_dist, -self.camera_h])
-        self.y_max_norm = np.linalg.norm(self.y_max)
-        self.alpha_y = np.arccos(np.dot(self.y_max.T, self.x_s).T/(self.y_max_norm*self.x_s_norm)) * -1
-        if log:
-            warped_xx, warped_yy = self.warp_log([xx, yy])
-        else:
-            warped_xx, warped_yy = self.warp_orth([xx, yy])
-        # reshape grid points for image interpolation
-        grid = np.asarray([warped_xx.T, warped_yy.T]).T
-        self.grid = grid.T.reshape((2, self.width * self.height * self.SubSampling**2))
-
-
-        # Initialize with warped image
-        # data = self.horizontal_equalisation(data)
-
-        if len(data.shape) == 3:
-            self.Samples = np.tile(data, self.N).reshape(data.shape+(self.N,)).transpose((3, 0, 1, 2))
-        elif len(data.shape) == 2:
-            self.Samples = np.tile(data, (self.N, 1, 1,))
-
-        else:
-            raise ValueError('False format of data.')
-        self.Skale = np.mean((np.sum(np.mean(self.Samples, axis=0).astype(np.uint32)**2, axis=-1)**0.5))
-
-    def detect(self, image, do_neighbours=True):
-        """
-        Segmentation function. This compares the input image to the background model and returns a segmentation map.
-
-        Parameters
-        ----------
-        image: array_like
-            Input Image.
-        do_neighbours: bool, optional
-            If True neighbouring pixels will be updated accordingly to their foreground vicinity, else this
-            time-intensiv calculation will not be done.
-
-
-        Returns
-        ----------
-        SegMap: array_like, bool
-            The segmented image.
-        """
-
-        # super(SiAdViBeSegmentation, self).detect(image)
-
-        h_eq_SegMap = self.segmentate(image, do_neighbours=do_neighbours)
-        self.update(self.SegMap, image, do_neighbours=do_neighbours)
-        return h_eq_SegMap
-
-    def segmentate(self, image, do_neighbours=True):
-        super(SiAdViBeSegmentation, self).segmentate(image)
-
-        data = image
-
-        if self.width is None or self.height is None:
-            self.width, self.height = data.shape[:2]
-
-        this_skale = np.mean((np.sum(data.astype(np.uint16) ** 2, axis=-1) ** 0.5))
-
-
-        if this_skale == 0:
-            this_skale = self.Skale
-        if self.Skale is None:
-            self.Skale = this_skale
-
-        data = (data.astype(float) * (self.Skale / this_skale)).astype(np.int32)
-
-        # data = self.horizontal_equalisation(data)
-
-        if self.Samples is None:
-            self.Samples = np.tile(data, self.N).reshape((self.N,)+data.shape)
-        if self.SegMap is None:
-            self.SegMap = np.ones((self.height, self.width), dtype=bool)
-
-        if len(data.shape) == 3:
-            self.SegMap = (np.sum((np.sum((self.Samples.astype(np.int32)-data)**2, axis=-1)**0.5/np.sqrt(data.shape[-1])
-                                   > self.R), axis=0, dtype=np.uint8) >= self.N_min).astype(bool)
-        elif len(data.shape) == 2:
-            # if self.function is None:
-            #     samples = T.tensor3("samples", dtype="int16")
-            #     t_data = T.matrix("data", dtype="int16")
-            #     R = T.scalar(dtype="int16")
-            #     N_min = T.scalar(dtype="int16")
-            #     result = (T.sum((abs(samples - t_data) > R), axis=0) >= N_min).astype("bool")
-            #     self.function = theano.compile.function([samples, t_data, R, N_min], result, allow_input_downcast=True)
-            # SegMap = self.function(self.Samples, data, self.R, self.N_min)
-            self.SegMap = (np.sum((np.abs(self.Samples.astype(np.int32)-data) > self.R), axis=0, dtype=np.uint8)
-                           >= self.N_min).astype(bool)
-
-        else:
-            raise ValueError('False format of data.')
-        return self.horizontal_equalisation(self.SegMap).astype(bool)
-
-    def update(self,mask, image, do_neighbours=True):
-        super(SiAdViBeSegmentation, self).update(mask, image)
-
-        data = image
-        image_mask = (np.random.rand(self.height, self.width)*self.Phi < 1) & self.SegMap
-        sample_index = np.random.randint(0, self.N)
-        self.Samples[sample_index][image_mask] = (data[image_mask]).astype(np.uint8)
-
-        if do_neighbours:
-            n = np.sum(image_mask)
-        else:
-            n=0
-        if n > 0 and do_neighbours:
-            x, y = np.array(np.meshgrid(np.arange(self.height), np.arange(self.width))).T[image_mask].T
-            rand_x, rand_y = np.asarray(map(self._Neighbour_Map.get, np.random.randint(0, 8, size=n))).T
-            rand_x += x
-            rand_y += y
-            notdoubled = ~(np.asarray([x_ in rand_x[:i] for i, x_ in enumerate(rand_x)]) &
-                           np.asarray([y_ in rand_y[:i] for i, y_ in enumerate(rand_y)]))
-            notborder = np.asarray(((0 <= rand_y) & (rand_y < self.width)) & ((0 <= rand_x) & (rand_x < self.height)))
-            mask = notborder & notdoubled
-            x = x[mask]
-            y = y[mask]
-            rand_x = rand_x[mask]
-            rand_y = rand_y[mask]
-            neighbours = np.zeros_like(image_mask, dtype=bool)
-            neighbours[rand_x, rand_y] = True
-            mask1 = np.zeros_like(image_mask, dtype=bool)
-            mask1[x, y] = True
-            try:
-                self.Samples[sample_index][neighbours] = (data[mask1]).astype(np.uint8)
-            except ValueError:
-                print(np.sum(neighbours), np.sum(image_mask), x.shape, y.shape)
-                raise
-        print("Updated %s pixels" % np.sum(image_mask))
-        # return self.horizontal_equalisation(self.SegMap).astype(bool)
-
-    def stepA0(self, data):
-        return (self.Samples.astype(np.int32)-data)**2
-    def stepA(self, data):
-        return np.sum(data, axis=-1)**0.5/np.sqrt(data.shape[-1])
-    def stepB(self, data):
-        return np.sum((data > self.R), axis=0, dtype=np.uint8)
-    def stepC(self, data):
-        return (data>= self.N_min).astype(bool)
-
-    def horizontal_equalisation(self, image):
-        """
-        Parameters:
-        ----------
-        image: array-like
-            Image.
-        horizonmarkers:
-            List of at least 3 points at horizon in the image.
-        f: float
-            Focal length of the objective.
-        sensor_size: array-like
-            Sensor-size of the used camera.
-        h: float, optional
-        Height of the camera over the shown plane.
-        markers: array-like, optional
-            List of markers in the image, which should also be transformed
-        max_dist: float, optional
-            Maximum distance (distance from camera into direction of horizon) to be shown.
-
-        Returns:
-        ----------
-        image: array-like
-            Equalised image.
-        new_markers: array-like
-            Equalised markers.
-        """
-
-        if len(image.shape) == 3:
-            # split the image in colors and perform interpolation
-            return np.asarray([map_coordinates(i, self.grid[:, ::-1], order=0).reshape((self.width*self.SubSampling, self.height*self.SubSampling))[::-1] for i in image.T]).T
-        elif len(image.shape) == 2:
-            return np.asarray(img_as_uint(map_coordinates(image.T, self.grid[:, ::-1], order=0)).reshape((self.width*self.SubSampling, self.height*self.SubSampling))[::-1]).T
-        else:
-            raise ValueError("The given image is whether RGB nor greyscale!")
-
-    # Define Warp Function
-    def warp_log(self, xy):
-        xx_, yy_ = xy
-
-        #xx_ /= (self.Max_Dist/self.height)/(self.h_p/self.Penguin_Size)
-        # vectors of every grid point in the plane (-h)
-        yy_ /= self.Max_Dist  # linear 0 to 1
-        yy_ *= np.log(self.Max_Dist / self.y_min[1])  # linear 0 to log(max/min)
-        yy_ = self.y_min[1] * np.exp(yy_)  # exponential from y_min to y_max
-
-        # initialize 3d positions
-        coord = np.asarray([xx_, yy_, -self.camera_h * np.ones_like(xx_)])
-        coord_norm = np.linalg.norm(coord, axis=0)
-        # calculate the angle between camera mid-beam-vector and grid-point-vector
-        alpha = np.arccos(np.dot(coord.T, self.x_s).T / (coord_norm * self.x_s_norm))  # * np.sign(np.tan(phi_)*h-yy_)
-        # calculate the angle between y_max-vector and grid-point-vector in the plane (projected to the plane)
-        theta = np.sum((np.cross(coord.T, self.x_s) * np.cross(self.y_max, self.x_s)).T
-                                 , axis=0) / (coord_norm * self.x_s_norm * np.sin(alpha) *
-                                              self.y_max_norm * self.x_s_norm * np.sin(self.alpha_y))
-        try:
-            theta[theta>1.] = 1.
-            theta[theta<-1.] = -1.
-        except TypeError:
-            if theta > 1.:
-                theta = 1.
-            elif theta < -1:
-                theta = -1.
-            else:
-                pass
-        theta = np.arccos(theta) * np.sign(xx_)
-        # from the angles it is possible to calculate the position of the focused beam on the camera-sensor
-        r = np.tan(alpha) * self.F
-        warp_xx = np.sin(theta) * r * self.width / self.Sensor_Size[0] + self.width / 2.
-        warp_yy = np.cos(theta) * r * self.height / self.Sensor_Size[1] + self.height / 2.
-        return warp_xx, warp_yy
-
-    # Define Warp Function
-    def warp_orth(self, xy):
-        # if True:
-        #     return xy
-        xx_, yy_ = xy
-        # vectors of every grid point in the plane (-h)
-        coord = np.asarray([xx_, yy_, -self.camera_h*np.ones_like(xx_)])
-        coord_norm = np.linalg.norm(coord, axis=0)
-        # calculate the angle between camera mid-beam-vector and grid-point-vector
-        alpha = np.arccos(np.dot(coord.T, self.x_s).T/(coord_norm*self.x_s_norm))
-        # calculate the angle between y_max-vector and grid-point-vector in the plane (projected to the plane)
-        theta = np.sum((np.cross(coord.T, self.x_s) * np.cross(self.y_max, self.x_s)).T
-                                 , axis=0) / (coord_norm * self.x_s_norm * np.sin(alpha) *
-                                              self.y_max_norm * self.x_s_norm * np.sin(self.alpha_y))
-        try:
-            theta[theta>1.] = 1.
-            theta[theta<-1.] = -1.
-        except TypeError:
-            if theta > 1.:
-                theta = 1.
-            elif theta < -1:
-                theta = -1.
-            else:
-                pass
-        theta = np.arccos(theta) * np.sign(xx_)
-        # print(np.nanmin(theta), np.nanmax(theta))
-        # from the angles it is possible to calculate the position of the focused beam on the camera-sensor
-        r = np.tan(alpha)*self.F
-        warp_xx = np.sin(theta)*r*self.width/self.Sensor_Size[0] + self.width/2.
-        warp_yy = np.cos(theta)*r*self.height/self.Sensor_Size[1] + self.height/2.
-        return warp_xx, warp_yy
-
-    def back_warp_orth(self, xy):
-        # calculate beam angles in camera
-        warp_xx, warp_yy = xy
-        r = np.linalg.norm([warp_xx-self.width/2., warp_yy-self.height/2.], axis=1)
-        theta = np.arctan2(warp_xx-self.width/2., warp_yy-self.height/2.)
-        alpha = np.arctan(r/self.F)
-
-
-
-        warp_xx = (warp_xx-self.width/2.)*self.Sensor_Size[0]/self.width
-        warp_yy = (warp_yy-self.height/2.)*self.Sensor_Size[1]/self.height
-        # Calculate angles in Camera-Coordinates
-        theta = np.arctan2(warp_yy,
-                           warp_xx)
-        # theta = np.pi/2.-theta
-        r = (warp_xx**2+warp_yy**2)**0.5
-
-        # theta = np.arccos((-1) * (warp_xx-self.width/2.)*self.Sensor_Size[0]/self.width/r)
-
-        # print(np.amin(r), np.amax(r))
-        alpha = np.arctan(r/self.F)
-        lam = -self.camera_h/(np.sin(theta)*np.sin(np.pi/2.-self.Phi)*np.tan(alpha)-np.cos(np.pi/2.-self.Phi))
-        # print(np.amin(lam), np.amax(lam))
-        # xx_ = -lam * (np.tan(alpha)*np.sin(np.pi/2.-self.Phi)*np.cos(theta)-np.sin(np.pi/2.-self.Phi))
-        # yy_ = lam*np.tan(alpha)*np.sin(theta)
-        xx_ = - np.tan(alpha) * lam * np.cos(theta)
-        yy_ = lam * np.cos(np.pi/2. - self.Phi) * np.tan(alpha) * np.sin(theta) - lam * np.sin(np.pi/2 - self.Phi)
-        return xx_, -yy_
-
-    def calc_phi(self, horizonmarkers, sensor_size, image_size, f):
-        x_h, y_h = np.asarray(horizonmarkers)
-
-        y, x = image_size
-
-        # linear fit and rotation to compensate incorrect camera alignment
-        m, t = np.polyfit(x_h, y_h, 1)  # linear fit
-
-        x_s, y_s = sensor_size
-
-        # correction of the Y-axis section (after image rotation)
-        t += m * x / 2
-
-        print("Role at %s"%(np.arctan(m)*180/np.pi))
-
-        # Calculate Camera tilt
-        return np.arctan((t / y - 1/2.) * (y_s / f))*-1
-
-    def calc_theta(self, theta_markers, sensor_size, image_size, f):
-        x_t1, y_t1 = theta_markers
-        y, x = image_size
-        x_s, y_s = sensor_size
-        # y_t1 = (y_t1-y/2.)*y_s/y
-        # r =  (((x_t1-x/2.)*(x_s/x))**2+((y_t1-y/2.)*(y_s/y))**2)**0.5
-        return np.arctan2((y_t1-y/2.)*(y_s/y), f)
-
-    def calc_gamma(self, markers1, markers2, sensor_size, image_size, f):
-        x1, y1 = markers1
-        x2, y2 = markers2
-        y, x = image_size
-        x_s, y_s = sensor_size
-        x1 = (x1-x/2.)*(x_s/x)
-        y1 = (y1-y/2.)*(y_s/y)
-        x2 = (x2-x/2.)*(x_s/x)
-        y2 = (y2-y/2.)*(y_s/y)
-        return np.arccos((x1*x2+y1*y2+f**2)/((x1**2+y1**2+f**2)*(x2**2+y2**2+f**2))**0.5)
-
-    def calc_height(self, the, gam, p, h_t):
-        alpha = np.pi/2.-p-the
-        return h_t*np.abs(np.cos(alpha)*np.sin(np.pi-alpha-gam)/np.sin(gam))
-
-    def log_to_orth(self, xy):
-        # self.height / self.Sensor_Size[1] + self.height / 2.
-        xx_, yy_ = xy
-        xx_ -= self.width/2.
-        #xx_ /= (self.Max_Dist/self.height)/(self.h_p/self.Penguin_Size)
-        xx_ += self.width/2.
-        yy_ = self.height - self.y_min[1]*np.exp((self.height-yy_)/self.height*np.log(self.Max_Dist/self.y_min[1]))/self.Res
-        return xx_, yy_
-
-    def orth_to_log(self, xy):
-        # self.height / self.Sensor_Size[1] + self.height / 2.
-        xx_, yy_ = xy
-        xx_ -= self.width/2.
-        #xx_ /= (self.h_p/self.Penguin_Size)/(self.Max_Dist/self.height)
-        xx_ += self.width/2.
-        yy_ = self.height - np.log((self.height - yy_)*(self.Res/self.y_min[1]))*(self.height/np.log(self.Max_Dist/self.y_min[1]))
-        return xx_, yy_
 
 
 class FlowDetector(Segmentation):
@@ -3235,16 +2392,13 @@ class FlowDetector(Segmentation):
         return out
 
 
-
 class EmperorDetector(FlowDetector):
     def __init__(self, initial_image, **kwargs):
         super(EmperorDetector, self).__init__(**kwargs)
-        # self.FlowDetector = self#FlowDetector(**kwargs)
         self.Area = kwargs.get("area", 10)
         self.LowerLimitArea = kwargs.get("lower_limit_area", 1)
         self.UpperLimitArea = kwargs.get("upper_limit_area", 50)
         rf1 = RegionFilter("area", self.Area, lower_limit=self.LowerLimitArea, upper_limit=self.UpperLimitArea)
-        # # rf2 = RegionFilter("in_out_contrast2", 75)#, lower_limit= 30, upper_limit=300)
 
         self.LuminanceThreshold = kwargs.get("luminance_threshold", 1.3)
         self.RegionDetector = RegionPropDetector([rf1])
@@ -3314,10 +2468,8 @@ def rgb2gray(rgb):
         raise ValueError("Array is not in image shape (N,M,3)!")
 
 def gray2rgb(gray):
-    # rgb = np.asarray(rgb)
     dt = gray.dtype
     return np.tensordot(gray, [1,  1,  1], axes=0).astype(dt)
-    # return np.tensordot(gray, [ 0.351,  0.179,  0.920], axes=0).astype(dt)
 
 def next_dtype(array):
     dt = array.dtype
@@ -3398,3 +2550,171 @@ def smallest_dtype(array):
         return np.float
     else:
         raise ValueError("Input is not a numpy array")
+
+####### LEGACY ######
+
+class NKCellDetector(Detector):
+    def __init__(self):
+        super(NKCellDetector, self).__init__()
+
+    def enhance(self, image, percentile):
+        image -= np.percentile(image, percentile)
+        image /= np.percentile(image, 100. - percentile)
+        image[image < 0.] = 0.
+        image[image > 1.] = 1.
+        return image
+
+
+    @detection_parameters(minProj=dict(frame=0, layer="MinProj", mask=False),
+                          minIndices=dict(frame=0, layer="MinIndices", mask=False),
+                          minProjPrvs=dict(frame=-1, layer="MinProj", mask=False),
+                          maxIndices=dict(frame=0, layer="MaxIndices", mask=False))
+    def detect(self, minProj, minIndices, minProjPrvs, maxIndices):
+        data = gaussian_filter(minProj.astype(float)-minProjPrvs.astype(float), 5)
+        data[data > 0] = 0.
+        data = self.enhance(data, 1.)
+        data = 1. - data
+        mask = data > 0.5
+        labeled, num_objects = label(mask)
+
+        regions = regionprops(labeled, intensity_image=data)
+        regions = [r for r in regions if r.area > 100]
+
+        out = []
+        mu = np.mean([prop.area for prop in regions])
+        for prop in regions:
+            sigma = np.sqrt(prop.area)  # assuming Poisson distributed areas
+            prob = np.log(len(regions) / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((prop.area - mu) / sigma) ** 2
+            intensities = prop.intensity_image[prop.image]
+            mean_int = np.mean(intensities)
+            std_int = np.std(intensities)
+            # out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
+            out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        # out = [Measurement(o[3], o[:3], data={"IntensitySTD": o[4]}) for o in out]
+
+        return out, mask
+
+class NKCellDetector2(Detector):
+    def __init__(self):
+        super(NKCellDetector2, self).__init__()
+
+    def enhance(self, image, percentile):
+        image = image.astype(np.float)
+        image -= np.percentile(image, percentile)
+        image /= np.percentile(image, 100. - percentile)
+        image[image < 0.] = 0.
+        image[image > 1.] = 1.
+        return image
+
+
+    @detection_parameters(minProj=dict(frame=0, layer="MinimumProjection", mask=False),
+                          minProjPrvs=dict(frame=-1, layer="MinimumProjection", mask=False))
+    def detect(self, minProj, minProjPrvs):
+
+        minProjPrvs = self.enhance(minProjPrvs, 0.1)
+        minProj = self.enhance(minProj, 0.1)
+
+        data = gaussian_filter(minProj-minProjPrvs, 5)
+        data[data > 0] = 0.
+        data = -1. * data
+        mask = data > 0.1
+        labeled, num_objects = label(mask)
+
+        regions = regionprops(labeled, intensity_image=data)
+        regions = [r for r in regions if r.area > 100]
+
+        out = []
+        mu = np.mean([prop.area for prop in regions])
+        for prop in regions:
+            sigma = np.sqrt(prop.area)  # assuming Poisson distributed areas
+            prob = np.log(len(regions) / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((prop.area - mu) / sigma) ** 2
+            intensities = prop.intensity_image[prop.image]
+            mean_int = np.mean(intensities)
+            std_int = np.std(intensities)
+            # out.append(Measurement(prob, [prop.weighted_centroid[0], prop.weighted_centroid[1], mean_int], data=std_int))
+            out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        # out = [Measurement(o[3], o[:3], data={"IntensitySTD":o[4]}) for o in out]
+
+        return out, mask
+
+class TCellDetector(Detector):
+    """
+    Detector classifying objects by area and number to be used with pengu-track modules.
+    """
+    def __init__(self):
+        super(TCellDetector, self).__init__()
+
+    def enhance(self, image, percentile):
+        image = image.astype(np.float)
+
+        bgd = threshold_niblack(image, 51)
+        image = image / bgd
+
+        image -= np.percentile(image, percentile)
+        image /= np.percentile(image, 100. - percentile)
+        image[image < 0.] = 0.
+        image[image > 1.] = 1.
+        return image
+
+
+    @detection_parameters(minProj=dict(frame=0, layer="MinimumProjection", mask=False),
+                          minIndices=dict(frame=0, layer="MinimumIndices", mask=False))
+    def detect(self, minProj, minIndices):
+        minProj2 = self.enhance(minProj, 0.1)
+        thres = filters.threshold_otsu(minProj2)
+        mask = minProj2 < thres
+
+        mask = skimage.morphology.binary_erosion(mask)
+        # mask = remove_small_objects(mask, 24)
+
+        maskedMinIndices = minIndices.copy() + 1
+        maskedMinIndices = maskedMinIndices.astype('uint8')
+        # maskedMinIndices = maskedMinIndices.astype(np.uint8)
+        # maskedMinIndices = minIndices.data[:] + 1
+        # maskedMinIndices = np.round(gaussian_filter(maskedMinIndices, 1)).astype(np.int)
+        # maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
+        # maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
+        maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
+        # maskedMinIndices = np.round(cv2.bilateralFilter(maskedMinIndices, -1, 3, 5)).astype(np.int)
+        maskedMinIndices[~mask] = 0
+        j_max = np.amax(maskedMinIndices)
+        stack = np.zeros((j_max, minProj.shape[0], minProj.shape[1]), dtype=np.bool)
+        for j in range(j_max):
+            stack[j, maskedMinIndices == j] = True
+
+        labels3D, n = label(stack, structure=np.ones((3, 3, 3)))
+        labels2D = np.sum(labels3D, axis=0) - 1
+        # labels2D = remove_small_objects(labels2D, 24)
+
+        regions = regionprops(labels2D, maskedMinIndices)
+        areas = np.array([r.area for r in regions])
+        area_thres = filters.threshold_otsu(areas) * 0.7
+        if area_thres > 60:
+            area_thres = 38.0
+        if area_thres < 10:
+            area_thres = 10.0
+        regions = [r for r in regions if r.area >= area_thres]
+        #centroids = np.array([r.centroid for r in regions]).T
+
+        out = []
+        mu = np.mean([prop.area for prop in regions])
+        for prop in regions:
+            sigma = np.sqrt(prop.area)  # assuming Poisson distributed areas
+            prob = np.log(len(regions) / (2 * np.pi * sigma ** 2) ** 0.5) - 0.5 * ((
+                                                            prop.area - mu) / sigma) ** 2
+            intensities = prop.intensity_image[prop.image]
+            mean_int = np.mean(intensities)
+            std_int = np.std(intensities)
+            # out.append(Measurement(prob, [prop.centroid[0], prop.centroid[1], mean_int], data=std_int))
+            out.append([prop.weighted_centroid[1], prop.weighted_centroid[0], mean_int, prob, std_int])
+        out = pandas.DataFrame(out, columns=["PositionX", "PositionY", "PositionZ", "Log_Probability", "IntensitySTD"])
+        # out = [Measurement(o[3], o[:3], data={"IntensitySTD": o[4]}) for o in out]
+
+        #res = 6.45 / 10
+        #out.PositionX *= res
+        #out.PositionY *= res
+        #out.PositionZ *= 10
+
+        return out, mask
