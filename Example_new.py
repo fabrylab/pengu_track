@@ -107,6 +107,8 @@ if __name__ == '__main__':
             db_tracks = [t.id for t in db.getTracks(type=track_marker_type)]
 
             for k in Tracker.ActiveFilters.keys():
+                if i not in Tracker.ActiveFilters[k].X.keys():
+                    continue
                 state = Tracker.ActiveFilters[k].X[i]
                 prob = Tracker.Filters[k].log_prob(keys=[i], update=Tracker.Filters[k].ProbUpdate)
 
