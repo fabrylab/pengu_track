@@ -1515,7 +1515,7 @@ class Segmentation(object):
 class ThresholdSegmentation(Segmentation):
 
     def __init__(self, treshold, reskale=True):
-        super(TresholdSegmentation, self).__init__()
+        super(ThresholdSegmentation, self).__init__()
 
         self.width = None
         self.height = None

@@ -35,10 +35,10 @@ if __name__ == '__main__':
     model.add_variable("area")
 
     # Segmentation Modul (splits image into fore and background
-    from PenguTrack.Detectors import TresholdSegmentation
+    from PenguTrack.Detectors import ThresholdSegmentation
 
     # Init Segmentation Module
-    TS = TresholdSegmentation(intensity_threshold)
+    TS = ThresholdSegmentation(intensity_threshold)
 
     # Detector (finds and filters objects in segmented image)
     from PenguTrack.Detectors import RegionFilter, RegionPropDetector
@@ -94,7 +94,7 @@ if __name__ == '__main__':
 
         # Detection step
         SegMap = TS.detect(image.data)
-        Positions, Mask = AD.detect(SegMap)
+        Positions, Mask = AD.detect(image.data, SegMap)
         print("Found %s Objects!" % len(Positions))
 
         # Write Segmentation Mask to Database

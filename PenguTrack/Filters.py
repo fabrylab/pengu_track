@@ -1459,11 +1459,12 @@ class MultiFilter(Filter):
 
         if not isinstance(z, np.ndarray) and isinstance(z, pandas.DataFrame):
             measurements = pandasDF_to_measurement(z)
+            self.Measurements.update({i: measurements})
 
         elif not isinstance(z, np.ndarray) and isinstance(z[0], Measurement):
 
             measurements = list(z)
-            self.Measurements.update({i:z})
+            self.Measurements.update({i:measurements})
 
             # meas_logp = np.array([m.Log_Probability for m in z])
         # if isinstance(z, tuple) and len(z)==2:
@@ -1476,7 +1477,7 @@ class MultiFilter(Filter):
             #     z = z[:, :, None]
             # meas_logp = np.ones(z.shape[0])
             # measurements = [Measurement(1, pos) for pos in z]
-            # self.Measurements.update({i: measurements})
+            self.Measurements.update({i: measurements})
         else:
             raise ValueError("Input Positions are not of type array or pengutrack measurement!")
 
