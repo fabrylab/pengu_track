@@ -33,6 +33,7 @@ from .Assignment import *
 import scipy.integrate as integrate
 #  import scipy.optimize as opt
 from .Detectors import array_to_measurement, array_to_pandasDF, pandasDF_to_array, pandasDF_to_measurement, measurements_to_array, measurements_to_pandasDF
+import pandas
 
 class Filter(object):
     """
@@ -1456,7 +1457,10 @@ class MultiFilter(Filter):
         """
         assert not (z is None and i is None), "One of measurement vector or time stamp must be specified"
 
-        if not isinstance(z, np.ndarray) and isinstance(z[0], Measurement):
+        if not isinstance(z, np.ndarray) and isinstance(z, pandas.DataFrame):
+            measurements = pandasDF_to_measurement(z)
+
+        elif not isinstance(z, np.ndarray) and isinstance(z[0], Measurement):
 
             measurements = list(z)
             self.Measurements.update({i:z})

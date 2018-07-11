@@ -78,52 +78,31 @@ class dotdict(dict):
 
 
 def measurements_to_pandasDF(measurement_list):
-    entries = set(["PositionX","PositionY","PositionZ","Log_Probability", "Covariance", "Frame"])
+    entries = ["Log_Probability", "PositionX", "PositionY", "PositionZ", "Covariance", "Frame"]
+    extra_keys = set()
     for m in measurement_list:
-        entries.update(m.keys())
-    return pandas.DataFrame([[m.get(e,None) for e in entries] for m in measurement_list],
-                           columns=entries)
-
-
-def array_to_pandasDF(array):
-    array = np.asarray(array, dtype=float)
-    if len(array.shape) != 2 or array.shape[1] > 3:
-        raise ValueError("Array shape does not fit (N,1),(N,2) or (N,3)!")
-    n = array.shape[1]
-    entries = set(["Log_Probability","PositionX","PositionY","PositionZ"][:n+1])
-    return pandas.DataFrame(np.hstack((np.zeros((array.shape[0],1)), array)),
+        entries = [e for e in entries if e in m.keys()]
+        extra_keys.update(m.Data.keys())
+    entries.extend(extra_keys)
+    return pandas.DataFrame([[m.get(e, None) for e in entries] for m in measurement_list],
                             columns=entries)
 
-def pandasDF_to_array(DF):
-    return DF.values()
 
 def measurements_to_array(measurements):
-    keys = set(measurements[0].getEntryKeys())
-    for m in measurements:
-        keys.intersection(m.getEntryKeys())
-    return np.array([[m[k] for k in keys] for m in measurements], dtype=float)
+    entries = ["Log_Probability", "PositionX", "PositionY", "PositionZ", "Covariance", "Frame"]
+    extra_keys = set()
+    for m in measurement_list:
+        entries = [e for e in entries if e in m.keys()]
+        extra_keys.update(m.Data.keys())
+    entries.extend(extra_keys)
+    return np.array([[m[e] for e in entries] for m in measurements], dtype=float)
 
-def array_to_measurement(array, keys=[], dim=3):
-    shape = array.shape
-    if len(shape) == 2:
-        if shape[1] == 0:
-            raise ValueError("No Entries in measurement array!")
-        elif shape[1] == dim:
-            return [Measurement(1., a) for a in array]
-        elif shape[1] == dim+1:
-            return [Measurement(a[0], a[1:]) for a in array]
-        elif shape[1] == dim+len(keys):
-            return [Measurement(1., a, data=dict([[keys[i], array[i+dim]] for i in range(len(keys))])) for a in array]
-        elif shape[1] == dim+len(keys)+1:
-            return [Measurement(a[0],
-                                a[1:1+dim],
-                                data=dict([[keys[i], array[i+dim]] for i in range(len(keys))])) for a in array]
-        elif shape[1] == len(keys) and "PositionX" in keys and "Log_Probability" in keys:
-            return [Measurement(a[keys.index("Log_Probability")],
-                                a[[keys.index(n) for n in ["PositionX", "PositionY", "PositionZ"][:dim]]],
-                                data=dict([[n, a(keys.index(n))] for n in keys])) for a in array]
-    else:
-        raise ValueError("Can not interpret input array!")
+
+def pandasDF_to_array(DF):
+    entries = ["Log_Probability", "PositionX", "PositionY", "PositionZ", "Covariance", "Frame"]
+    entries = [e for e in entries if e in DF.columns]
+    entries.extend([e for e in DF.columns if e not in entries])
+    return np.vstack([DF[e] for e in entries]).T
 
 
 def pandasDF_to_measurement(DF):
@@ -133,14 +112,76 @@ def pandasDF_to_measurement(DF):
             dims.append("Position%s"%k)
     keys = set(DF.columns).difference(dims)
     keys = keys.difference(["Log_Probability"])
-    if "Log_Probability" in DF.coulumns:
+    if "Log_Probability" in DF.columns:
         return [Measurement(d["Log_Probability"],
                             [d[k] for k in dims],
-                            data=dict([[k, d[k]] for k in keys])) for d in DF]
+                            data=dict([[k, d[k]] for k in keys])) for i, d in DF.iterrows()]
     else:
         return [Measurement(1.,
                             [d[k] for k in dims],
-                            data=dict([[k, d[k]] for k in keys])) for d in DF]
+                            data=dict([[k, d[k]] for k in keys])) for i, d in DF.iterrows()]
+
+
+def array_to_pandasDF(array, keys=[], dim=2):
+    array = np.asarray(array, dtype=float)
+    if len(array.shape) != 2:
+        raise ValueError("Array shape does not fit!")
+
+    s = array.shape[1]
+    n = array.shape[0]
+    if s == dim:
+        entries = ["PositionX", "PositionY", "PositionZ"][:dim]
+    elif s == dim+1:
+        entries = ["Log_Probability","PositionX", "PositionY", "PositionZ"][:1+dim]
+    elif s == dim+len(keys):
+        entries = ["PositionX", "PositionY", "PositionZ"][:dim]
+        entries.extend(keys)
+    elif s == dim+len(keys)+1:
+        entries = ["Log_Probability", "PositionX", "PositionY", "PositionZ"][:1+dim]
+        entries.extend(keys)
+    elif s == len(keys):
+        entries = keys
+    else:
+        raise ValueError("Can not interpret input array!")
+
+    if "Log_Probability" not in entries:
+        return pandas.DataFrame(np.hstack((np.zeros((n, 1)), array)),
+                            columns=entries)
+    else:
+        return pandas.DataFrame(array, columns=entries)
+
+
+def array_to_measurement(array, keys=[], dim=2):
+    array = np.asarray(array, dtype=float)
+    if len(array.shape) != 2:
+        raise ValueError("Array shape does not fit!")
+
+    s = array.shape[1]
+    n = array.shape[0]
+    if s == dim:
+        entries = ["PositionX", "PositionY", "PositionZ"][:dim]
+    elif s == dim+1:
+        entries = ["Log_Probability","PositionX", "PositionY", "PositionZ"][:1+dim]
+    elif s == dim+len(keys):
+        entries = ["PositionX", "PositionY", "PositionZ"][:dim]
+        entries.extend(keys)
+    elif s == dim+len(keys)+1:
+        entries = ["Log_Probability", "PositionX", "PositionY", "PositionZ"][:1+dim]
+        entries.extend(keys)
+    elif s == len(keys):
+        entries = keys
+    else:
+        raise ValueError("Can not interpret input array!")
+    dim_names = ["PositionX", "PositionY", "PositionZ"][:dim]
+    non_dim_entries = [e for e in entries if (e not in dim_names and e!="Log_Probability")]
+
+    if "Log_Probability" in entries:
+        return [Measurement(0., [a[entries.index(d)] for d in dim_names],
+                            data=dict([[e, a[entries.index(e)]] for e in non_dim_entries])) for a in array]
+    else:
+        return [Measurement(a[entries.index("Log_Probability")],
+                            [a[entries.index(d)] for d in dim_names],
+                            data=dict([[e, a[entries.index(e)]] for e in non_dim_entries])) for a in array]
 
 
 class Measurement(dotdict):
@@ -1470,7 +1511,8 @@ class Segmentation(object):
     def segmentate(self, image, *args, **kwargs):
         pass
 
-class TresholdSegmentation(Segmentation):
+
+class ThresholdSegmentation(Segmentation):
 
     def __init__(self, treshold, reskale=True):
         super(TresholdSegmentation, self).__init__()
