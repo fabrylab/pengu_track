@@ -315,7 +315,7 @@ class Filter(object):
 
     def _state_log_prob_(self, key):
         if self.NoDist:
-            return -np.linalg.norm(self.X[key]-self.Predicted_X[key])
+            return np.linalg.norm(self.X[key]-self.Predicted_X[key])
         if self._state_is_gaussian_:
             x = self.X[key]-self.Predicted_X[key] - self._state_mu_[:,None]
             return float(self._state_norm_ - 0.5 * np.dot(x.T, np.dot(self._state_sig_1, x)))
@@ -325,7 +325,7 @@ class Filter(object):
         if measurement is None:
             measurement=self.Measurements[key]
         if self.NoDist:
-            return -np.linalg.norm(self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]))
+            return np.linalg.norm(self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]))
         if self._meas_is_gaussian_:
             x = self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]) - self._meas_mu_[:,None]
             return float(self._meas_norm_ -0.5*np.dot(x.T, np.dot(self._meas_sig_1, x)))
@@ -516,20 +516,20 @@ class KalmanBaseFilter(Filter):
         self.Model = model
 
         evolution_variance = np.array(evolution_variance, dtype=float)
-        if evolution_variance.shape != (int(self.Model.Evolution_dim),):
-            evolution_variance = np.ones(self.Model.Evolution_dim) * np.mean(evolution_variance)
+        # if evolution_variance.shape != (int(self.Model.Evolution_dim),):
+        #     evolution_variance = np.ones(self.Model.Evolution_dim) * np.mean(evolution_variance)
 
         self.Evolution_Variance = evolution_variance
-        self.Q = np.diag(evolution_variance)
-        self.Q_0 = np.diag(evolution_variance)
+        self.Q = evolution_variance
+        self.Q_0 = evolution_variance
 
         measurement_variance = np.array(measurement_variance, dtype=float)
-        if measurement_variance.shape != (int(self.Model.Meas_dim),):
-            measurement_variance = np.ones(self.Model.Meas_dim) * np.mean(measurement_variance)
+        # if measurement_variance.shape != (int(self.Model.Meas_dim),):
+        #     measurement_variance = np.ones(self.Model.Meas_dim) * np.mean(measurement_variance)
 
         self.Measurement_Variance = measurement_variance
-        self.R = np.diag(measurement_variance)
-        self.R_0 = np.diag(measurement_variance)
+        self.R = measurement_variance
+        self.R_0 = measurement_variance
 
         self.A = self.Model.State_Matrix
         self.B = self.Model.Control_Matrix
@@ -1343,6 +1343,7 @@ class MultiFilter(Filter):
         self.Filters = {}
         self.ActiveFilters = {}
         self.FilterThreshold = 3
+        # TODO: rename to CostThreshold
         self.LogProbabilityThreshold = -np.inf#0.99#-200#-18.
         self.MeasurementProbabilityThreshold = 0.05#0.99#-200#-18.
         self.AssignmentProbabilityThreshold = 0.02#0.99#-200#-18.
@@ -1375,11 +1376,11 @@ class MultiFilter(Filter):
 
         assert not (u is None and i is None), "One of control vector or time stamp must be specified"
 
-        for j in list(self.ActiveFilters.keys()):
-            _filter = self.ActiveFilters[j]
-            if np.amax(list(_filter.Predicted_X.keys()))-np.amax(list(_filter.X.keys())) >= self.FilterThreshold:
-                self.ActiveFilters.pop(j)
-                print("Stopped track %s in frame %s with no updates for %s frames"%(j, i, self.FilterThreshold))
+        # for j in list(self.ActiveFilters.keys()):
+        #     _filter = self.ActiveFilters[j]
+        #     if np.amax(list(_filter.Predicted_X.keys()))-np.amax(list(_filter.X.keys())) >= self.FilterThreshold:
+        #         self.ActiveFilters.pop(j)
+        #         print("Stopped track %s in frame %s with no updates for %s frames"%(j, i, self.FilterThreshold))
 
         predicted_x = {}
         predicted_x_error = {}
@@ -1457,14 +1458,13 @@ class MultiFilter(Filter):
         """
         assert not (z is None and i is None), "One of measurement vector or time stamp must be specified"
 
+        # convert from pandas to measurement objects if necessary
         if not isinstance(z, np.ndarray) and isinstance(z, pandas.DataFrame):
             measurements = pandasDF_to_measurement(z)
-            self.Measurements.update({i: measurements})
-
+            # self.Measurements.update({i: measurements})
         elif not isinstance(z, np.ndarray) and isinstance(z[0], Measurement):
-
             measurements = list(z)
-            self.Measurements.update({i:measurements})
+            # self.Measurements.update({i:measurements})
 
             # meas_logp = np.array([m.Log_Probability for m in z])
         # if isinstance(z, tuple) and len(z)==2:
@@ -1477,120 +1477,141 @@ class MultiFilter(Filter):
             #     z = z[:, :, None]
             # meas_logp = np.ones(z.shape[0])
             # measurements = [Measurement(1, pos) for pos in z]
-            self.Measurements.update({i: measurements})
+            # self.Measurements.update({i: measurements})
         else:
             raise ValueError("Input Positions are not of type array or pengutrack measurement!")
 
+        # TODO: zjzibki7u
         self.Measurements.update({i: measurements})
 
         # meas_logp = measurements.Log_Probability
         meas_logp = np.array([m.Log_Probability for m in measurements])
+        print("Total number of detections: %d, valid detections: %d"%(len(meas_logp),(~np.isneginf(meas_logp)).sum()))
 
         # z = self.Model.vec_from_pandas(measurements)
-        z = [self.Model.vec_from_meas(m) for m in measurements]
+        z = np.array([self.Model.vec_from_meas(m) for m in measurements])
 
         mask = ~np.isneginf(meas_logp)
         if not np.all(~mask):
-            meas_logp[~mask] = np.nanmin(meas_logp[mask])
-            mask &= (meas_logp - np.nanmin(meas_logp) >=
-                           (self.MeasurementProbabilityThreshold * (np.nanmax(meas_logp) - np.nanmin(meas_logp)))).astype(bool)
-            z = np.array(z)[mask]
+            # meas_logp[~mask] = np.nanmin(meas_logp[mask])
+            # mask &= (meas_logp - np.nanmin(meas_logp) >=
+            #                (self.MeasurementProbabilityThreshold * (np.nanmax(meas_logp) - np.nanmin(meas_logp)))).astype(bool)
+            z = z[mask]
             # measurements = list(np.asarray(measurements)[mask])
             measurements = np.array(measurements)[mask]
         else:
+            # TODO: will ich das wirklich machen?
             self.Measurements.pop(i, None)
             return measurements, i
 
         M = z.shape[0]
         N = len(dict(self.ActiveFilters))
 
+        # First frame or no active tracks: initialize tracker
         if N == 0 and M > 0:
             self.initial_update(measurements, i)
             return measurements, i
 
-        gain_dict = []
-        probability_gain = np.ones((max(M, N), M)) * -np.inf
+        # Dictionary to keep correspondence between track number and matrix entry
+        gain_dict = dict(enumerate(self.ActiveFilters.keys()))
+        # Start with neginf as default for prob gain (cost) matrix
+        # probability_gain = np.ones((max(M, N), M)) * -np.inf
+        probability_gain = np.ones((N, M)) * -np.inf
 
-
-        filter_keys = list(self.ActiveFilters.keys())
-        for j, k in enumerate(filter_keys):
-            gain_dict.append([j, k])
+        # iter over tracks and corresponing matrix indices
+        for j, k in gain_dict.items():
+            # iter over measurements and corresponding indices
             for m, meas in enumerate(measurements):
+                # built (cost)matrix entry for every entry
                 probability_gain[j, m] = self.ActiveFilters[k].log_prob(keys=[i],
                                                                         measurements={i: meas},
                                                                         update=self.ProbUpdate)
-        gain_dict = dict(gain_dict)
 
-        probability_gain[np.isinf(probability_gain)] = np.nan
-        if np.all(np.isnan(probability_gain)):
-            probability_gain[:] = -np.inf
-        else:
-            probability_gain[np.isnan(probability_gain)] = np.nanmin(probability_gain)
+        # gain_dict.update(dict(zip(np.arange(len(self.ActiveFilters), len(measurements)),
+        #                           max(self.Filters.keys())+1+np.arange(len(measurements)-len(self.ActiveFilters)))))
+
+
+        # If LogProbThreshold at neg inf set it to one under matrix minimum
         if self.LogProbabilityThreshold == -np.inf:
-            LogProbabilityThreshold = np.nanmin(probability_gain)
+            LogProbabilityThreshold = np.nextafter(np.nanmin(probability_gain), -np.inf)
         else:
             LogProbabilityThreshold = self.LogProbabilityThreshold
 
+        # set positive inf to max of array
+        probability_gain[np.isposinf(probability_gain)] = np.amax(probability_gain[~np.isposinf(probability_gain)])
+
+        # set negative inf to min of array
+        probability_gain[np.isneginf(probability_gain)] = np.amin(probability_gain[~np.isneginf(probability_gain)])
+
+        # now set nan results to negative inf
+        probability_gain[np.isnan(probability_gain)] = -np.inf
+
+        # matrix now contains no pos inf or nans.
+        # neg inf masks the unusable values and threshold is over neg inf, but below lowest valid value
 
         self.Probability_Gain.update({i: np.array(probability_gain)})
 
-        x = {}
-        x_err = {}
+        # TODO: change name of logp to cost
+        if self.filter_kwargs.get("no_dist"):
+            cost_matrix = -np.exp(-probability_gain)
+            threshold = -np.exp(-self.LogProbabilityThreshold)
+        else:
+            cost_matrix = self.cost_from_logprob(probability_gain)
+            threshold = self.cost_from_logprob(probability_gain, value=self.LogProbabilityThreshold)
 
-        cost_matrix = self.cost_from_logprob(probability_gain)
-        rows, cols = self.assign(cost_matrix,
-                                 threshold=self.cost_from_logprob(probability_gain,
-                                                                  value=self.LogProbabilityThreshold))
+        rows, cols = self.assign(cost_matrix, threshold=threshold)
 
-        if verbose:
-            for t in range(N):
-                if t not in rows:
-                        print("No update for track %s with best prob %s in frame %s"%(gain_dict[t], np.amax(probability_gain[t]), i))
+        track_length = dict(zip(gain_dict.values(), np.zeros(len(gain_dict), dtype=int)))
+        track_length.update(dict([[k, len(self.ActiveFilters[k].X)] for k in self.ActiveFilters]))
 
-        for j, k in enumerate(rows):
-            k = rows[j]
-            m = cols[j]
+        track_inactivity_time = dict(zip(gain_dict.values(), np.zeros(len(gain_dict), dtype=int)))
+        track_inactivity_time.update(dict([[k,i-max(self.ActiveFilters[k].X)-1] for k in self.ActiveFilters]))
 
-            if N > M and m >= M:
-                continue
+        assignments = dict([(gain_dict[rows[i]], cols[i]) for i in range(len(rows))
+                       if (probability_gain[rows[i], cols[i]] > threshold)|(track_length[gain_dict[rows[i]]]<2)])
 
-            if k in gain_dict and (
-                            probability_gain[k, m] > LogProbabilityThreshold or
-                            (len(self.ActiveFilters[gain_dict[k]].X) < 2 and
-                                     min([i-o for o in self.ActiveFilters[gain_dict[k]].X.keys() if i>o]) < 2 and big_jumps)) :
-                self.ActiveFilters[gain_dict[k]].update(z= measurements[m], i=i)
-                x.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X[i]})
-                x_err.update({gain_dict[k]: self.ActiveFilters[gain_dict[k]].X_error[i]})
-                if verbose:
-                    print("Updated track %s with prob %s in frame %s" % (gain_dict[k], probability_gain[k, m], i))
+        not_updated_tracks = set(self.ActiveFilters.keys()).difference(assignments.keys())
 
-            else:
-                if verbose:
-                    if k in gain_dict:
-                        print("DEPRECATED TRACK %s WITH PROB %s IN FRAME %s" % (gain_dict[k], probability_gain[k, m], i))
-                    else:
-                        print("Started track with prob %s in frame %s" % (probability_gain[k, m], i))
-                try:
-                    n = len(self.ActiveFilters[gain_dict[k]].X.keys())
-                except KeyError:
-                    n = np.inf
+        stopped_tracks = set([k for k in not_updated_tracks if track_inactivity_time[k]>self.FilterThreshold])
 
-                l = max(self.Filters.keys()) + 1
-                _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
-                _filter.Predicted_X.update({i: self.Model.infer_state(z[m])})
-                _filter.X.update({i: self.Model.infer_state(z[m])})
-                _filter.Measurements.update({i: measurements[m]})
+        not_updated_tracks = not_updated_tracks.difference(stopped_tracks)
 
-                self.ActiveFilters.update({l: _filter})
-                self.Filters.update({l: _filter})
-                gain_dict.update({k:l})
+        spawned_tracks = dict(zip(max(self.ActiveFilters.keys()) + 1 + np.arange(len(measurements)-len(assignments)),
+                                  set(range(M)).difference(assignments.values())))
 
-            probability_gain[k, :] = np.nan
-            probability_gain[:, m] = np.nan
+        print("Assigned %d, not updated %d, stopped %d and spawned %d Tracks."%(len(assignments),len(not_updated_tracks), len(stopped_tracks), len(spawned_tracks)))
+
+        for k in assignments:
+            m = assignments[k]
+            try:
+                self.ActiveFilters[k].update(z=measurements[m], i=i)
+            except KeyError:
+                pass
+            if verbose:
+                print("Updated track %s with prob %s in frame %s" % (k, probability_gain[reverse_dict(gain_dict)[k], m], i))
+
+        for k in not_updated_tracks:
+            if verbose:
+                print("No update for track %s with best prob %s in frame %s"%(gain_dict[t], np.amax(probability_gain[t]), i))
+
+        for k in stopped_tracks:
+            self.ActiveFilters.pop(k)
+            if verbose:
+                print("Stopped track %s with probability %s in frame %s" % (k, probability_gain[reverse_dict(gain_dict)[k], m], i))
+
+        for k in spawned_tracks:
+            m = spawned_tracks[k]
+            _filter = self.Filter_Class(self.Model, *self.filter_args, **self.filter_kwargs)
+            _filter.Predicted_X.update({i: self.Model.infer_state(z[m])})
+            _filter.X.update({i: self.Model.infer_state(z[m])})
+            _filter.Measurements.update({i: measurements[m]})
+
+            self.ActiveFilters.update({k: _filter})
+            self.Filters.update({k: _filter})
 
 
         self.Probability_Gain_Dicts.update({i: gain_dict})
-        self.Probability_Assignment_Dicts.update({i: dict([[gain_dict[r], c] for r,c in zip(rows, cols)])})
+        self.Probability_Assignment_Dicts.update({i: dict([[k, c] for k,c in assignments.items()])})
         return measurements, i
 
     def fit(self, u, z):
