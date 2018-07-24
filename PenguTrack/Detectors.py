@@ -863,6 +863,20 @@ class ExtendedRegionProps(REGIONPROPS._RegionProperties):
         else:
             return int_im
 
+    def _oversize_label(self, o):
+        o=int(o)
+        if o<1:
+            return np.copy(self._label_image[self._slice])
+
+        slicex, slicey = self._slice
+        int_im = np.copy(self._label_image[slicex.start-o:slicex.stop+o,
+                         slicey.start-o:slicey.stop+o])
+        if int_im.shape[0] != slicex.stop - slicex.start+2*o or \
+                        int_im.shape[1] != slicey.stop -slicey.start + 2*o :
+            return self._oversize_image(o-1)
+        else:
+            return int_im
+
     def sur_std(self):
         return np.std(self._surrounding_image())
 
@@ -898,6 +912,14 @@ class ExtendedRegionProps(REGIONPROPS._RegionProperties):
         i_min = np.amin(int_im).astype(float)
         return (i_max-i_min)/(i_max+i_min)
 
+    def in_out_contrast3(self):
+        ov_int_im = self._oversize_image(2).astype(float)
+        ov_lab_im = self._oversize_label(2).astype(bool)
+        mu = np.mean(ov_int_im[~ov_lab_im])
+        sd = np.std(ov_int_im[~ov_lab_im])
+        return np.mean((np.abs(ov_int_im-mu)/sd)[ov_lab_im])
+
+
     def __getattribute__(self, item):
         try:
             return super(ExtendedRegionProps, self).__getattribute__(item)
@@ -909,6 +931,8 @@ class ExtendedRegionProps(REGIONPROPS._RegionProperties):
             return self.in_out_contrast()
         elif item == "InOutContrast2":
             return self.in_out_contrast2()
+        elif item == "InOutContrast3":
+            return self.in_out_contrast3()
         elif item == "SurroundingStd":
             return self.sur_std()
         elif item == "SurroundingMean":
@@ -976,6 +1000,10 @@ class RegionFilter(object):
         else:
             raise ValueError("False shape for upper limit parameter!")
 
+        self._in_var = np.linalg.inv(self.var)
+        self._N = (np.linalg.det(self.var)*(2*np.pi)**self.dim)**-0.5
+        self._logN = np.log(self._N)
+
         self.set_dist()
 
         self.val_parameter = Parameter(self.prop, value, min=self.lower_limit, max=self.upper_limit, value_type=float)
@@ -985,9 +1013,10 @@ class RegionFilter(object):
         return [self.logprob(region.__getattribute__(self.prop)) for region in regions]
 
     def logprob(self, test_value):
-        self.set_dist()
+        # self.set_dist()
         if np.all(self.lower_limit < test_value) and np.all(test_value  < self.upper_limit):
-            return float(self.dist.logpdf(test_value-self.value))
+            return self._logN * np.dot(np.dot((test_value - self.value), self._in_var), (test_value - self.value))
+            # return float(self.dist.logpdf(test_value-self.value))
         else:
             return -np.inf
 
@@ -1039,7 +1068,7 @@ class RegionPropDetector(Detector):
             param_list.append(filter.var_parameter)
         self.ParameterList = ParameterList(*param_list)
 
-    @detection_parameters(image=dict(frame=0, mask=False), mask=dict(drame=0, mask=True))
+    @detection_parameters(image=dict(frame=0, mask=False), mask=dict(frame=0, mask=True))
     def detect(self, image, mask):
         intensity_image = rgb2gray(image)
         regions = extended_regionprops(skimage.measure.label(mask), intensity_image=intensity_image)
@@ -1057,6 +1086,8 @@ class RegionPropDetector(Detector):
             for key in cols[3:]:
                 filter = filter_dict[key]
                 # cols.update(filter.prop)
+                # if np.isneginf(o[cols.index("Log_Probability")]):
+                #     break
                 o[cols.index("Log_Probability")] += filter.filter([region])[0]
                 o.append(region.__getattribute__(filter.prop))
             out.append(o)
@@ -2154,6 +2185,62 @@ class ViBeSegmentation(Segmentation):
                 print(np.sum(neighbours), np.sum(image_mask), x.shape, y.shape)
                 raise
         print("Updated %s pixels" % n)
+
+
+class MeanViBeSegmentation(Segmentation):
+    def __init__(self, sensitivity=1, n=20, m=1, init_image=None, *args, **kwargs):
+        super(MeanViBeSegmentation, self).__init__(*args, **kwargs)
+        self.sensitivity = float(sensitivity)
+        self.N = int(n)
+        self.M = int(m)
+        self.Samples = None
+        self.SegMap = None
+        self._counter = 0
+
+        if init_image is not None:
+            data = np.array(init_image, ndmin=2)
+            self.__dt__ = smallest_dtype(data)
+            print(self.__dt__)
+            if len(data.shape) == 3:
+                self.Samples = np.tile(data.astype(self.__dt__), self.N
+                                       ).reshape(data.shape+(self.N,)
+                                                                      ).transpose((3, 0, 1, 2))
+            elif len(data.shape) == 2:
+                self.Samples = np.tile(data.astype(self.__dt__), (self.N, 1, 1,))
+            else:
+                raise ValueError('False format of data.')
+        else:
+            self.__dt__ = None
+
+    def segmentate(self, image, *args, **kwargs):
+        data = np.array(image, ndmin=2)
+
+        if self.__dt__ is None:
+            self.__dt__ = smallest_dtype(data)
+            
+        if self.Samples is None:
+            self.Samples = np.tile(data, self.N).reshape((self.N,)+data.shape)
+
+        mu = np.mean(self.Samples.astype(next_dtype(-1*data))[::self.M], axis=0)
+        sig = np.std(self.Samples.astype(next_dtype(-1*data))[::self.M], axis=0)
+        if len(data.shape) == 3:
+            data = rgb2gray(data)
+            self.SegMap = np.abs(mu-data)>sig*self.sensitivity
+        elif len(data.shape) == 2:
+            self.SegMap = np.abs(mu-data)>sig*self.sensitivity
+        else:
+            raise ValueError('False format of data.')
+
+            
+        return self.SegMap
+
+    def update(self, mask, image, *args, **kwargs):
+        data = np.array(image, ndmin=2)
+        if self.__dt__ is None:
+            self.__dt__ = smallest_dtype(data)
+        # self.Samples[:-1] = self.Samples[1:]
+        self.Samples[self._counter] = data.astype(self.__dt__)
+        self._counter = (self._counter+1)%self.N
 
 
 class DumbViBeSegmentation(ViBeSegmentation):
