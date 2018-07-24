@@ -17,12 +17,12 @@ def cost_from_logprob(logprob, value=None):
     cost_matrix = np.copy(logprob)
     if value is None:
         value = cost_matrix
-    if cost_matrix.std() > 0.:
+    # if cost_matrix.std() > 0.:
         # optimize range of values after exponential function
         # value -= cost_matrix.min()
         # value *= 745. / (cost_matrix.max() - cost_matrix.min())
         # value -= 745
-        value = -1. * np.exp(value)
+    value = -1. * np.exp(value)
     return value
 
 
@@ -161,7 +161,6 @@ def network_assignment(cost, order=2, threshold=None, method="linear"):
     row_col = {}
     # Do for each track
     for i in np.argsort(cost.min(axis=1)):#range(cost.shape[0]):
-        print("doing ", i)
         # dict to store ids of matching candidates
         all_rows = set([i])
         all_cols = set()
@@ -186,7 +185,6 @@ def network_assignment(cost, order=2, threshold=None, method="linear"):
 
         # slice array
         inner_array = cost[sorted(all_rows)][:, sorted(all_cols)]
-        print("length ", inner_array.shape)
         # classical assignment in local array
         if method == "greedy":
             r, c = greedy_assignment(inner_array)
@@ -212,7 +210,10 @@ def network_assignment(cost, order=2, threshold=None, method="linear"):
         #     elif cost[R, row_col[R]] > cost[R, C]:
         #         row_col.update({R: C})
         #         print("Overwriting Match!")
-    rows, cols = np.array(list(row_col.items())).T
+    try:
+        rows, cols = np.array(list(row_col.items())).T
+    except ValueError:
+        return [],[]
     assert len(set(rows)) == len(rows) & len(set(cols))==len(cols)
     # assert len(rows) == len(cost)
     if transposed:
