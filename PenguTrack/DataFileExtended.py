@@ -1024,8 +1024,7 @@ class DataFileExtended(clickpoints.DataFile):
                                              log_prob=prob,
                                              image=image,
                                              type=self.TYPE_MEASUREMENT,
-                                             state_vector=np.array([meas_x, meas_y]),
-                                             state_error=meas_err))
+                                             state_vector=np.array([meas_x, meas_y])))
                     if debug_mode&0b000010:
                         measurement_markerset.append(dict(image=image, x=meas_x, y=meas_y,
                                                           text="Track %s" % (db_track.id),
