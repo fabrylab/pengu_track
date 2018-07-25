@@ -2194,6 +2194,8 @@ class MeanViBeSegmentation(Segmentation):
         self.N = int(n)
         self.M = int(m)
         self.Samples = None
+        self.Mu = None
+        self.Sig = None
         self.SegMap = None
         self._counter = 0
 
@@ -2221,8 +2223,14 @@ class MeanViBeSegmentation(Segmentation):
         if self.Samples is None:
             self.Samples = np.tile(data, self.N).reshape((self.N,)+data.shape)
 
-        mu = np.mean(self.Samples.astype(next_dtype(-1*data))[::self.M], axis=0)
-        sig = np.std(self.Samples.astype(next_dtype(-1*data))[::self.M], axis=0)
+        # mu = np.mean(self.Samples.astype(next_dtype(-1*data))[::self.M], axis=0)
+        # sig = np.std(self.Samples.astype(next_dtype(-1*data))[::self.M], axis=0)
+        if self.Mu is None:
+            self.Mu = np.mean(self.Samples.astype(next_dtype(-1*data))[::self.M], axis=0)
+        if self.Sig is None:
+            self.Sig = np.std(self.Samples.astype(next_dtype(-1 * data))[::self.M], axis=0)
+        mu = self.Mu
+        sig = self.Sig
         if len(data.shape) == 3:
             data = rgb2gray(data)
             self.SegMap = np.abs(mu-data)>sig*self.sensitivity
@@ -2239,7 +2247,22 @@ class MeanViBeSegmentation(Segmentation):
         if self.__dt__ is None:
             self.__dt__ = smallest_dtype(data)
         # self.Samples[:-1] = self.Samples[1:]
+
+        x_0 = data.astype(float)
+        x_N = self.Samples[self._counter].astype(float)
+
+        if self.Mu is None:
+            self.Mu = np.mean(self.Samples.astype(next_dtype(-1*data))[::self.M], axis=0)
+        mu_1 = ((self.N*self.Mu.astype(float)) - x_N)/(self.N-1)
+        self.Mu = (((self.N - 1) * mu_1 + x_0)/self.N)
+
+        if self.Sig is None:
+            self.Sig = np.std(self.Samples.astype(next_dtype(-1 * data))[::self.M], axis=0)
+        sig_1 = np.sqrt(((self.N*self.Sig.astype(float)**2)-(x_N-mu_1)*(x_N-self.Mu))/(self.N-1))
+        self.Sig = np.sqrt(((self.N-1)*sig_1**2 + (x_N-mu_1)*(x_N-self.Mu))/self.N)
+
         self.Samples[self._counter] = data.astype(self.__dt__)
+
         self._counter = (self._counter+1)%self.N
 
 
@@ -2649,7 +2672,7 @@ def next_dtype(array):
 def smallest_dtype(array):
     dt = array.dtype
 
-    if dt == np.int and np.amin(array) >= 0:
+    if str(dt).count("int") and np.amin(array) >= 0:
         a_max = np.amax(array)
         if a_max < 2**8:
             return np.uint8
@@ -2663,7 +2686,7 @@ def smallest_dtype(array):
             return np.uint128
         else:
             return np.float
-    elif dt == np.int:
+    elif str(dt).count("int"):
         a_max = max(-np.amin(array), np.amax(array))
         if a_max < 2**7:
             return np.int8
