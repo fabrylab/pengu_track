@@ -1565,14 +1565,14 @@ class MultiFilter(Filter):
         track_length.update(dict([[k, len(self.ActiveFilters[k].X)] for k in self.ActiveFilters]))
 
         track_inactivity_time = dict(zip(gain_dict.values(), np.zeros(len(gain_dict), dtype=int)))
-        track_inactivity_time.update(dict([[k,i-max(self.ActiveFilters[k].X)-1] for k in self.ActiveFilters]))
+        track_inactivity_time.update(dict([[k, i-max(self.ActiveFilters[k].X)-1] for k in self.ActiveFilters]))
 
         assignments = dict([(gain_dict[rows[i]], cols[i]) for i in range(len(rows))
                        if (probability_gain[rows[i], cols[i]] > threshold)|(track_length[gain_dict[rows[i]]]<2)])
 
         not_updated_tracks = set(self.ActiveFilters.keys()).difference(assignments.keys())
 
-        stopped_tracks = set([k for k in not_updated_tracks if track_inactivity_time[k]>self.FilterThreshold])
+        stopped_tracks = set([k for k in not_updated_tracks if track_inactivity_time[k] > self.FilterThreshold])
 
         not_updated_tracks = not_updated_tracks.difference(stopped_tracks)
 

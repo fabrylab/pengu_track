@@ -2253,12 +2253,14 @@ class MeanViBeSegmentation(Segmentation):
 
         if self.Mu is None:
             self.Mu = np.mean(self.Samples.astype(next_dtype(-1*data))[::self.M], axis=0)
-        mu_1 = ((self.N*self.Mu.astype(float)) - x_N)/(self.N-1)
+
+        mu_1 = ((self.N*self.Mu) - x_N)/(self.N-1)
         self.Mu = (((self.N - 1) * mu_1 + x_0)/self.N)
 
         if self.Sig is None:
             self.Sig = np.std(self.Samples.astype(next_dtype(-1 * data))[::self.M], axis=0)
-        sig_1 = np.sqrt(((self.N*self.Sig.astype(float)**2)-(x_N-mu_1)*(x_N-self.Mu))/(self.N-1))
+
+        sig_1 = np.sqrt(((self.N*self.Sig**2)-(x_N-mu_1)*(x_N-self.Mu))/(self.N-1))
         self.Sig = np.sqrt(((self.N-1)*sig_1**2 + (x_N-mu_1)*(x_N-self.Mu))/self.N)
 
         self.Samples[self._counter] = data.astype(self.__dt__)
