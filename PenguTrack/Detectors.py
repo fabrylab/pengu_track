@@ -2198,27 +2198,23 @@ class MeanViBeSegmentation(Segmentation):
         self.Sig = None
         self.SegMap = None
         self._counter = 0
-
+        self.__dt__ = float
         if init_image is not None:
             data = np.array(init_image, ndmin=2)
-            self.__dt__ = smallest_dtype(data)
-            print(self.__dt__)
+            # self.__dt__ = smallest_dtype(data)
+            # print(self.__dt__)
             if len(data.shape) == 3:
-                self.Samples = np.tile(data.astype(self.__dt__), self.N
-                                       ).reshape(data.shape+(self.N,)
-                                                                      ).transpose((3, 0, 1, 2))
+                self.Samples = np.tile(data.astype(self.__dt__), self.N)\
+                    .reshape(data.shape+(self.N,)).transpose((3, 0, 1, 2))
             elif len(data.shape) == 2:
                 self.Samples = np.tile(data.astype(self.__dt__), (self.N, 1, 1,))
             else:
                 raise ValueError('False format of data.')
-        else:
-            self.__dt__ = None
+        # else:
+        #     self.__dt__ = None
 
     def segmentate(self, image, *args, **kwargs):
         data = np.array(image, ndmin=2)
-
-        if self.__dt__ is None:
-            self.__dt__ = smallest_dtype(data)
             
         if self.Samples is None:
             self.Samples = np.tile(data, self.N).reshape((self.N,)+data.shape)
@@ -2226,9 +2222,9 @@ class MeanViBeSegmentation(Segmentation):
         # mu = np.mean(self.Samples.astype(next_dtype(-1*data))[::self.M], axis=0)
         # sig = np.std(self.Samples.astype(next_dtype(-1*data))[::self.M], axis=0)
         if self.Mu is None:
-            self.Mu = np.mean(self.Samples.astype(next_dtype(-1*data))[::self.M], axis=0)
+            self.Mu = np.mean(self.Samples[::self.M], axis=0)
         if self.Sig is None:
-            self.Sig = np.std(self.Samples.astype(next_dtype(-1 * data))[::self.M], axis=0)
+            self.Sig = np.std(self.Samples[::self.M], axis=0)
         mu = self.Mu
         sig = self.Sig
         if len(data.shape) == 3:
@@ -2243,27 +2239,25 @@ class MeanViBeSegmentation(Segmentation):
         return self.SegMap
 
     def update(self, mask, image, *args, **kwargs):
-        data = np.array(image, ndmin=2)
-        if self.__dt__ is None:
-            self.__dt__ = smallest_dtype(data)
+        data = np.array(image, ndmin=2, dtype=self.__dt__)
         # self.Samples[:-1] = self.Samples[1:]
 
-        x_0 = data.astype(float)
-        x_N = self.Samples[self._counter].astype(float)
+        x_0 = data
+        x_N = self.Samples[self._counter]
 
         if self.Mu is None:
-            self.Mu = np.mean(self.Samples.astype(next_dtype(-1*data))[::self.M], axis=0)
+            self.Mu = np.mean(self.Samples[::self.M], axis=0)
 
         mu_1 = ((self.N*self.Mu) - x_N)/(self.N-1)
         self.Mu = (((self.N - 1) * mu_1 + x_0)/self.N)
 
         if self.Sig is None:
-            self.Sig = np.std(self.Samples.astype(next_dtype(-1 * data))[::self.M], axis=0)
+            self.Sig = np.std(self.Samples[::self.M], axis=0)
 
         sig_1 = np.sqrt(((self.N*self.Sig**2)-(x_N-mu_1)*(x_N-self.Mu))/(self.N-1))
         self.Sig = np.sqrt(((self.N-1)*sig_1**2 + (x_N-mu_1)*(x_N-self.Mu))/self.N)
 
-        self.Samples[self._counter] = data.astype(self.__dt__)
+        self.Samples[self._counter] = data
 
         self._counter = (self._counter+1)%self.N
 

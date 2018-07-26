@@ -1583,10 +1583,7 @@ class MultiFilter(Filter):
 
         for k in assignments:
             m = assignments[k]
-            try:
-                self.ActiveFilters[k].update(z=measurements[m], i=i)
-            except KeyError:
-                pass
+            self.ActiveFilters[k].update(z=measurements[m], i=i)
             if verbose:
                 print("Updated track %s with prob %s in frame %s" % (k, probability_gain[reverse_dict(gain_dict)[k], m], i))
 
