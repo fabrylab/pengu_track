@@ -323,7 +323,7 @@ class Filter(object):
 
     def _meas_log_prob(self, key, measurement=None):
         if measurement is None:
-            measurement=self.Measurements[key]
+            measurement = self.Measurements[key]
         if self.NoDist:
             return np.linalg.norm(self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]))
         if self._meas_is_gaussian_:
@@ -538,7 +538,8 @@ class KalmanBaseFilter(Filter):
 
         self.K = None
 
-        p = np.dot(np.dot(self.C.T, self.R_0), self.C) + np.dot(np.dot(self.G, self.Q), self.G.T)#np.diag(np.ones(self.Model.State_dim) * max(measurement_variance))
+        p = np.dot(np.dot(self.C.T, self.R_0), self.C) + \
+            np.dot(self.A, np.dot(np.dot(np.dot(self.G, self.Q), self.G.T), self.A.T))#np.diag(np.ones(self.Model.State_dim) * max(measurement_variance))
         self.P_0 = p
 
         kwargs.update(dict(meas_dist=ss.multivariate_normal(cov=self.R),
@@ -1353,7 +1354,7 @@ class MultiFilter(Filter):
         self.Probability_Gain = {}
         self.Probability_Gain_Dicts = {}
         self.Probability_Assignment_Dicts = {}
-        self.ProbUpdate = kwargs.get("prob_update", True)
+        self.ProbUpdate = kwargs.get("prob_update", False)
 
     def predict(self, u=None, i=None):
         """
@@ -1527,9 +1528,6 @@ class MultiFilter(Filter):
                                                                         measurements={i: meas},
                                                                         update=self.ProbUpdate)
 
-        # gain_dict.update(dict(zip(np.arange(len(self.ActiveFilters), len(measurements)),
-        #                           max(self.Filters.keys())+1+np.arange(len(measurements)-len(self.ActiveFilters)))))
-
 
         # If LogProbThreshold at neg inf set it to one under matrix minimum
         if self.LogProbabilityThreshold == -np.inf:
@@ -1537,35 +1535,29 @@ class MultiFilter(Filter):
         else:
             LogProbabilityThreshold = self.LogProbabilityThreshold
 
-        # set positive inf to max of array
-        probability_gain[np.isposinf(probability_gain)] = np.amax(probability_gain[~np.isposinf(probability_gain)])
+        if not np.all(np.isneginf(probability_gain)):
+            # set positive inf to max of array
+            probability_gain[np.isposinf(probability_gain)] = np.amax(probability_gain[~np.isposinf(probability_gain)])
 
-        # set negative inf to min of array
-        probability_gain[np.isneginf(probability_gain)] = np.amin(probability_gain[~np.isneginf(probability_gain)])
+            # set negative inf to min of array
+            probability_gain[np.isneginf(probability_gain)] = np.amin(probability_gain[~np.isneginf(probability_gain)])
 
-        # now set nan results to negative inf
-        probability_gain[np.isnan(probability_gain)] = -np.inf
+            # now set nan results to negative inf
+            probability_gain[np.isnan(probability_gain)] = -np.inf
 
         # matrix now contains no pos inf or nans.
         # neg inf masks the unusable values and threshold is over neg inf, but below lowest valid value
 
         self.Probability_Gain.update({i: np.array(probability_gain)})
 
-        # TODO: change name of logp to cost
-        if self.filter_kwargs.get("no_dist"):
-            cost_matrix = -np.exp(-probability_gain)
-            threshold = -np.exp(-self.LogProbabilityThreshold)
-        else:
-            cost_matrix = self.cost_from_logprob(probability_gain)
-            threshold = self.cost_from_logprob(probability_gain, value=self.LogProbabilityThreshold)
-
-        rows, cols = self.assign(cost_matrix, threshold=threshold)
-
         track_length = dict(zip(gain_dict.values(), np.zeros(len(gain_dict), dtype=int)))
         track_length.update(dict([[k, len(self.ActiveFilters[k].X)] for k in self.ActiveFilters]))
 
         track_inactivity_time = dict(zip(gain_dict.values(), np.zeros(len(gain_dict), dtype=int)))
         track_inactivity_time.update(dict([[k, i-max(self.ActiveFilters[k].X)-1] for k in self.ActiveFilters]))
+
+        # assignments = dict([(gain_dict[rows[i]], cols[i]) for i in range(len(rows))
+        #                if (probability_gain[rows[i], cols[i]] > threshold) | (track_length[gain_dict[rows[i]]] < 2)])
 
         assignments = dict([(gain_dict[rows[i]], cols[i]) for i in range(len(rows))
                        if (probability_gain[rows[i], cols[i]] > threshold)|(track_length[gain_dict[rows[i]]]<2)])
@@ -1589,7 +1581,8 @@ class MultiFilter(Filter):
 
         for k in not_updated_tracks:
             if verbose:
-                print("No update for track %s with best prob %s in frame %s"%(gain_dict[t], np.amax(probability_gain[t]), i))
+                print("No update for track %s with best prob %s in frame %s"%(reverse_dict(gain_dict)[k],
+                                                                              np.amax(probability_gain[reverse_dict(gain_dict)[k]]), i))
 
         for k in stopped_tracks:
             self.ActiveFilters.pop(k)
