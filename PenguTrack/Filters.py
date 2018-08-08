@@ -317,9 +317,12 @@ class Filter(object):
         if self.NoDist:
             return np.linalg.norm(self.X[key]-self.Predicted_X[key])
         if self._state_is_gaussian_:
-            x = self.X[key]-self.Predicted_X[key] - self._state_mu_[:,None]
-            return float(self._state_norm_ - 0.5 * np.dot(x.T, np.dot(self._state_sig_1, x)))
-        return self.State_Distribution.logpdf((self.X[key]-self.Predicted_X[key]).T)
+            x = self.X[key]-self.Predicted_X[key] - self._state_mu_[:, None]
+            x_n = np.sqrt(0.5*np.dot(x.T, np.dot(self._state_sig_1, x)))
+            return np.log(float(1.-np.erf(x_n)))
+            # return float(self._state_norm_ - 0.5 * np.dot(x.T, np.dot(self._state_sig_1, x)))
+        return self.State_Distribution.logcdf((self.X[key]-self.Predicted_X[key]).T)
+        # return self.State_Distribution.logpdf((self.X[key]-self.Predicted_X[key]).T)
 
     def _meas_log_prob(self, key, measurement=None):
         if measurement is None:
@@ -328,8 +331,11 @@ class Filter(object):
             return np.linalg.norm(self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]))
         if self._meas_is_gaussian_:
             x = self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]) - self._meas_mu_[:,None]
-            return float(self._meas_norm_ -0.5*np.dot(x.T, np.dot(self._meas_sig_1, x)))
-        return self.Measurement_Distribution.logpdf((self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key])).T)
+            x_n = np.sqrt(0.5*np.dot(x.T, np.dot(self._meas_sig_1, x)))
+            return np.log(float(1.-np.erf(x_n)))
+            # return float(self._meas_norm_ -0.5*np.dot(x.T, np.dot(self._meas_sig_1, x)))
+        return self.Measurement_Distribution.logcdf((self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key])).T)
+        # return self.Measurement_Distribution.logpdf((self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key])).T)
 
     def __setattr__(self, key, value):
         if key == "Measurement_Distribution":
@@ -1487,7 +1493,8 @@ class MultiFilter(Filter):
 
         # meas_logp = measurements.Log_Probability
         meas_logp = np.array([m.Log_Probability for m in measurements])
-        print("Total number of detections: %d, valid detections: %d"%(len(meas_logp),(~np.isneginf(meas_logp)).sum()))
+        if verbose:
+            print("Total number of detections: %d, valid detections: %d"%(len(meas_logp),(~np.isneginf(meas_logp)).sum()))
 
         # z = self.Model.vec_from_pandas(measurements)
         z = np.array([self.Model.vec_from_meas(m) for m in measurements])
@@ -1545,8 +1552,20 @@ class MultiFilter(Filter):
             # now set nan results to negative inf
             probability_gain[np.isnan(probability_gain)] = -np.inf
 
-        # matrix now contains no pos inf or nans.
-        # neg inf masks the unusable values and threshold is over neg inf, but below lowest valid value
+            # matrix now contains no pos inf or nans.
+            # neg inf masks the unusable values and threshold is over neg inf, but below lowest valid value
+
+            # TODO: change name of logp to cost
+            if self.filter_kwargs.get("no_dist"):
+                cost_matrix = -np.exp(-probability_gain)
+                threshold = -np.exp(-self.LogProbabilityThreshold)
+            else:
+                cost_matrix = self.cost_from_logprob(probability_gain)
+                threshold = self.cost_from_logprob(probability_gain, value=self.LogProbabilityThreshold)
+
+            rows, cols = self.assign(cost_matrix, threshold=threshold)
+        else:
+            rows, cols = [], []
 
         self.Probability_Gain.update({i: np.array(probability_gain)})
 
@@ -1560,7 +1579,7 @@ class MultiFilter(Filter):
         #                if (probability_gain[rows[i], cols[i]] > threshold) | (track_length[gain_dict[rows[i]]] < 2)])
 
         assignments = dict([(gain_dict[rows[i]], cols[i]) for i in range(len(rows))
-                       if (probability_gain[rows[i], cols[i]] > threshold)|(track_length[gain_dict[rows[i]]]<2)])
+                       if (cost_matrix[rows[i], cols[i]] < threshold)])
 
         not_updated_tracks = set(self.ActiveFilters.keys()).difference(assignments.keys())
 
@@ -1568,7 +1587,7 @@ class MultiFilter(Filter):
 
         not_updated_tracks = not_updated_tracks.difference(stopped_tracks)
 
-        spawned_tracks = dict(zip(max(self.ActiveFilters.keys()) + 1 + np.arange(len(measurements)-len(assignments)),
+        spawned_tracks = dict(zip(max(self.Filters.keys()) + 1 + np.arange(len(measurements)-len(assignments)),
                                   set(range(M)).difference(assignments.values())))
 
         print("Assigned %d, not updated %d, stopped %d and spawned %d Tracks."%(len(assignments),len(not_updated_tracks), len(stopped_tracks), len(spawned_tracks)))
