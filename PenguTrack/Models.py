@@ -28,6 +28,7 @@ from __future__ import print_function, division
 import numpy as np
 #  import scipy.stats as ss
 import scipy.optimize as opt
+import pandas
 
 
 DIM_NAMES = ['X','Y','Z','U','V','W']
@@ -228,6 +229,7 @@ class Model(object):
     def add_variable(self, var):
         self.Extensions.append(var)
         self.State_Variables.append(var)
+        self.Measured_Variables.append(var)
         self.Meas_dim += 1
         self.Evolution_dim += 1
         self.State_dim += 1
@@ -266,16 +268,21 @@ class Model(object):
         return p_opt, p_cov
 
     def vec_from_meas(self, measurement):
-        # return np.array([measurement[v] for v in self.Measured_Variables])
-        m = measurement
-        if len(self.Extensions) > 0:
-            return np.vstack((np.array([measurement[v] for v in self.Measured_Variables]),
-                            np.array([m.Data[var] for var in self.Extensions])))
+        out = np.array([[measurement[v]] for v in self.Measured_Variables])
+        if len(out.shape)<2:
+            out = out[:, None]
+        return out
+
+    def vec_from_pandas(self, pandas_measurement):
+        if isinstance(pandas_measurement, pandas.DataFrame):
+            return np.asarray([[e[k] for k in self.Measured_Variables] for e in pandas_measurement.to_dict("index").values()], dtype=float)[:, :, None]
+        elif isinstance(pandas_measurement, pandas.Series):
+            pandas_measurement = pandas_measurement.to_dict()
+            return np.array([pandas_measurement[k] for k in self.Measured_Variables])[:, None]
         else:
-            return np.array([measurement[v] for v in self.Measured_Variables])
+            raise ValueError("Wrong input type!")
 
-
-    def optimize(self, states, params = None):
+    def optimize(self, states, params=None):
         if params is None:
             params = self.Opt_Params
         InitArgs = list(self.Initial_Args)
