@@ -318,8 +318,8 @@ class Filter(object):
             return np.linalg.norm(self.X[key]-self.Predicted_X[key])
         if self._state_is_gaussian_:
             x = self.X[key]-self.Predicted_X[key] - self._state_mu_[:, None]
-            x_n = np.sqrt(0.5*np.dot(x.T, np.dot(self._state_sig_1, x)))
-            return np.log(float(1.-np.erf(x_n)))
+            return float(-np.dot(x.T, np.dot(self._state_sig_1**2, x)))
+            # return float(self._state_norm_ - 0.5 * np.dot(x.T, np.dot(self._state_sig_1, x)))
             # return float(self._state_norm_ - 0.5 * np.dot(x.T, np.dot(self._state_sig_1, x)))
         return self.State_Distribution.logcdf((self.X[key]-self.Predicted_X[key]).T)
         # return self.State_Distribution.logpdf((self.X[key]-self.Predicted_X[key]).T)
@@ -331,8 +331,8 @@ class Filter(object):
             return np.linalg.norm(self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]))
         if self._meas_is_gaussian_:
             x = self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]) - self._meas_mu_[:,None]
-            x_n = np.sqrt(0.5*np.dot(x.T, np.dot(self._meas_sig_1, x)))
-            return np.log(float(1.-np.erf(x_n)))
+            return float(- np.dot(x.T, np.dot(self._meas_sig_1**2, x)/self.Model.Meas_dim))
+            # return float(self._meas_norm_ -0.5*np.dot(x.T, np.dot(self._meas_sig_1, x)))
             # return float(self._meas_norm_ -0.5*np.dot(x.T, np.dot(self._meas_sig_1, x)))
         return self.Measurement_Distribution.logcdf((self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key])).T)
         # return self.Measurement_Distribution.logpdf((self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key])).T)
@@ -742,8 +742,8 @@ class InformationFilter(KalmanBaseFilter):
         self.Model = model
 
         evolution_variance = np.array(evolution_variance, dtype=float)
-        if evolution_variance.shape != (int(self.Model.Evolution_dim),):
-            evolution_variance = np.ones(self.Model.Evolution_dim) * np.mean(evolution_variance)
+        # if evolution_variance.shape != (int(self.Model.Evolution_dim),):
+        #     evolution_variance = np.ones(self.Model.Evolution_dim) * np.mean(evolution_variance)
 
         self.Evolution_Variance = evolution_variance
         self.Q = np.diag(evolution_variance)
@@ -751,8 +751,8 @@ class InformationFilter(KalmanBaseFilter):
         self.Q_inv = np.linalg.inv(self.Q)
 
         measurement_variance = np.array(measurement_variance, dtype=float)
-        if measurement_variance.shape != (int(self.Model.Meas_dim),):
-            measurement_variance = np.ones(self.Model.Meas_dim) * np.mean(measurement_variance)
+        # if measurement_variance.shape != (int(self.Model.Meas_dim),):
+        #     measurement_variance = np.ones(self.Model.Meas_dim) * np.mean(measurement_variance)
 
         self.Measurement_Variance = measurement_variance
         self.R = np.diag(measurement_variance)
