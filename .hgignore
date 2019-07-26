@@ -74,3 +74,4 @@ docs/_build_html/*
 *.cdb-wal
 *.cdb
 venv/*
+PenguTrack/Filters.py.rej
