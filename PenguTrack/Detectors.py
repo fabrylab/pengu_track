@@ -814,6 +814,8 @@ def _cached(f):
 
 class ExtendedRegionProps(REGIONPROPS._RegionProperties):
     def __init__(self,*args, **kwargs):
+        if "coordinates" not in kwargs:
+            kwargs.update({"coordinates": None})
         super(ExtendedRegionProps, self).__init__(*args, **kwargs)
 
     # @_cached

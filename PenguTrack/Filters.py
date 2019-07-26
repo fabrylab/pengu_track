@@ -315,7 +315,8 @@ class Filter(object):
 
     def _state_log_prob_(self, key):
         if self.NoDist:
-            return np.linalg.norm(self.X[key]-self.Predicted_X[key])
+            # return np.linalg.norm(self.X[key]-self.Predicted_X[key])
+            return np.linalg.norm(self.Model.pos_from_state(self.X[key])-self.Model.pos_from_state(self.Predicted_X[key]))
         if self._state_is_gaussian_:
             x = self.X[key]-self.Predicted_X[key] - self._state_mu_[:, None]
             return float(-np.dot(x.T, np.dot(self._state_sig_1**2, x)))
@@ -328,7 +329,8 @@ class Filter(object):
         if measurement is None:
             measurement = self.Measurements[key]
         if self.NoDist:
-            return np.linalg.norm(self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]))
+            # return np.linalg.norm(self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]))
+            return np.linalg.norm(self.Model.pos_from_measurement(measurement)-self.Model.pos_from_state(self.Predicted_X[key]))
         if self._meas_is_gaussian_:
             x = self.Model.vec_from_meas(measurement)-self.Model.measure(self.Predicted_X[key]) - self._meas_mu_[:,None]
             return float(- np.dot(x.T, np.dot(self._meas_sig_1**2, x)/self.Model.Meas_dim))
@@ -522,6 +524,8 @@ class KalmanBaseFilter(Filter):
         self.Model = model
 
         evolution_variance = np.array(evolution_variance, dtype=float)
+        if evolution_variance.shape == (1,):
+            evolution_variance = np.diag(np.ones(int(self.Model.Evolution_dim))*evolution_variance)
         # if evolution_variance.shape != (int(self.Model.Evolution_dim),):
         #     evolution_variance = np.ones(self.Model.Evolution_dim) * np.mean(evolution_variance)
 
@@ -530,6 +534,8 @@ class KalmanBaseFilter(Filter):
         self.Q_0 = evolution_variance
 
         measurement_variance = np.array(measurement_variance, dtype=float)
+        if measurement_variance.shape == (1,):
+            measurement_variance = np.diag(np.ones(int(self.Model.Meas_dim))*measurement_variance)
         # if measurement_variance.shape != (int(self.Model.Meas_dim),):
         #     measurement_variance = np.ones(self.Model.Meas_dim) * np.mean(measurement_variance)
 

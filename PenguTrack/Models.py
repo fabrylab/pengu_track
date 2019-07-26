@@ -273,6 +273,33 @@ class Model(object):
             out = out[:, None]
         return out
 
+    def pos_from_measurement(self, measurement):
+        vars = [m for m in self.Measured_Variables if m.count("Position")]
+        if len(vars)==0:
+            raise ValueError("No Position Variables available!")
+        out = np.array([measurement[v] for v in vars])
+        if len(out.shape)<2:
+            out = out[:, None]
+        return out
+
+    def pos_from_measVec(self, measurement):
+        vars = [i for i,m in enumerate(self.Measured_Variables) if m.count("Position")]
+        if len(vars)==0:
+            raise ValueError("No Position Variables available!")
+        out = np.array([measurement[v] for v in vars])
+        if len(out.shape)<2:
+            out = out[:, None]
+        return out
+
+    def pos_from_state(self, state):
+        vars = [i for i,m in enumerate(self.State_Variables) if m.count("Position")]
+        if len(vars)==0:
+            raise ValueError("No Position Variables available!")
+        out = np.array([state[v] for v in vars])
+        if len(out.shape)<2:
+            out = out[:, None]
+        return out
+
     def vec_from_pandas(self, pandas_measurement):
         if isinstance(pandas_measurement, pandas.DataFrame):
             return np.asarray([[e[k] for k in self.Measured_Variables] for e in pandas_measurement.to_dict("index").values()], dtype=float)[:, :, None]
@@ -407,7 +434,7 @@ class RandomWalk(Model):
         self.State_Variables = []
         for i in range(dim):
             self.Measured_Variables.append("Position%s"%DIM_NAMES[i])
-            self.Measured_Variables.append("Position%s"%DIM_NAMES[i])
+            self.State_Variables.append("Position%s"%DIM_NAMES[i])
 
 
 class Ballistic(Model):
