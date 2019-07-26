@@ -1485,7 +1485,7 @@ class MultiFilter(Filter):
         #     z = np.array([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
 
         elif isinstance(z, np.ndarray):
-            measurements = array_to_measurement(z)
+            measurements = array_to_measurement(z, dim=self.Model.Meas_dim)
             # if len(z.shape) == 2:
             #     z = z[:, :, None]
             # meas_logp = np.ones(z.shape[0])

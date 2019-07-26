@@ -176,11 +176,11 @@ def array_to_measurement(array, keys=[], dim=2):
     non_dim_entries = [e for e in entries if (e not in dim_names and e!="Log_Probability")]
 
     if "Log_Probability" in entries:
-        return [Measurement(0., [a[entries.index(d)] for d in dim_names],
-                            data=dict([[e, a[entries.index(e)]] for e in non_dim_entries])) for a in array]
-    else:
         return [Measurement(a[entries.index("Log_Probability")],
                             [a[entries.index(d)] for d in dim_names],
+                            data=dict([[e, a[entries.index(e)]] for e in non_dim_entries])) for a in array]
+    else:
+        return [Measurement(0., [a[entries.index(d)] for d in dim_names],
                             data=dict([[e, a[entries.index(e)]] for e in non_dim_entries])) for a in array]
 
 
