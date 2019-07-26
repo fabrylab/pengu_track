@@ -76,7 +76,7 @@ Auto_Measure.pop(0)
 all_probs = []
 [all_probs.extend(a.values()) for a in Auto_Data.values()]
 all_probs = np.asarray(all_probs).T[2]
-mean_probs = [np.mean(np.array(a.values(), ndmin=2).T[2], axis=0) for a in Auto_Data.values() if len(a.values()) > 3]
+mean_probs = [np.mean(np.asarray(a.values(), ndmin=2).T[2], axis=0) for a in Auto_Data.values() if len(a.values()) > 3]
 
 heaters_x = []
 heaters_x0 = []
@@ -85,7 +85,7 @@ for a in Auto_Measure:
     if len(Auto_Measure[a])>3:
         heaters_x.extend(Auto_Measure[a].values())
         heaters_x0.extend(Auto_Measure[a].values()[:-1])
-        heaters_v.extend(np.array(Auto_Measure[a].values())[1:, :]-np.array(Auto_Measure[a].values())[:-1, :])
+        heaters_v.extend(np.asarray(Auto_Measure[a].values())[1:, :]-np.asarray(Auto_Measure[a].values())[:-1, :])
 
 heaters_x_img = []
 for a in Auto_Data:
@@ -108,7 +108,7 @@ img2 = np.zeros_like(img).T[0].T
 hist, binsx, binsy = np.histogram2d(heaters_x.T[0], heaters_x.T[1], bins=[500,500])
 # grid_x, grid_y = np.mgrid[x_min:x_max, y_min:y_max]
 # xx, yy=np.meshgrid(binsx[:-1], binsy[:-1])
-# grid_z0 = griddata(np.array([xx.flatten(), yy.flatten()]).T, hist.flatten(), (grid_x, grid_y), method='linear')
+# grid_z0 = griddata(np.asarray([xx.flatten(), yy.flatten()]).T, hist.flatten(), (grid_x, grid_y), method='linear')
 # # img2[y_min:y_max,x_min:x_max] = hist.astype(np.uint8).T
 # plt.imshow(hist.T, extent=(x_max, 2*x_max, 0, y_max), cmap="coolwarm")
 plt.imshow(hist, extent=(-250, 250, 0, 500), cmap="coolwarm", interpolation="bicubic")
@@ -133,6 +133,6 @@ plt.colorbar(heat_map)
 # plt.figure()
 # plt.hist2d(heaters_x0.T[0], heaters_x0.T[1], bins=500, cmap="coolwarm")
 plt.show()
-# plt.contourf(heaters_x0.T[0], heaters_x0.T[1], np.array(angle, ndmin=2))
+# plt.contourf(heaters_x0.T[0], heaters_x0.T[1], np.asarray(angle, ndmin=2))
 # plt.show()
 # heat = plt.hist2d()

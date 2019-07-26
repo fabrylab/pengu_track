@@ -78,20 +78,20 @@ MultiKal = MultiFilter(KalmanFilter, model, np.diag(Q),
 
 # Init_Background from Image_Median
 N = db.getImages().count()
-init = np.array(np.median([np.asarray(rgb2gray(db.getImage(frame=j).data), dtype=np.int)
+init = np.asarray(np.median([np.asarray(rgb2gray(db.getImage(frame=j).data), dtype=np.int)
                            for j in np.random.randint(0, N, 10)], axis=0), dtype=np.int)
 
 # Load horizon-markers
 horizont_type = db.getMarkerType(name="Horizon")
 try:
-    horizon_markers = np.array([[m.x, m.y] for m in db.getMarkers(type=horizont_type)]).T
+    horizon_markers = np.asarray([[m.x, m.y] for m in db.getMarkers(type=horizont_type)]).T
 except ValueError:
     raise ValueError("No markers with name 'Horizon'!")
 
 # Load penguin-markers
 penguin_type = db.getMarkerType(name="Penguin_Size")
 try:
-    penguin_markers = np.array([[m.x1, m.y1, m.x2, m.y2] for m in db.getLines(type="Penguin_Size")]).T
+    penguin_markers = np.asarray([[m.x1, m.y1, m.x2, m.y2] for m in db.getLines(type="Penguin_Size")]).T
 except ValueError:
     raise ValueError("No markers with name 'Horizon'!")
 
@@ -165,7 +165,7 @@ for image in images:
         pos.PositionZ = -VB.height
 
 
-    #if np.all(Positions != np.array([])):
+    #if np.all(Positions != np.asarray([])):
     with db.db.atomic() as transaction:
         print("Tracking")
         # Update Filter with new Detections

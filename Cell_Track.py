@@ -32,12 +32,12 @@ State_Dist = ss.multivariate_normal(cov=Q)  # Initialize Distributions for Filte
 Meas_Dist = ss.multivariate_normal(cov=R)  # Initialize Distributions for Filter
 
 # Initialize Filter
-MultiKal = MultiFilter(KalmanFilter, model, np.array([uncertainty, uncertainty]),
-                       np.array([uncertainty, uncertainty]), meas_dist=Meas_Dist, state_dist=State_Dist)
+MultiKal = MultiFilter(KalmanFilter, model, np.asarray([uncertainty, uncertainty]),
+                       np.asarray([uncertainty, uncertainty]), meas_dist=Meas_Dist, state_dist=State_Dist)
 
 # Init_Background from Image_Median
 N = db.getImages().count()
-init = np.array(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
+init = np.asarray(np.median([np.asarray(db.getImage(frame=j).data, dtype=np.int)
                            for j in np.random.randint(0, N, 10)], axis=0), dtype=np.int)
 
 # Init Segmentation Module with Init_Image

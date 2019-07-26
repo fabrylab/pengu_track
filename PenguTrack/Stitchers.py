@@ -55,7 +55,7 @@ class new_Stitcher(object):
         if len(tracks) < 1:
             raise ValueError("The given track-type is empty!")
         track_dict = dict(enumerate([t.id for t in tracks]))
-        array = np.array([db.db.execute_sql("select (SELECT x from marker as m WHERE m.image_id = i.id AND m.track_id=?) as x, (SELECT y from marker as m WHERE m.image_id = i.id AND m.track_id=?) as y from image as i order by sort_index",[track_dict[k],track_dict[k]]).fetchall() for k in sorted(track_dict.keys())], dtype=float)
+        array = np.asarray([db.db.execute_sql("select (SELECT x from marker as m WHERE m.image_id = i.id AND m.track_id=?) as x, (SELECT y from marker as m WHERE m.image_id = i.id AND m.track_id=?) as y from image as i order by sort_index",[track_dict[k],track_dict[k]]).fetchall() for k in sorted(track_dict.keys())], dtype=float)
         print("Tracks loaded!")
         self.db, self.Track_array, self.Track_Dict = db, array, track_dict
 
@@ -86,12 +86,12 @@ class new_Stitcher(object):
         if kernel is None:
             # look where tracks are defined
             not_none = np.all(~np.isnan(self.Track_array), axis=-1)
-            not_none_f = np.array(not_none)
+            not_none_f = np.asarray(not_none)
             not_none_f[:, -1:] = True
             # get positions where cumsum of not_none is 1 and track is defined (first occurence of track)
             first_vals = array[(np.nancumsum(not_none_f, axis=-1) == 1) & (not_none_f == True)]
             # same as above but with flipped time axis to get last occurence. Reflip mask array in the end
-            not_none_l = np.array(not_none)
+            not_none_l = np.asarray(not_none)
             not_none_l[:, :1] = True
             last_vals = array[((np.nancumsum(not_none_l[:, ::-1], axis=-1) == 1) & (not_none_l == True)[:,::-1])[:,::-1]]
         else:
@@ -99,7 +99,7 @@ class new_Stitcher(object):
             not_none = np.all(~np.isnan(self.Track_array), axis=-1)
             if ignore_nans:
                 # savety margin for kernel computation. worst case-> always take last frames
-                not_none_f = np.array(not_none)
+                not_none_f = np.asarray(not_none)
                 not_none_f[:, -len(kernel):] = True
                 # get cumsum of not_none (value is len of track at the specific timestep)
                 f_sum = np.cumsum(not_none_f, axis=-1)
@@ -107,7 +107,7 @@ class new_Stitcher(object):
                 first_vals = np.nansum([k * array[(f_sum == (i+1)) & (not_none_f == True)] for i, k in enumerate(kernel)],
                           axis=0)
                 # same but with flipped axis
-                not_none_l = np.array(not_none)
+                not_none_l = np.asarray(not_none)
                 not_none_l[:, :len(kernel)-1] = True
                 l_sum = np.cumsum(not_none_l[:, ::-1], axis=-1)[:, ::-1]
                 last_vals = np.nansum([k * array[(l_sum == (i+1)) & (not_none_l == True)] for i, k in enumerate(kernel)],
@@ -167,8 +167,8 @@ class new_Stitcher(object):
         # get positions where cumsum of not_none is 1 and track is defined (first occurence of track)
         first_frame = Frames[(np.cumsum(not_none, axis=-1) == 1) & (not_none == True)]
 
-        # dr = dict(np.array([rows, cols]).T)
-        # dc = dict(np.array([cols, rows]).T)
+        # dr = dict(np.asarray([rows, cols]).T)
+        # dc = dict(np.asarray([cols, rows]).T)
         Tracks = reverse_dict(self.Track_Dict)
         stitched = {}
         for j, k in enumerate(rows):
@@ -194,7 +194,7 @@ class new_Stitcher(object):
                     except KeyError:
                         while self.Track_Dict[b] not in Tracks:
                             b = stitched[b]
-                appended_id, erased_id = np.array([a,b])[np.argsort([first_frame[a], first_frame[b]])]
+                appended_id, erased_id = np.asarray([a,b])[np.argsort([first_frame[a], first_frame[b]])]
                 stitched.update({a:b})
                 print("stitching %s and %s"%(appended_id, erased_id))
                 self.__stitch__(self.Track_Dict[appended_id], self.Track_Dict[erased_id], dummy=dummy)
@@ -207,8 +207,8 @@ class new_Stitcher(object):
         # get positions where cumsum of not_none is 1 and track is defined (first occurence of track)
         first_frame = Frames[(np.cumsum(not_none, axis=-1) == 1) & (not_none == True)]
 
-        dr = dict(np.array([rows, cols]).T)
-        dc = dict(np.array([cols, rows]).T)
+        dr = dict(np.asarray([rows, cols]).T)
+        dc = dict(np.asarray([cols, rows]).T)
         Tracks = reverse_dict(self.Track_Dict)
         for j, k in enumerate(rows):
             if not rows[j]==cols[j]:
@@ -225,7 +225,7 @@ class new_Stitcher(object):
                         b = dr[b]
                     except KeyError:
                         b = dc[b]
-                appended_id, erased_id = np.array([a,b])[np.argsort([first_frame[a], first_frame[b]])]
+                appended_id, erased_id = np.asarray([a,b])[np.argsort([first_frame[a], first_frame[b]])]
                 print("stitching %s and %s"%(appended_id, erased_id))
                 self.__stitch__(self.Track_Dict[appended_id], self.Track_Dict[erased_id], dummy=dummy)
                 Tracks.pop(self.Track_Dict[erased_id])
@@ -346,7 +346,7 @@ class Richter_Stitcher(new_Stitcher):
                         row_col.update({R: C})
                         print("Overwriting Match!")
 
-        rows, cols = np.array(list(row_col.items())).T
+        rows, cols = np.asarray(list(row_col.items())).T
         self._stitch_from_rc(rows, cols, dummy=dummy)
         # for r in row_col:
         #     self.__stitch__(self.Track_Dict[r], self.Track_Dict[row_col[r]])
@@ -417,9 +417,9 @@ class new_MotionStitcher(new_Stitcher):
 class new_expDistanceStitcher(new_Stitcher):
     def __init__(self, k, w, *args, max_distance=np.inf, max_delay=np.inf, dim=(1,), **kwargs):
         super(new_expDistanceStitcher, self).__init__(*args, **kwargs)
-        k=np.array(k, ndmin=2)
+        k=np.asarray(k, ndmin=2)
         if len(k)>1:
-            self.K = np.array(k, ndmin=2)
+            self.K = np.asarray(k, ndmin=2)
         else:
             self.K = k * np.ones(dim).T
         self.W = float(w)
@@ -483,19 +483,19 @@ class Stitcher(object):
                 continue
             frames = sorted(list(X.keys()))
             l = min(len(kernel), len(frames))
-            first_vals = np.array([X[k] for k in frames[-1-l:]])/np.array([k for k in frames[-1-l:]])
-            last_vals = np.array([X[k] for k in frames[:l+1]])/np.array([k for k in frames[:l+1]])
+            first_vals = np.asarray([X[k] for k in frames[-1-l:]])/np.asarray([k for k in frames[-1-l:]])
+            last_vals = np.asarray([X[k] for k in frames[:l+1]])/np.asarray([k for k in frames[:l+1]])
 
             first_vals = first_vals[1:]-first_vals[:-1]
             last_vals = last_vals[1:]-last_vals[:-1]
             try:
-                first_vel[:,i] = np.array([np.dot(val, kernel[:l]) for val in first_vals.T[0]]).T[:, None]
+                first_vel[:,i] = np.asarray([np.dot(val, kernel[:l]) for val in first_vals.T[0]]).T[:, None]
             except ValueError:
-                first_vel[:,i] = np.array([np.dot(val, kernel[:l-1]) for val in first_vals.T[0]]).T[:, None]
+                first_vel[:,i] = np.asarray([np.dot(val, kernel[:l-1]) for val in first_vals.T[0]]).T[:, None]
             try:
-                last_vel[i:,] = np.array([np.dot(val, kernel[:l]) for val in last_vals.T[0]]).T[:, None]
+                last_vel[i:,] = np.asarray([np.dot(val, kernel[:l]) for val in last_vals.T[0]]).T[:, None]
             except ValueError:
-                last_vel[i:,] = np.array([np.dot(val, kernel[:l-1]) for val in last_vals.T[0]]).T[:, None]
+                last_vel[i:,] = np.asarray([np.dot(val, kernel[:l-1]) for val in last_vals.T[0]]).T[:, None]
         return last_vel-first_vel
 
     def pos_delta(self, kernel=np.ones(1)):
@@ -509,10 +509,10 @@ class Stitcher(object):
                 continue
             frames = sorted(list(X.keys()))
             l = min(len(kernel), len(frames))
-            first_vals = np.array([X[k] for k in frames[:l]])
-            last_vals = np.array([X[k] for k in frames[-l:]])
-            first_pos[:,i] = np.array([np.dot(val, kernel[:l]) for val in first_vals.T[0]]).T[:, None]
-            last_pos[i,:] = np.array([np.dot(val, kernel[:l]) for val in last_vals.T[0]]).T[:, None]
+            first_vals = np.asarray([X[k] for k in frames[:l]])
+            last_vals = np.asarray([X[k] for k in frames[-l:]])
+            first_pos[:,i] = np.asarray([np.dot(val, kernel[:l]) for val in first_vals.T[0]]).T[:, None]
+            last_pos[i,:] = np.asarray([np.dot(val, kernel[:l]) for val in last_vals.T[0]]).T[:, None]
         return last_pos-first_pos
 
     def spatial_diff(self):
@@ -542,8 +542,8 @@ class Stitcher(object):
             rows, cols = linear_sum_assignment(cost)
 
         print("Assigned Tracks!")
-        dr = dict(np.array([rows, cols]).T)
-        dc = dict(np.array([cols, rows]).T)
+        dr = dict(np.asarray([rows, cols]).T)
+        dc = dict(np.asarray([cols, rows]).T)
         for j, k in enumerate(rows):
             if not cost[rows[j],cols[j]] >= threshold and not rows[j]==cols[j]:
                 a = rows[j]
@@ -653,9 +653,9 @@ class MotionStitcher(Stitcher):
 class expDistanceStitcher(Stitcher):
     def __init__(self, k, w, max_distance=np.inf, max_delay=np.inf, dim=(1,)):
         super(expDistanceStitcher, self).__init__()
-        k=np.array(k, ndmin=2)
+        k=np.asarray(k, ndmin=2)
         if len(k)>1:
-            self.K = np.array(k, ndmin=2)
+            self.K = np.asarray(k, ndmin=2)
         else:
             self.K = k * np.ones(dim).T
         self.W = float(w)
@@ -941,7 +941,7 @@ class new_Splitter(new_Stitcher):
             self.Track_array[r, c:] = np.nan
             if self.db is not None:
                 db_track = self.db.getTrack(track_id)
-                db_times = np.array([m.image.sort_index for m in db_track.markers])
+                db_times = np.asarray([m.image.sort_index for m in db_track.markers])
                 # db_times = Frames[np.all(~np.isnan(self.Track_array[r]), axis=-1)]
                 if len(db_times)<1:
                     pass
@@ -977,7 +977,7 @@ class new_Motion_Splitter(new_Splitter):
         return sm
 
     def _temp_local_max_(self, array, threshold):
-        mat = np.array(array)
+        mat = np.asarray(array)
         mat[mat < threshold] = np.amin(mat)
         b = np.zeros_like(mat, dtype=bool)
         b[:, :-1] = mat[:, 1:] < mat[:, :-1]
@@ -1006,7 +1006,7 @@ class Splitter(Stitcher):
             X = self.Tracks[self.track_dict[i]].X
             if len(X)<1:
                 continue
-            x_1[i, sorted(X.keys())[1:]] = np.array(list(X.values()), dtype=float)[1:,:2]-np.array(list(X.values()), dtype=float)[:-1,:2]
+            x_1[i, sorted(X.keys())[1:]] = np.asarray(list(X.values()), dtype=float)[1:,:2]-np.asarray(list(X.values()), dtype=float)[:-1,:2]
         return x_1.T[0].T
 
     def pos(self):
@@ -1019,14 +1019,14 @@ class Splitter(Stitcher):
         return np.linalg.norm(self.pos(), axis=-1)
 
     def switch_mode(self):
-        # sm = np.array([np.abs(np.convolve(np.abs(x - np.cumsum(x) / np.arange(len(x))),
+        # sm = np.asarray([np.abs(np.convolve(np.abs(x - np.cumsum(x) / np.arange(len(x))),
         #                              [-0.1, 0., 0., 0., 0., 0.1], mode="same")) for x in self.abs_pos()])
         # kernel = np.convolve(np.convolve((np.convolve(np.ones(window_size),np.ones(window_size)),np.ones(window_size)),[1.,0,0,-1])
         sm = np.abs([np.convolve(x, [ 1,  2,  3,  0, -3, -6, -3,  0,  3,  2,  1], mode="same") for x in self.abs_pos()])
         return sm
 
     def _temp_local_max_(self, array, threshold):
-        mat = np.array(array)
+        mat = np.asarray(array)
         mat[mat<threshold] = np.amin(mat)
         b = np.zeros_like(mat, dtype=bool)
         b[:, :-1] = mat[:, 1:] < mat[:, :-1]
@@ -1048,7 +1048,7 @@ class Splitter(Stitcher):
                     self.Tracks[track_id].downfilter(t)
             if self.db is not None:
                 db_track = self.db.getTrack(track_id)
-                db_times = np.array([m.image.sort_index for m in db_track.markers])
+                db_times = np.asarray([m.image.sort_index for m in db_track.markers])
                 if len(db_times)<1:
                     pass
                 else:

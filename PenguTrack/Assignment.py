@@ -69,13 +69,13 @@ def greedy_assignment2(cost):
     # assert len(set(c)) == len(c)
     # return r,c
     # # assert len(set(r))==len(r)
-    # # mat = np.array(idx)
-    # # mat2 = np.array(idx)
+    # # mat = np.asarray(idx)
+    # # mat2 = np.asarray(idx)
     # # mat[:] = idx.min(axis=1)[:, None]
     # # mat2[:] = idx.min(axis=0)[None, :]
     # # mat3 = np.amin([mat, mat2], axis=0)
-    # # id = np.array(idx, dtype=float)
-    # # matb = np.array(id)
+    # # id = np.asarray(idx, dtype=float)
+    # # matb = np.asarray(id)
     # # rows2 =[]
     # # cols2 =[]
     # # # while not np.all(np.isnan(id)):
@@ -87,7 +87,7 @@ def greedy_assignment2(cost):
     # #     id[:, c] = np.nan
     # #     rows2.append(r)
     # #     cols2.append(c)
-    # # return np.array([np.where(mat3 == i) for i in range(min(idx.shape))]).T[0]
+    # # return np.asarray([np.where(mat3 == i) for i in range(min(idx.shape))]).T[0]
 
 
 def dummy_assignment(cost):
@@ -141,13 +141,13 @@ def splitted_solver(mat, dom_threshold=0.5):
     c1 = [uc_col_dict[c] for c in c1]
     r0.extend(r1)
     c0.extend(c1)
-    r0=np.array(r0)
-    c0=np.array(c0)
+    r0=np.asarray(r0)
+    c0=np.asarray(c0)
     args = np.argsort(r0)
     return r0[args], c0[args]
 
 def network_assignment(cost, order=2, threshold=None, method="linear"):
-    cost = np.array(cost)
+    cost = np.asarray(cost)
     if threshold is None:
         threshold = np.nanmax(cost)
 
@@ -211,7 +211,7 @@ def network_assignment(cost, order=2, threshold=None, method="linear"):
         #         row_col.update({R: C})
         #         print("Overwriting Match!")
     try:
-        rows, cols = np.array(list(row_col.items())).T
+        rows, cols = np.asarray(list(row_col.items())).T
     except ValueError:
         return [],[]
     assert len(set(rows)) == len(rows) & len(set(cols))==len(cols)
@@ -305,20 +305,20 @@ if __name__ == "__main__":
     cpal3 = seaborn.light_palette(cpal[3], n_colors=10)
 
     def polynom_exp(x, A, t):
-        x = np.array(x, dtype=float)
+        x = np.asarray(x, dtype=float)
         x = np.exp(x)
         return np.log(A * x ** t)
 
     def polynom(x, A, t):
-        x = np.array(x, dtype=float)
+        x = np.asarray(x, dtype=float)
         return A * x ** t
 
     def log(x, A, t):
-        x = np.array(x, dtype=float)
+        x = np.asarray(x, dtype=float)
         return A*x*np.log(x)
 
     def log_exp(x, A, t):
-        x = np.array(x, dtype=float)
+        x = np.asarray(x, dtype=float)
         x = np.exp(x)
         return np.log(A*x*np.log(x))
 
@@ -334,7 +334,7 @@ if __name__ == "__main__":
 
 
     i = j = k = 0
-    for alg, dat in np.array(np.meshgrid(*data_m.index.levels[:2])).reshape((2, -1)).T:
+    for alg, dat in np.asarray(np.meshgrid(*data_m.index.levels[:2])).reshape((2, -1)).T:
         if alg.count("hungarian"):
             c = cpal1[i]
             i += 1
@@ -380,7 +380,7 @@ if __name__ == "__main__":
 
     x = data_m.performance["greedy", "Synthetic Tracks"].index
     i = j = k = 0
-    for alg, dat in np.array(np.meshgrid(*data_m.index.levels[:2])).reshape((2, -1)).T:
+    for alg, dat in np.asarray(np.meshgrid(*data_m.index.levels[:2])).reshape((2, -1)).T:
         if alg.count("hungarian"):
             continue
             # c = cpal1[i]

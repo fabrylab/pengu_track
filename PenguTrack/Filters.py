@@ -191,7 +191,7 @@ class Filter(object):
                 raise KeyError("No measurement for timepoint %s." % i)
         else:
             if not isinstance(z, Measurement):
-                z = np.array(z).flatten()
+                z = np.asarray(z).flatten()
                 assert self.Model.Meas_dim == len(z),\
                     "Measurement input shape %s is not equal to model measurement dimension %s"%(
                         len(z),self.Model.Meas_dim)
@@ -208,12 +208,12 @@ class Filter(object):
         #     except(ValueError, AttributeError):
         #         self.X.update({i: np.asarray([z.PositionX])})
         #
-        z = np.array(self.Model.vec_from_meas(measurement))
+        z = np.asarray(self.Model.vec_from_meas(measurement))
         # if len(self.Model.Extensions) > 0:
-        #     z = np.array(np.hstack([np.array([measurement[v] for v in self.Model.Measured_Variables]),
-        #                     np.array([measurement.Data[var] for var in self.Model.Extensions])]))
+        #     z = np.asarray(np.hstack([np.asarray([measurement[v] for v in self.Model.Measured_Variables]),
+        #                     np.asarray([measurement.Data[var] for var in self.Model.Extensions])]))
         # else:
-        #     z = np.array([measurement[v] for v in self.Model.Measured_Variables])
+        #     z = np.asarray([measurement[v] for v in self.Model.Measured_Variables])
 
         self.X.update({i: z})
 
@@ -451,10 +451,10 @@ class Filter(object):
             self.update(z=z[i], i=i+1)
             print(self.log_prob())
 
-        return np.array(self.X.values(), dtype=float),\
-               np.array(self.X_error.values(), dtype=float),\
-               np.array(self.Predicted_X.values(), dtype=float),\
-               np.array(self.Predicted_X_error.values(), dtype=float)
+        return np.asarray(self.X.values(), dtype=float),\
+               np.asarray(self.X_error.values(), dtype=float),\
+               np.asarray(self.Predicted_X.values(), dtype=float),\
+               np.asarray(self.Predicted_X_error.values(), dtype=float)
 
     def cost_from_logprob(self, log_prob, **kwargs):
         return cost_from_logprob(log_prob, **kwargs)
@@ -484,27 +484,27 @@ class KalmanBaseFilter(Filter):
         The time series of measurements assigned to this filter. The keys equal the time stamp.
     Controls: dict
         The time series of control-vectors assigned to this filter. The keys equal the time stamp.
-    A: np.array
+    A: np.asarray
         State-Transition-Matrix, describing the evolution of the state without fluctuation.
         Received from the physical Model.
-    B: np.array
+    B: np.asarray
         State-Control-Matrix, describing the influence of external-control on the states.
         Received from the physical Model.
-    C: np.array
+    C: np.asarray
         Measurement-Matrix , describing the projection of the measurement-vector from the state-vector.
         Received from the physical Model.
-    G: np.array
+    G: np.asarray
         Evolution-Matrix, describing the evolution of state vectors by fluctuations from the state-distribution.
         Received from the physical Model.
-    Q: np.array
+    Q: np.asarray
         Covariance matrix (time-evolving) for the state-distribution.
-    Q_0: np.array
+    Q_0: np.asarray
         Covariance matrix (initial state) for the state-distribution.
-    R: np.array
+    R: np.asarray
         Covariance matrix (time-evolving) for the measurement-distribution.
-    R_0: np.array
+    R_0: np.asarray
         Covariance matrix (initial state) for the measurement-distribution.
-    P_0: np.array
+    P_0: np.asarray
         Covariance matrix (initial state) for the believe-distribution.
     """
     def __init__(self, model, evolution_variance, measurement_variance, **kwargs):
@@ -523,7 +523,7 @@ class KalmanBaseFilter(Filter):
         """
         self.Model = model
 
-        evolution_variance = np.array(evolution_variance, dtype=float)
+        evolution_variance = np.asarray(evolution_variance, dtype=float)
         if evolution_variance.shape == (1,):
             evolution_variance = np.diag(np.ones(int(self.Model.Evolution_dim))*evolution_variance)
         # if evolution_variance.shape != (int(self.Model.Evolution_dim),):
@@ -533,7 +533,7 @@ class KalmanBaseFilter(Filter):
         self.Q = evolution_variance
         self.Q_0 = evolution_variance
 
-        measurement_variance = np.array(measurement_variance, dtype=float)
+        measurement_variance = np.asarray(measurement_variance, dtype=float)
         if measurement_variance.shape == (1,):
             measurement_variance = np.diag(np.ones(int(self.Model.Meas_dim))*measurement_variance)
         # if measurement_variance.shape != (int(self.Model.Meas_dim),):
@@ -657,7 +657,7 @@ class KalmanFilter(KalmanBaseFilter):
         """
         z, i = super(KalmanFilter, self).update(z=z, i=i)
         measurement = copy(z)
-        z = np.array(self.Model.vec_from_meas(measurement))
+        z = np.asarray(self.Model.vec_from_meas(measurement))
 
         x = self._handle_state_(i, allow_predict=True, return_prediction=True)
         p = self._handle_error_(i, allow_predict=True, return_prediction=True)
@@ -707,27 +707,27 @@ class InformationFilter(KalmanBaseFilter):
         The time series of measurements assigned to this filter. The keys equal the time stamp.
     Controls: dict
         The time series of control-vectors assigned to this filter. The keys equal the time stamp.
-    A: np.array
+    A: np.asarray
         State-Transition-Matrix, describing the evolution of the state without fluctuation.
         Received from the physical Model.
-    B: np.array
+    B: np.asarray
         State-Control-Matrix, describing the influence of external-control on the states.
         Received from the physical Model.
-    C: np.array
+    C: np.asarray
         Measurement-Matrix , describing the projection of the measurement-vector from the state-vector.
         Received from the physical Model.
-    G: np.array
+    G: np.asarray
         Evolution-Matrix, describing the evolution of state vectors by fluctuations from the state-distribution.
         Received from the physical Model.
-    Q: np.array
+    Q: np.asarray
         Covariance matrix (time-evolving) for the state-distribution.
-    Q_0: np.array
+    Q_0: np.asarray
         Covariance matrix (initial state) for the state-distribution.
-    R: np.array
+    R: np.asarray
         Covariance matrix (time-evolving) for the measurement-distribution.
-    R_0: np.array
+    R_0: np.asarray
         Covariance matrix (initial state) for the measurement-distribution.
-    P_0: np.array
+    P_0: np.asarray
         Covariance matrix (initial state) for the believe-distribution.
     """
     def __init__(self, model, evolution_variance, measurement_variance, **kwargs):
@@ -747,7 +747,7 @@ class InformationFilter(KalmanBaseFilter):
         super(InformationFilter, self).__init__(model, evolution_variance, measurement_variance, **kwargs)
         self.Model = model
 
-        evolution_variance = np.array(evolution_variance, dtype=float)
+        evolution_variance = np.asarray(evolution_variance, dtype=float)
         # if evolution_variance.shape != (int(self.Model.Evolution_dim),):
         #     evolution_variance = np.ones(self.Model.Evolution_dim) * np.mean(evolution_variance)
 
@@ -756,7 +756,7 @@ class InformationFilter(KalmanBaseFilter):
         self.Q_0 = np.diag(evolution_variance)
         self.Q_inv = np.linalg.inv(self.Q)
 
-        measurement_variance = np.array(measurement_variance, dtype=float)
+        measurement_variance = np.asarray(measurement_variance, dtype=float)
         # if measurement_variance.shape != (int(self.Model.Meas_dim),):
         #     measurement_variance = np.ones(self.Model.Meas_dim) * np.mean(measurement_variance)
 
@@ -836,7 +836,7 @@ class InformationFilter(KalmanBaseFilter):
         """
         z, i = super(InformationFilter, self).update(z=z, i=i)
         measurement = copy(z)
-        z = np.array(self.Model.vec_from_meas(measurement))
+        z = np.asarray(self.Model.vec_from_meas(measurement))
 
         x = self._handle_state_(i, allow_predict=True, return_prediction=True)
         p = self._handle_error_(i, allow_predict=True, return_prediction=True)
@@ -923,7 +923,7 @@ class AdaptedKalmanFilter(KalmanBaseFilter):
         """
         z, i = super(AdaptedKalmanFilter, self).update(z=z, i=i)
         measurement = copy(z)
-        z = np.array(self.Model.vec_from_meas(measurement))
+        z = np.asarray(self.Model.vec_from_meas(measurement))
 
         x = self._handle_state_(i, allow_predict=True, return_prediction=True)
         p = self._handle_error_(i, allow_predict=True, return_prediction=True)
@@ -985,27 +985,27 @@ class AdvancedKalmanFilter(KalmanFilter):
         The time series of measurements assigned to this filter. The keys equal the time stamp.
     Controls: dict
         The time series of control-vectors assigned to this filter. The keys equal the time stamp.
-    A: np.array
+    A: np.asarray
         State-Transition-Matrix, describing the evolution of the state without fluctuation.
         Received from the physical Model.
-    B: np.array
+    B: np.asarray
         State-Control-Matrix, describing the influence of external-control on the states.
         Received from the physical Model.
-    C: np.array
+    C: np.asarray
         Measurement-Matrix , describing the projection of the measurement-vector from the state-vector.
         Received from the physical Model.
-    G: np.array
+    G: np.asarray
         Evolution-Matrix, describing the evolution of state vectors by fluctuations from the state-distribution.
         Received from the physical Model.
-    Q: np.array
+    Q: np.asarray
         Covariance matrix (time-evolving) for the state-distribution.
-    Q_0: np.array
+    Q_0: np.asarray
         Covariance matrix (initial state) for the state-distribution.
-    R: np.array
+    R: np.asarray
         Covariance matrix (time-evolving) for the measurement-distribution.
-    R_0: np.array
+    R_0: np.asarray
         Covariance matrix (initial state) for the measurement-distribution.
-    P_0: np.array
+    P_0: np.asarray
         Covariance matrix (initial state) for the believe-distribution.
     """
     def __init__(self, *args, **kwargs):
@@ -1080,7 +1080,7 @@ class AdvancedKalmanFilter(KalmanFilter):
         if self._is_obs_ and len(frames) >= self.Model.State_dim:
             frames = sorted(frames)[-self.Model.State_dim:]
             print("prev", np.diag(self.Q), np.diag(self.R))
-            cor_vals = np.array([self.Model.vec_from_meas(self.Measurements[f])-self.Model.measure(self.Predicted_X[f])
+            cor_vals = np.asarray([self.Model.vec_from_meas(self.Measurements[f])-self.Model.measure(self.Predicted_X[f])
                                  for f in frames])
             cor = np.mean([cor_vals[-i, None, :] * cor_vals[-i, :, None] for i in range(self.Model.State_dim)], axis=0)[:,:,0]
             # cor = self.COR(cor_vals, max_size=self.Model.State_dim)
@@ -1095,7 +1095,7 @@ class AdvancedKalmanFilter(KalmanFilter):
             # self.R = np.abs(self.R)
             self.Q = np.dot(np.dot(np.dot(np.dot(self.G.T, self.K), cor), self.K.T), self.G)
             print("post", np.diag(self.Q), np.diag(self.R))
-        # dif = np.array([np.dot(self.C, np.array(self.X.get(k, None)).T).T
+        # dif = np.asarray([np.dot(self.C, np.asarray(self.X.get(k, None)).T).T
         #                 - np.asarray([self.Measurements[k].PositionX,
         #                               self.Measurements[k].PositionY]) for k in self.Measurements.keys()])
         # self.R = np.cov(dif.T)
@@ -1118,7 +1118,7 @@ class AdvancedKalmanFilter(KalmanFilter):
     #     A_cross = np.dot(np.linalg.inv(np.dot(A.T, A)), A.T)
     #
     #     frames = set(self.X.keys()).intersection(self.Predicted_X.keys())
-    #     deltas = np.array([self.X[f]-self.Predicted_X[f] for f in frames])
+    #     deltas = np.asarray([self.X[f]-self.Predicted_X[f] for f in frames])
     #     C = np.vstack([c for c in self.COR(deltas, max_size=n)])
     #
     #     MH_T = np.dot(A_cross, C)
@@ -1137,17 +1137,17 @@ class AdvancedKalmanFilter(KalmanFilter):
 
     def is_optimal(self):
         frames = set(self.X.keys()).intersection(self.Predicted_X.keys())
-        deltas = np.array([self.X[f]-self.Predicted_X[f] for f in frames])
+        deltas = np.asarray([self.X[f]-self.Predicted_X[f] for f in frames])
         P = self.ACOR(deltas)
         N = len(frames)
         return np.all(np.sum([np.abs(np.diag(PP[:,:,0])) > (1.96/N**2) for PP in P[1:]], axis=0) < (0.05*N))
 
     def COR(self, vals, max_size=-1):
-        vals = np.array(vals)
+        vals = np.asarray(vals)
         if max_size < 0:
-            return np.array([np.sum(vals[f:, None, :]*vals[f:, :, None], axis=0) for f in range(len(vals))])
+            return np.asarray([np.sum(vals[f:, None, :]*vals[f:, :, None], axis=0) for f in range(len(vals))])
         else:
-            return np.array([np.sum(vals[f:, None, :]*vals[f:, :, None], axis=0) for f in range(max_size)])
+            return np.asarray([np.sum(vals[f:, None, :]*vals[f:, :, None], axis=0) for f in range(max_size)])
 
     def ACOR(self, vals):
         c = self.COR(vals)
@@ -1274,7 +1274,7 @@ class ParticleFilter(Filter):
             weights = weights/weights[-1]
             print("Workaround")
 
-        idx = np.sum(np.array(np.tile(weights, self.N).reshape((self.N, -1)) <
+        idx = np.sum(np.asarray(np.tile(weights, self.N).reshape((self.N, -1)) <
                      np.tile(np.random.rand(self.N), self.N).reshape((self.N, -1)).T, dtype=int), axis=1)
         print(len(set(idx)))
         values = self.Particles.values()
@@ -1432,7 +1432,7 @@ class MultiFilter(Filter):
         if len(z)<1:
             raise ValueError("No Measurements found!")
         measurements = list(z)
-        z = np.array([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
+        z = np.asarray([self.Model.vec_from_meas(m) for m in measurements], dtype=float)
 
         M = z.shape[0]
 
@@ -1479,10 +1479,10 @@ class MultiFilter(Filter):
             measurements = list(z)
             # self.Measurements.update({i:measurements})
 
-            # meas_logp = np.array([m.Log_Probability for m in z])
+            # meas_logp = np.asarray([m.Log_Probability for m in z])
         # if isinstance(z, tuple) and len(z)==2:
         #     z = z[0]
-        #     z = np.array([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
+        #     z = np.asarray([self.Model.vec_from_meas(m) for m in measurements], ndmin=2)
 
         elif isinstance(z, np.ndarray):
             measurements = array_to_measurement(z, dim=self.Model.Meas_dim)
@@ -1498,12 +1498,12 @@ class MultiFilter(Filter):
         self.Measurements.update({i: measurements})
 
         # meas_logp = measurements.Log_Probability
-        meas_logp = np.array([m.Log_Probability for m in measurements])
+        meas_logp = np.asarray([m.Log_Probability for m in measurements])
         if verbose:
             print("Total number of detections: %d, valid detections: %d"%(len(meas_logp),(~np.isneginf(meas_logp)).sum()))
 
         # z = self.Model.vec_from_pandas(measurements)
-        z = np.array([self.Model.vec_from_meas(m) for m in measurements])
+        z = np.asarray([self.Model.vec_from_meas(m) for m in measurements])
 
         mask = ~np.isneginf(meas_logp)
         if not np.all(~mask):
@@ -1512,7 +1512,7 @@ class MultiFilter(Filter):
             #                (self.MeasurementProbabilityThreshold * (np.nanmax(meas_logp) - np.nanmin(meas_logp)))).astype(bool)
             z = z[mask]
             # measurements = list(np.asarray(measurements)[mask])
-            measurements = np.array(measurements)[mask]
+            measurements = np.asarray(measurements)[mask]
         else:
             # TODO: will ich das wirklich machen?
             self.Measurements.pop(i, None)
@@ -1573,7 +1573,7 @@ class MultiFilter(Filter):
         else:
             rows, cols = [], []
 
-        self.Probability_Gain.update({i: np.array(probability_gain)})
+        self.Probability_Gain.update({i: np.asarray(probability_gain)})
 
         track_length = dict(zip(gain_dict.values(), np.zeros(len(gain_dict), dtype=int)))
         track_length.update(dict([[k, len(self.ActiveFilters[k].X)] for k in self.ActiveFilters]))
@@ -1640,8 +1640,8 @@ class MultiFilter(Filter):
         z: list of PenguTrack.Measurement objects
             Recent measurements.
         """
-        u = np.array(u)
-        z = np.array(z)
+        u = np.asarray(u)
+        z = np.asarray(z)
         assert u.shape[0] == z.shape[0]
 
         for i in range(z.shape[0]):
@@ -1888,14 +1888,14 @@ class HybridSolver(Tracker):
 #         """
 #         measurements = list(z)
 #
-#         meas_logp = np.array([m.Log_Probability for m in z])
+#         meas_logp = np.asarray([m.Log_Probability for m in z])
 #         try:
-#             z = np.array([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
+#             z = np.asarray([np.asarray([m.PositionX, m.PositionY, m.PositionZ]) for m in z], ndmin=2)
 #         except (ValueError, AttributeError):
 #             try:
-#                 z = np.array([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
+#                 z = np.asarray([np.asarray([m.PositionX, m.PositionY]) for m in z], ndmin=2)
 #             except (ValueError, AttributeError):
-#                 z = np.array([np.asarray([m.PositionX]) for m in z], ndmin=2)
+#                 z = np.asarray([np.asarray([m.PositionX]) for m in z], ndmin=2)
 #         # print(np.mean(meas_logp), np.amin(meas_logp), np.amax(meas_logp))
 #         print(len(z))
 #         z = z[meas_logp - np.amin(meas_logp) >= (self.MeasurementProbabilityThreshold * (np.amax(meas_logp)-np.amin(meas_logp)))]
@@ -1939,7 +1939,7 @@ class HybridSolver(Tracker):
 #         # print(norm)
 #         # probability_gain = probability_gain-norm #(probability_gain.T - np.log(norm)).T
 #         # print(probability_gain)
-#         self.Probability_Gain.update({i: np.array(probability_gain)})
+#         self.Probability_Gain.update({i: np.asarray(probability_gain)})
 #         # self.CriticalIndex = gain_dict[np.nanargmax([np.sort(a)[-2]/np.sort(a)[-1] for a in probability_gain[:N]])]
 #         x = {}
 #         x_err = {}

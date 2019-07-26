@@ -58,13 +58,13 @@ class Model(object):
         The arguments, which were given in the init function.
     Initial_KWArgs: dict
         The keyword-arguments, which were given in the init function.
-    State_Matrix: np.array
+    State_Matrix: np.asarray
         The evolution-matrix of the unperturbed system.
-    Control_Matrix: np.array
+    Control_Matrix: np.asarray
         The evolution-matrix, which shows the influence of external control.
-    Measurement_Matrix: np.array
+    Measurement_Matrix: np.asarray
         The matrix, which shows how the state vectors are projected into a measurement vector.
-    Evolution_Matrix: np.array
+    Evolution_Matrix: np.asarray
         The matrix, which shows the influence of statistical fluctuations to the state.
     Measured_Variables: list
         List of variables, that are measured within the model.
@@ -129,7 +129,7 @@ class Model(object):
 
         Returns
         -------
-        prediction: np.array
+        prediction: np.asarray
             New state vector.
         """
         return self.__state_function__(state_vector) + self.__control_function__(control_vector)
@@ -145,7 +145,7 @@ class Model(object):
 
         Returns
         -------
-        measurement: np.array
+        measurement: np.asarray
             Expected measurement vector.
         """
         return self.__measurement_function__(state_vector)
@@ -163,7 +163,7 @@ class Model(object):
 
         Returns
         -------
-            state: np.array
+            state: np.asarray
                 Calculated state vector.
         """
         if state_vector is None:
@@ -198,7 +198,7 @@ class Model(object):
 
         Returns
         -------
-        state: np.array
+        state: np.asarray
             Calculated state vector.
 
         Raises
@@ -220,7 +220,7 @@ class Model(object):
 
         Returns
         -------
-        pseudo-inverse: np.array
+        pseudo-inverse: np.asarray
             Calculated pseudo-inverse.
         """
         matrix = np.asarray(matrix)
@@ -268,7 +268,7 @@ class Model(object):
         return p_opt, p_cov
 
     def vec_from_meas(self, measurement):
-        out = np.array([[measurement[v]] for v in self.Measured_Variables])
+        out = np.asarray([measurement[v] for v in self.Measured_Variables])
         if len(out.shape)<2:
             out = out[:, None]
         return out
@@ -277,7 +277,7 @@ class Model(object):
         vars = [m for m in self.Measured_Variables if m.count("Position")]
         if len(vars)==0:
             raise ValueError("No Position Variables available!")
-        out = np.array([measurement[v] for v in vars])
+        out = np.asarray([measurement[v] for v in vars])
         if len(out.shape)<2:
             out = out[:, None]
         return out
@@ -286,7 +286,7 @@ class Model(object):
         vars = [i for i,m in enumerate(self.Measured_Variables) if m.count("Position")]
         if len(vars)==0:
             raise ValueError("No Position Variables available!")
-        out = np.array([measurement[v] for v in vars])
+        out = np.asarray([measurement[v] for v in vars])
         if len(out.shape)<2:
             out = out[:, None]
         return out
@@ -295,7 +295,7 @@ class Model(object):
         vars = [i for i,m in enumerate(self.State_Variables) if m.count("Position")]
         if len(vars)==0:
             raise ValueError("No Position Variables available!")
-        out = np.array([state[v] for v in vars])
+        out = np.asarray([state[v] for v in vars])
         if len(out.shape)<2:
             out = out[:, None]
         return out
@@ -305,7 +305,7 @@ class Model(object):
             return np.asarray([[e[k] for k in self.Measured_Variables] for e in pandas_measurement.to_dict("index").values()], dtype=float)[:, :, None]
         elif isinstance(pandas_measurement, pandas.Series):
             pandas_measurement = pandas_measurement.to_dict()
-            return np.array([pandas_measurement[k] for k in self.Measured_Variables])[:, None]
+            return np.asarray([pandas_measurement[k] for k in self.Measured_Variables])[:, None]
         else:
             raise ValueError("Wrong input type!")
 
@@ -328,12 +328,12 @@ class Model(object):
     # def __compare_measurements__(self, measurements):
     #     m = measurements[:-1]
     #     m_p1 = measurements[1:]
-    #     return np.mean(np.linalg.norm(m_p1-np.array([self.measure(self.predict(self.infer_state(mm),
+    #     return np.mean(np.linalg.norm(m_p1-np.asarray([self.measure(self.predict(self.infer_state(mm),
     #                                                                            np.zeros((self.Control_dim, 0)))) for mm in m]), axis=1))
     # def __compare_states__(self, states):
     #     s = states[:-1]
     #     s_p1 = s[1:]
-    #     return np.mean(np.linalg.norm(s_p1-np.array([self.predict(ss,
+    #     return np.mean(np.linalg.norm(s_p1-np.asarray([self.predict(ss,
     #                                                               np.zeros((self.Control_dim, 0))) for ss in s]), axis=1))
 
     def __opt_func__(self, states, params, *init_args):
@@ -345,7 +345,7 @@ class Model(object):
         for i,o in enumerate(sorted(params)):
             kwargs[o] = init_args[i]
         self.__init__(*self.Initial_Args, **kwargs)
-        return np.array([self.predict(ss,np.zeros((self.Control_dim, 1))) for ss in states]).flatten()
+        return np.asarray([self.predict(ss,np.zeros((self.Control_dim, 1))) for ss in states]).flatten()
 
     def __flatparams__(self, param_dict, params=None):
         if params is None:
@@ -359,8 +359,8 @@ class Model(object):
         lens = [0]
         lens.extend([len(np.ones(self.Opt_Params_Shape[o]).flatten()) for o in sorted(params)])
         cum_lens = np.cumsum(lens)
-        # return dict([[o, np.array(param_array[c:l]).reshape(self.Opt_Params_Shape[o])]for l, c, o in zip(cum_lens[1:], cum_lens[:-1], sorted(params))])
-        return [np.array(param_array[c:l]).reshape(self.Opt_Params_Shape[o])for l, c, o in zip(cum_lens[1:], cum_lens[:-1], sorted(params))]
+        # return dict([[o, np.asarray(param_array[c:l]).reshape(self.Opt_Params_Shape[o])]for l, c, o in zip(cum_lens[1:], cum_lens[:-1], sorted(params))])
+        return [np.asarray(param_array[c:l]).reshape(self.Opt_Params_Shape[o])for l, c, o in zip(cum_lens[1:], cum_lens[:-1], sorted(params))]
 
     def __flatborders__(self, borderarray, params=None):
         if params is None:
@@ -393,13 +393,13 @@ class RandomWalk(Model):
         The arguments, which were given in the init function.
     Initial_KWArgs: dict
         The keyword-arguments, which were given in the init function.
-    State_Matrix: np.array
+    State_Matrix: np.asarray
         The evolution-matrix of the unperturbed system.
-    Control_Matrix: np.array
+    Control_Matrix: np.asarray
         The evolution-matrix, which shows the influence of external control.
-    Measurement_Matrix: np.array
+    Measurement_Matrix: np.asarray
         The matrix, which shows how the state vectors are projected into a measurement vector.
-    Evolution_Matrix: np.array
+    Evolution_Matrix: np.asarray
         The matrix, which shows the influence of statistical fluctuations to the state.
     Measured_Variables: list
         List of variables, that are measured within the model.
@@ -443,7 +443,7 @@ class Ballistic(Model):
 
     Attributes
     ----------
-    Damping: np.array
+    Damping: np.asarray
         Damping constant(s) for ballistic model.
     Mass: float
         Mass of Object.
@@ -467,13 +467,13 @@ class Ballistic(Model):
         The arguments, which were given in the init function.
     Initial_KWArgs: dict
         The keyword-arguments, which were given in the init function.
-    State_Matrix: np.array
+    State_Matrix: np.asarray
         The evolution-matrix of the unperturbed system.
-    Control_Matrix: np.array
+    Control_Matrix: np.asarray
         The evolution-matrix, which shows the influence of external control.
-    Measurement_Matrix: np.array
+    Measurement_Matrix: np.asarray
         The matrix, which shows how the state vectors are projected into a measurement vector.
-    Evolution_Matrix: np.array
+    Evolution_Matrix: np.asarray
         The matrix, which shows the influence of statistical fluctuations to the state.
     Measured_Variables: list
         List of variables, that are measured within the model.
@@ -549,7 +549,7 @@ class VariableSpeed(Model):
 
     Attributes
     ----------
-    Damping: np.array
+    Damping: np.asarray
         Damping constant(s) for ballistic model.
     Timeconst: float
         Step-width of time-discretization.
@@ -571,13 +571,13 @@ class VariableSpeed(Model):
         The arguments, which were given in the init function.
     Initial_KWArgs: dict
         The keyword-arguments, which were given in the init function.
-    State_Matrix: np.array
+    State_Matrix: np.asarray
         The evolution-matrix of the unperturbed system.
-    Control_Matrix: np.array
+    Control_Matrix: np.asarray
         The evolution-matrix, which shows the influence of external control.
-    Measurement_Matrix: np.array
+    Measurement_Matrix: np.asarray
         The matrix, which shows how the state vectors are projected into a measurement vector.
-    Evolution_Matrix: np.array
+    Evolution_Matrix: np.asarray
         The matrix, which shows the influence of statistical fluctuations to the state.
     Measured_Variables: list
         List of variables, that are measured within the model.
@@ -650,7 +650,7 @@ class BallisticWSpeed(VariableSpeed):
 
     Attributes
     ----------
-    Damping: np.array
+    Damping: np.asarray
         Damping constant(s) for ballistic model.
     Timeconst: float
         Step-width of time-discretization.
@@ -672,13 +672,13 @@ class BallisticWSpeed(VariableSpeed):
         The arguments, which were given in the init function.
     Initial_KWArgs: dict
         The keyword-arguments, which were given in the init function.
-    State_Matrix: np.array
+    State_Matrix: np.asarray
         The evolution-matrix of the unperturbed system.
-    Control_Matrix: np.array
+    Control_Matrix: np.asarray
         The evolution-matrix, which shows the influence of external control.
-    Measurement_Matrix: np.array
+    Measurement_Matrix: np.asarray
         The matrix, which shows how the state vectors are projected into a measurement vector.
-    Evolution_Matrix: np.array
+    Evolution_Matrix: np.asarray
         The matrix, which shows the influence of statistical fluctuations to the state.
     Measured_Variables: list
         List of variables, that are measured within the model.
@@ -728,7 +728,7 @@ class AR(Model):
     ----------
     Order: int
         Order of the AR-Process. Order = 1 equals an AR1-Process.
-    Coefficients: np.array
+    Coefficients: np.asarray
         Coefficients of the AR-Process. These describe the time-dependent behaviour of the model.
     State_dim: int
         Number of entries in the state-vector.
@@ -748,13 +748,13 @@ class AR(Model):
         The arguments, which were given in the init function.
     Initial_KWArgs: dict
         The keyword-arguments, which were given in the init function.
-    State_Matrix: np.array
+    State_Matrix: np.asarray
         The evolution-matrix of the unperturbed system.
-    Control_Matrix: np.array
+    Control_Matrix: np.asarray
         The evolution-matrix, which shows the influence of external control.
-    Measurement_Matrix: np.array
+    Measurement_Matrix: np.asarray
         The matrix, which shows how the state vectors are projected into a measurement vector.
-    Evolution_Matrix: np.array
+    Evolution_Matrix: np.asarray
         The matrix, which shows the influence of statistical fluctuations to the state.
     Measured_Variables: list
         List of variables, that are measured within the model.
@@ -829,7 +829,7 @@ class MA(Model):
     ----------
     Order: int
         Order of the MA-Process. Order = 1 equals an MA1-Process.
-    Coefficients: np.array
+    Coefficients: np.asarray
         Coefficients of the AR-Process. These describe the time-dependent behaviour of the model.
     State_dim: int
         Number of entries in the state-vector.
@@ -849,13 +849,13 @@ class MA(Model):
         The arguments, which were given in the init function.
     Initial_KWArgs: dict
         The keyword-arguments, which were given in the init function.
-    State_Matrix: np.array
+    State_Matrix: np.asarray
         The evolution-matrix of the unperturbed system.
-    Control_Matrix: np.array
+    Control_Matrix: np.asarray
         The evolution-matrix, which shows the influence of external control.
-    Measurement_Matrix: np.array
+    Measurement_Matrix: np.asarray
         The matrix, which shows how the state vectors are projected into a measurement vector.
-    Evolution_Matrix: np.array
+    Evolution_Matrix: np.asarray
         The matrix, which shows the influence of statistical fluctuations to the state.
     Measured_Variables: list
         List of variables, that are measured within the model.

@@ -95,7 +95,7 @@ def measurements_to_array(measurements):
         entries = [e for e in entries if e in m.keys()]
         extra_keys.update(m.Data.keys())
     entries.extend(extra_keys)
-    return np.array([[m[e] for e in entries] for m in measurements], dtype=float)
+    return np.asarray([[m[e] for e in entries] for m in measurements], dtype=float)
 
 
 def pandasDF_to_array(DF):
@@ -224,7 +224,7 @@ class Measurement(dotdict):
             self.Track_Id = None
 
         if cov is not None:
-            cov = np.array(cov)
+            cov = np.asarray(cov)
             if len(cov.shape)<1:
                 self.Covariance = np.ones(len(position))*float(cov)
             elif len(cov.shape)<2:
@@ -250,12 +250,12 @@ class Measurement(dotdict):
 
     def getPosition(self):
         try:
-            return np.array([self.PositionX, self.PositionY, self.PositionZ], dtype=float)
+            return np.asarray([self.PositionX, self.PositionY, self.PositionZ], dtype=float)
         except AttributeError:
             try:
-                return np.array([self.PositionX, self.PositionY], dtype=float)
+                return np.asarray([self.PositionX, self.PositionY], dtype=float)
             except ValueError:
-                return np.array([self.PositionX], dtype=float)
+                return np.asarray([self.PositionX], dtype=float)
 
     def getVector(self, keys):
         return [self[k] for k in keys]
@@ -350,7 +350,7 @@ class BlobDetector(Detector):
         regions: array_like
             List of information about each blob of adequate size.
         """
-        image = np.array(image, dtype=int)
+        image = np.asarray(image, dtype=int)
         while len(image.shape) > 2:
             image = np.linalg.norm(image, axis=-1)
         if self.Threshold is None:
@@ -468,7 +468,7 @@ class SimpleAreaDetector2(Detector):
         regions_list = [prop for prop in skimage.measure.regionprops(labeled, intensity_image=image)
                        if (self.UpperLimit > prop.area > self.LowerLimit)]
         if len(regions_list) <= 0:
-            return np.array([])
+            return np.asarray([])
 
         print("Object Area at ", self.ObjectArea, "pm", self.Sigma)
 
@@ -602,7 +602,7 @@ class SimpleAreaDetector(Detector):
         regions_list = [prop for prop in skimage.measure.regionprops(labeled)
                        if (self.UpperLimit >= prop.area >= self.LowerLimit and prop.solidity > 0.5)]
         if len(regions_list) <= 0:
-            return np.array([])
+            return np.asarray([])
 
         print("Object Area at ", self.ObjectArea, "pm", self.Sigma)
 
@@ -1168,7 +1168,7 @@ class AreaDetector(Detector):
         """
         while len(image.shape) > 2:
             image = np.linalg.norm(image, axis=-1)
-        image = np.array(image, dtype=bool)
+        image = np.asarray(image, dtype=bool)
 
         labeled = skimage.measure.label(image, connectivity=2)
 
@@ -1195,7 +1195,7 @@ class AreaDetector(Detector):
         regions_list = [prop for prop in skimage.measure.regionprops(labeled) if prop.area > self.LowerLimit]
 
         if len(regions_list) <= 0:
-            return np.array([])
+            return np.asarray([])
 
 
         print("Object Area at ",self.ObjectArea, "pm", self.Sigma)
@@ -1308,14 +1308,14 @@ class AreaBlobDetector(Detector):
         """
         while len(image.shape) > 2:
             image = np.linalg.norm(image, axis=-1)
-        image = np.array(image, dtype=bool)
+        image = np.asarray(image, dtype=bool)
         regions = skimage.measure.regionprops(skimage.measure.label(image))
         if len(regions) <= 0:
-            return np.array([])
+            return np.asarray([])
 
         areas = np.asarray([props.area for props in regions])
         if self.Threshold is None:
-            testareas = np.array(areas)
+            testareas = np.asarray(areas)
             filtered_max = areas.max()
             filtered_min = areas.min()
             n = int(float(filtered_max)/filtered_min)+1
@@ -1396,7 +1396,7 @@ class WatershedDetector(Detector):
         """
         while len(image.shape) > 2:
             image = np.linalg.norm(image, axis=-1)
-        image = np.array(image, dtype=bool)
+        image = np.asarray(image, dtype=bool)
 
         markers = ndi.label(peak_local_max(skimage.filters.laplace(skimage.filters.gaussian(image.astype(np.uint8),
                                            self.ObjectSize)),
@@ -1489,16 +1489,16 @@ class TinaCellDetector(Detector):
         labels, n = label(mask_ind)
         #labels, n = label(mask_dilation2)
         regions = regionprops(labels)
-        posx = np.array([e.centroid[0] for e in regions])
-        posy = np.array([e.centroid[1] for e in regions])
+        posx = np.asarray([e.centroid[0] for e in regions])
+        posy = np.asarray([e.centroid[1] for e in regions])
 
         # threshold depending on cellsize
-        area = np.array([e.area for e in regions])
+        area = np.asarray([e.area for e in regions])
         area_thres_min = self.MinimalArea
         area_thres_max = self.MaximalArea
         cells = [r for r in regions if (r.area <= area_thres_max) and (r.area >= area_thres_min)]
-        cellx = np.array([e.centroid[0] for e in cells])
-        celly = np.array([e.centroid[1] for e in cells])
+        cellx = np.asarray([e.centroid[0] for e in cells])
+        celly = np.asarray([e.centroid[1] for e in cells])
 
         cell_program = np.vstack((cellx, celly))
         cell_program = cell_program.transpose()
@@ -1506,8 +1506,8 @@ class TinaCellDetector(Detector):
         posarea = ['%d' %e.area for e in regions]
 
         labelposforz = [cells[e].label for e in range(len(cells))]
-        zmaxind = np.array([np.nanmean(maxIndices[labels==labelposforz[e]]) for e in range(len(labelposforz))])
-        zminind = np.array([np.nanmean(minIndices[labels==labelposforz[e]]) for e in range(len(labelposforz))])
+        zmaxind = np.asarray([np.nanmean(maxIndices[labels==labelposforz[e]]) for e in range(len(labelposforz))])
+        zminind = np.asarray([np.nanmean(minIndices[labels==labelposforz[e]]) for e in range(len(labelposforz))])
         meanind = (zmaxind+zminind)/2
         zpos = []
         for e in meanind:
@@ -1558,7 +1558,7 @@ class ThresholdSegmentation(Segmentation):
         self.reskale = reskale
 
     def segmentate(self, image, *args, **kwargs):
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
         print(data.shape)
 
         if self.width is None or self.height is None:
@@ -1610,7 +1610,7 @@ class VarianceSegmentation(Segmentation):
         self.selem = skimage.morphology.disk(self.Radius)
 
     def segmentate(self, image, *args, **kwargs):
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
 
         if self.width is None or self.height is None:
             self.width, self.height = data.shape[:2]
@@ -1643,7 +1643,7 @@ class VarianceSegmentation(Segmentation):
         stack = [img]
         for s in shifts:
             stack.append(shift(img, s, order=0, mode='reflect'))
-        stack = np.array(stack)
+        stack = np.asarray(stack)
         return np.std(stack, axis=0)
 
 class MoGSegmentation(Segmentation):
@@ -1677,7 +1677,7 @@ class MoGSegmentation(Segmentation):
         self.dists = None
 
         if init_image is not None:
-            data = np.array(init_image, ndmin=2)
+            data = np.asarray(init_image, ndmin=2)
             selem = np.ones((3, 3))
             if len(data.shape) == 3:
                 data_mean = np.asarray([filters.rank.mean(color_channel, selem) for color_channel in data.T]).T
@@ -1714,7 +1714,7 @@ class MoGSegmentation(Segmentation):
         """
         super(MoGSegmentation, self).detect(image)
 
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
 
         if self.width is None or self.height is None:
             self.width, self.height = data.shape[:2]
@@ -1750,7 +1750,7 @@ class MoGSegmentation(Segmentation):
 
     def update(self, mask, image, *args, **kwargs):
 
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
 
         if self.width is None or self.height is None:
             self.width, self.height = data.shape[:2]
@@ -1791,7 +1791,7 @@ class MoGSegmentation(Segmentation):
         """
         super(MoGSegmentation, self).detect(image)
 
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
 
         if self.width is None or self.height is None:
             self.width, self.height = data.shape[:2]
@@ -1870,7 +1870,7 @@ class MoGSegmentation2(Segmentation):
         self.NN = None
 
         if init_image is not None:
-            data = np.array(init_image, ndmin=2)
+            data = np.asarray(init_image, ndmin=2)
             self.__dt__ = smallest_dtype(data)
             print(self.__dt__)
             if len(data.shape) == 3:
@@ -1918,7 +1918,7 @@ class MoGSegmentation2(Segmentation):
 
     def segmentate(self, image, do_neighbours=True, mask=None, *args, **kwargs):
         super(MoGSegmentation2, self).segmentate(image)
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
         self.Mask = mask
 
         if self.width is None or self.height is None:
@@ -1976,7 +1976,7 @@ class MoGSegmentation2(Segmentation):
 
     def update(self, mask, image, do_neighbours=True, *args, **kwargs):
 
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
 
         if self.width is None or self.height is None:
             self.width, self.height = data.shape[:2]
@@ -2038,7 +2038,7 @@ class ViBeSegmentation(Segmentation):
         self.Samples = None
 
         if init_image is not None:
-            data = np.array(init_image, ndmin=2)
+            data = np.asarray(init_image, ndmin=2)
             self.__dt__ = smallest_dtype(data)
             print(self.__dt__)
             if len(data.shape) == 3:
@@ -2088,7 +2088,7 @@ class ViBeSegmentation(Segmentation):
 
     def segmentate(self, image, do_neighbours=True, mask=None, return_diff=False, *args, **kwargs):
         super(ViBeSegmentation, self).segmentate(image)
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
         self.Mask = mask
 
         if self.width is None or self.height is None:
@@ -2136,7 +2136,7 @@ class ViBeSegmentation(Segmentation):
 
     def update(self, mask, image, do_neighbours=True, *args, **kwargs):
 
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
 
         if self.width is None or self.height is None:
             self.width, self.height = data.shape[:2]
@@ -2165,7 +2165,7 @@ class ViBeSegmentation(Segmentation):
         do_neighbours = False
         n = np.sum(image_mask)
         if n > 0 and do_neighbours:
-            x, y = np.array(np.meshgrid(np.arange(self.width), np.arange(self.height))).T[image_mask].T
+            x, y = np.asarray(np.meshgrid(np.arange(self.width), np.arange(self.height))).T[image_mask].T
             rand_x, rand_y = np.asarray(map(self._Neighbour_Map.get, np.random.randint(0, 8, size=n))).T
             rand_x += x
             rand_y += y
@@ -2202,7 +2202,7 @@ class MeanViBeSegmentation(Segmentation):
         self._counter = 0
         self.__dt__ = float
         if init_image is not None:
-            data = np.array(init_image, ndmin=2)
+            data = np.asarray(init_image, ndmin=2)
             # self.__dt__ = smallest_dtype(data)
             # print(self.__dt__)
             if len(data.shape) == 3:
@@ -2216,7 +2216,7 @@ class MeanViBeSegmentation(Segmentation):
         #     self.__dt__ = None
 
     def segmentate(self, image, *args, **kwargs):
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
             
         if self.Samples is None:
             self.Samples = np.tile(data, self.N).reshape((self.N,)+data.shape)
@@ -2241,7 +2241,7 @@ class MeanViBeSegmentation(Segmentation):
         return self.SegMap
 
     def update(self, mask, image, *args, **kwargs):
-        data = np.array(image, ndmin=2, dtype=self.__dt__)
+        data = np.asarray(image, ndmin=2, dtype=self.__dt__)
         # self.Samples[:-1] = self.Samples[1:]
 
         x_0 = data
@@ -2271,7 +2271,7 @@ class DumbViBeSegmentation(ViBeSegmentation):
 
     def segmentate(self, image, do_neighbours=True, mask=None, return_diff=False, *args, **kwargs):
         super(ViBeSegmentation, self).segmentate(image)
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
         self.Mask = mask
 
         if self.width is None or self.height is None:
@@ -2315,7 +2315,7 @@ class DumbViBeSegmentation(ViBeSegmentation):
 
     def update(self, mask, image, do_neighbours=True, *args, **kwargs):
 
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
 
         if self.width is None or self.height is None:
             self.width, self.height = data.shape[:2]
@@ -2353,7 +2353,7 @@ class AlexSegmentation(ViBeSegmentation):
 
     def segmentate(self, image, do_neighbours=True, mask=None, *args, **kwargs):
         super(ViBeSegmentation, self).segmentate(image)
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
         self.Mask = mask
 
         if self.width is None or self.height is None:
@@ -2395,7 +2395,7 @@ class AlexSegmentation(ViBeSegmentation):
         return self.SegMap, diff
 
     def update(self, mask, image, do_neighbours=True):
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
 
         if self.width is None or self.height is None:
             self.width, self.height = data.shape[:2]
@@ -2474,7 +2474,7 @@ class BlobSegmentation(Segmentation):
         """
         super(BlobSegmentation, self).detect(image)
 
-        data = np.array(image, ndmin=2)
+        data = np.asarray(image, ndmin=2)
 
         if self.width is None or self.height is None:
             self.width, self.height = data.shape[:2]
@@ -2486,7 +2486,7 @@ class BlobSegmentation(Segmentation):
             self.Skale = this_skale
 
         data = (data.astype(float)*(self.Skale/this_skale)).astype(np.int32)
-        image = np.array(data, dtype=int)
+        image = np.asarray(data, dtype=int)
         while len(image.shape) > 2:
             image = np.linalg.norm(image, axis=-1)
 
@@ -2553,7 +2553,7 @@ class EmperorDetector(FlowDetector):
         self.LuminanceThreshold = kwargs.get("luminance_threshold", 1.3)
         self.RegionDetector = RegionPropDetector([rf1])
 
-        image = np.array(initial_image)
+        image = np.asarray(initial_image)
         if len(image.shape) == 3:
             image_int = rgb2gray(image)
         elif len(image.shape) == 2:
@@ -2563,8 +2563,8 @@ class EmperorDetector(FlowDetector):
         self.update(np.ones_like(image_int, dtype=bool), image_int)
 
     def detect(self, image0, image1, *args, **kwargs):
-        image0 = np.array(image0)
-        image1 = np.array(image1)
+        image0 = np.asarray(image0)
+        image1 = np.asarray(image1)
         if len(image0.shape) == 3:
             image0_int = rgb2gray(image0)
         elif len(image0.shape) == 2:
@@ -2596,9 +2596,9 @@ class EmperorDetector(FlowDetector):
             image0_int > self.LuminanceThreshold*threshold_niblack(image0_int, window_size=window_size)
             , image0_int)
 
-        indices, points_x, points_y = np.array([[i, m.PositionX, m.PositionY] for i, m in enumerate(measurements)],
+        indices, points_x, points_y = np.asarray([[i, m.PositionX, m.PositionY] for i, m in enumerate(measurements)],
                                                dtype=object).T
-        points = np.array([points_x, points_y]).T
+        points = np.asarray([points_x, points_y]).T
         vel_x = interpolatorX(points)
         vel_y = interpolatorY(points)
         for i in indices:
@@ -2839,14 +2839,14 @@ class TCellDetector(Detector):
         # labels2D = remove_small_objects(labels2D, 24)
 
         regions = regionprops(labels2D, maskedMinIndices)
-        areas = np.array([r.area for r in regions])
+        areas = np.asarray([r.area for r in regions])
         area_thres = filters.threshold_otsu(areas) * 0.7
         if area_thres > 60:
             area_thres = 38.0
         if area_thres < 10:
             area_thres = 10.0
         regions = [r for r in regions if r.area >= area_thres]
-        #centroids = np.array([r.centroid for r in regions]).T
+        #centroids = np.asarray([r.centroid for r in regions]).T
 
         out = []
         mu = np.mean([prop.area for prop in regions])

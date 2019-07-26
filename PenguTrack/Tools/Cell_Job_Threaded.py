@@ -16,7 +16,7 @@ input_file2 = "/home/alex/2017-03-10_Tzellen_microwells_bestdata/30sec/min_Indiz
 
 
 def int8(input):
-    return np.array(input,ndmin=2,dtype=np.uint8,copy=True)
+    return np.asarray(input,ndmin=2,dtype=np.uint8,copy=True)
 
 
 # seg_cam = GigECam("/home/birdflight/birdflight/src/python/cfg/segmem.xml")
@@ -242,7 +242,7 @@ def detect():
         combi = np.zeros_like(index_image)
         combi[SegMap] = index_image[SegMap]
         from skimage.measure import label
-        combi = np.sum(label(np.array([combi==z+1 for z in range(int(np.amax(combi)))], dtype=bool)), axis=0)
+        combi = np.sum(label(np.asarray([combi==z+1 for z in range(int(np.amax(combi)))], dtype=bool)), axis=0)
         # plt.ioff()
         # plt.imshow(combi)
         # plt.show()

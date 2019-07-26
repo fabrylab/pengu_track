@@ -31,7 +31,7 @@ class new_Detection_Evaluator(object):
     def load_tracks_from_clickpoints(self, path, type):
         db = clickpoints.DataFile(path)
         type = db.getMarkerType(name=type)
-        array = np.array(db.db.execute_sql("select sort_index, x, y, id from marker join image on marker.image_id = image.id  where type_id = ? order by sort_index",
+        array = np.asarray(db.db.execute_sql("select sort_index, x, y, id from marker join image on marker.image_id = image.id  where type_id = ? order by sort_index",
                                            [type.id]).fetchall(), dtype=float)
         dictionary = dict(zip(range(len(array), array[:,3])))
         print("Marker loaded!")
@@ -92,10 +92,10 @@ class new_Evaluator(object):
         tracks = db.getTracks(type=type)
         track_dict = dict(enumerate([t.id for t in tracks]))
         if self.Frames is None:
-            array = np.array([db.db.execute_sql("select (SELECT x from marker as m WHERE m.image_id = i.id AND m.track_id=?) as x, (SELECT y from marker as m WHERE m.image_id = i.id AND m.track_id=?) as y from image as i order by sort_index",[track_dict[k],track_dict[k]]).fetchall() for k in sorted(track_dict.keys())], dtype=float)
+            array = np.asarray([db.db.execute_sql("select (SELECT x from marker as m WHERE m.image_id = i.id AND m.track_id=?) as x, (SELECT y from marker as m WHERE m.image_id = i.id AND m.track_id=?) as y from image as i order by sort_index",[track_dict[k],track_dict[k]]).fetchall() for k in sorted(track_dict.keys())], dtype=float)
             self.Frames = range(array.shape[1])
         else:
-            array = np.array([db.db.execute_sql("select (SELECT x from marker as m WHERE m.image_id = i.id AND m.track_id=?) as x, (SELECT y from marker as m WHERE m.image_id = i.id AND m.track_id=?) as y from image as i WHERE image.sort_index in ? order by sort_index",[track_dict[k], track_dict[k], self.Frames]).fetchall() for k in sorted(track_dict.keys())], dtype=float)
+            array = np.asarray([db.db.execute_sql("select (SELECT x from marker as m WHERE m.image_id = i.id AND m.track_id=?) as x, (SELECT y from marker as m WHERE m.image_id = i.id AND m.track_id=?) as y from image as i WHERE image.sort_index in ? order by sort_index",[track_dict[k], track_dict[k], self.Frames]).fetchall() for k in sorted(track_dict.keys())], dtype=float)
         print("Tracks loaded!")
         return db, array, track_dict
 
@@ -398,7 +398,7 @@ class Yin_Evaluator(Evaluator):
         # A = self.System_DF[self.System_DF.Track==id_A& self.System_DF.Frame.isin(frames)]
         # B = self.GT_DF[self.GT_DF.Track==id_B& self.GT_DF.Frame.isin(frames)]
         # I = self._intersect_many_(A.X, A.Y, B.X, B.Y)
-        X = np.array([[trackA.X[f][0], trackA.X[f][1], trackB.X[f][0], trackB.X[f][1]] for f in frames], ndmin=3)
+        X = np.asarray([[trackA.X[f][0], trackA.X[f][1], trackB.X[f][0], trackB.X[f][1]] for f in frames], ndmin=3)
         I = self._intersect_many_(*X.T[0])
         return dict(zip(frames, I/(2*self.Object_Size**2-I)))
         # pointsA = [trackA.X[f] for f in frames]
@@ -760,13 +760,13 @@ class Yin_Evaluator(Evaluator):
         else:
             raise KeyError("Track is not a Ground Truth Track")
         from datetime import timedelta
-        t = np.array(sorted(trackA.X.keys()))
-        x = np.array([trackA.X[f] for f in t], dtype=float)
+        t = np.asarray(sorted(trackA.X.keys()))
+        x = np.asarray([trackA.X[f] for f in t], dtype=float)
         delta_x = x[1:]-x[:-1]
         try:
-            delta_t = np.array([delta.seconds for delta in t[1:]-t[:-1]], dtype=float)
+            delta_t = np.asarray([delta.seconds for delta in t[1:]-t[:-1]], dtype=float)
         except AttributeError:
-            delta_t = np.array([delta for delta in t[1:]-t[:-1]], dtype=float)
+            delta_t = np.asarray([delta for delta in t[1:]-t[:-1]], dtype=float)
         return delta_x.T/delta_t
 
     def activity(self, trackA):
@@ -814,12 +814,12 @@ class Alex_Evaluator(Yin_Evaluator):
         else:
             raise KeyError("Track is not a Ground Truth Track")
         from datetime import timedelta
-        t = np.array(sorted(trackA.X.keys()))
-        x = np.array([trackA.X[f] for f in t], dtype=float)
+        t = np.asarray(sorted(trackA.X.keys()))
+        x = np.asarray([trackA.X[f] for f in t], dtype=float)
         sizes = self.size(x[1:].T[1])
         delta_x = ((x[1:]-x[:-1]).T/sizes).T
         try:
-            delta_t = np.array([delta.seconds for delta in t[1:]-t[:-1]], dtype=float)
+            delta_t = np.asarray([delta.seconds for delta in t[1:]-t[:-1]], dtype=float)
         except AttributeError:
             delta_t = (t[1:] - t[:-1]).astype(float)
         return delta_x.T/delta_t

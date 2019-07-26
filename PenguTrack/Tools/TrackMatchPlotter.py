@@ -58,14 +58,14 @@ class TrackMatchPlotter(object):
         ax.imshow(img, *args, **kwargs)
 
     def plot_gt(self, gt, fig, ax, *args, **kwargs):
-        X, Y = np.array([self.GT_Tracks[gt].X[f] for f in sorted(self.GT_Tracks[gt].X)]).T[0]
+        X, Y = np.asarray([self.GT_Tracks[gt].X[f] for f in sorted(self.GT_Tracks[gt].X)]).T[0]
         ax.plot(Y, X, "-ko", *args, label="Ground Truth (%s)"%gt, **kwargs)
 
     def plot_tracklets(self, gt, fig, ax, *args, **kwargs):
         N = len(self.Matches[gt])
         cpal = sns.color_palette("hls", N)
         for i,st in enumerate(self.Matches[gt]):
-            X1, Y1 = np.array([self.System_Tracks[st].X[f] for f in sorted(self.System_Tracks[st].X)]).T[0]
+            X1, Y1 = np.asarray([self.System_Tracks[st].X[f] for f in sorted(self.System_Tracks[st].X)]).T[0]
             ax.plot(Y1, X1, *args, color=cpal[i], label=str(st), **kwargs)
 
         #     ...

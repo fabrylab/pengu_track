@@ -185,10 +185,10 @@ class MatrixField(peewee.BlobField):
         :return: binary object
         """
         if np.all(value == np.nan):
-            value = np.array([None])
-        value_b = np.array(value).astype(np.float64).tobytes()
-        shape_b = np.array(np.array(value).shape).astype(np.int64).tobytes()
-        len_shape_b = np.array(len(np.array(value).shape)).astype(np.int64).tobytes()
+            value = np.asarray([None])
+        value_b = np.asarray(value).astype(np.float64).tobytes()
+        shape_b = np.asarray(np.asarray(value).shape).astype(np.int64).tobytes()
+        len_shape_b = np.asarray(len(np.asarray(value).shape)).astype(np.int64).tobytes()
         value = len_shape_b+shape_b+value_b
         return value
 
@@ -270,7 +270,7 @@ class DictField(peewee.TextField):
 class NumDictField(peewee.BlobField):
     """ A database field, that encodes purely numerical dicts to database entries."""
     def db_value(self, value):
-        value = np.array([[v,value[v]] for v in value]).tobytes()
+        value = np.asarray([[v,value[v]] for v in value]).tobytes()
         if PY3:
             return super(NumDictField, self).db_value(value)
         return super(NumDictField, self).db_value(peewee.binary_construct(value))
@@ -714,7 +714,7 @@ class DataFileExtended(clickpoints.DataFile):
                               measurement_distribution=measurement_distribution,
                               state_distribution=state_distribution,
                               model=model)
-        return self.saveUpsertMany(self.table_filter, data)
+        return self.saveReplaceMany(self.table_filter, data)
 
     def getFilter(self, id=None, track_id=None, filter_id=None, tracker=None):
         query = self.table_filter.select()
@@ -786,7 +786,7 @@ class DataFileExtended(clickpoints.DataFile):
                               log_prob=log_prob,
                               state_vector=state_vector,
                               state_error=state_error)
-        return self.saveUpsertMany(self.table_state, data)
+        return self.saveReplaceMany(self.table_state, data)
 
     def deletetOld(self):
         """Deletes old Clickpoints marker entries"""
@@ -1016,15 +1016,16 @@ class DataFileExtended(clickpoints.DataFile):
                 # Case 3: we want to see the measurement markers
                 if i in Tracker.Filters[k].Measurements.keys() and ((debug_mode&0b010000)or(debug_mode&0b000010)):
                     meas = Tracker.Filters[k].Measurements[i]
-                    meas_x = meas.PositionX
-                    meas_y = meas.PositionY
+                    meas_x = meas['PositionX']
+                    meas_y = meas['PositionY']
 
                     if debug_mode&0b010000 and "Covariance" in meas:
                         stateset.append(dict(filter=db_filter,
                                              log_prob=prob,
                                              image=image,
                                              type=self.TYPE_MEASUREMENT,
-                                             state_vector=np.array([meas_x, meas_y])))
+                                             state_vector=np.asarray([meas_x, meas_y]),
+                                             state_error=None))
                     if debug_mode&0b000010:
                         measurement_markerset.append(dict(image=image, x=meas_x, y=meas_y,
                                                           text="Track %s" % (db_track.id),
@@ -1058,7 +1059,7 @@ class DataFileExtended(clickpoints.DataFile):
         if (debug_mode&0b000010):
             markerset.extend(measurement_markerset)
 
-        self.setMarkers(image=[m["image"] for m in markerset],
+        self.setMarkers(image=image,#[m["image"] for m in markerset],
                         type=[m["type"] for m in markerset],
                         track=[m["track"] for m in markerset],
                         x=[m["x"] for m in markerset],
@@ -1118,7 +1119,7 @@ class DataFileExtended(clickpoints.DataFile):
                         for meas in measurements:
                             self.db.execute_sql(
                                 'INSERT INTO state_tmp ("id", "filter_id", "image_id", "type", "log_prob","state_vector", "state_error") VALUES(?, ?, ?, ?, ?, ?, ?)',
-                                [meas["id"], meas["track_id"], meas["image_id"], self.TYPE_MEASUREMENT , meas["log"], np.array([meas.get("x",0),
+                                [meas["id"], meas["track_id"], meas["image_id"], self.TYPE_MEASUREMENT , meas["log"], np.asarray([meas.get("x",0),
                                                                                                meas.get("y", 0),
                                                                                                meas.get("z", 0)]), None])
                         self.db.execute_sql('DROP TABLE measurement')
@@ -1396,7 +1397,7 @@ def load_tracks_from_clickpoints(path, type, tracker_name=None, use_cp_tracks=Fa
             X_raw = db_object.db.execute_sql(
                 'select sort_index, y, x from marker m inner join image i on i.id ==m.image_id where m.track_id = ?',
                 [track.id])
-            filter.X.update(dict([[v[0], np.array([[v[1]],[v[2]]], dtype=float)] for v in X_raw]))
+            filter.X.update(dict([[v[0], np.asarray([[v[1]],[v[2]]], dtype=float)] for v in X_raw]))
             tracks_object.update({track.id:filter})
         db_object.track_dict = dict(zip(range(len(tracks_object)),tracks_object.keys()))
         db_object.db_track_dict = dict(zip(tracks_object.keys(), tracks_object.keys()))
@@ -1409,7 +1410,7 @@ def load_measurements_from_clickpoints(path, type, measured_variables=["Position
     tracks_object = {}
     tracks = db.getTracks(type=type)
     all_markers = db.db.execute_sql('SELECT track_id, (SELECT sort_index FROM image WHERE image.id = image_id) as sort_index, measurement.x, measurement.y, z FROM marker JOIN measurement ON marker.id = measurement.marker_id WHERE type_id = ?', str(db.getMarkerType(name=type).id)).fetchall()
-    all_markers = np.array(all_markers)
+    all_markers = np.asarray(all_markers)
     track_dict = {}
 
     for track in tracks:
