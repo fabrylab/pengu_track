@@ -1,0 +1,7 @@
+.hg/
+.idea/
+.hgignore
+PenguTrack.egg-info/
+*.pyc
+ExampleData/
+venv/
